@@ -1,19 +1,20 @@
 use std::cmp;
 
 use libc::c_uint;
-use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::{PlaceRef, PlaceValue};
 use rustc_codegen_ssa::traits::*;
-use rustc_middle::ty::Ty;
+use rustc_codegen_ssa::MemFlags;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::layout::LayoutOf;
 pub(crate) use rustc_middle::ty::layout::{FAT_PTR_ADDR, FAT_PTR_EXTRA};
+use rustc_middle::ty::Ty;
 use rustc_middle::{bug, ty};
 use rustc_session::config;
 pub(crate) use rustc_target::abi::call::*;
 use rustc_target::abi::{self, HasDataLayout, Int, Size};
-use rustc_target::spec::SanitizerSet;
 pub(crate) use rustc_target::spec::abi::Abi;
+use rustc_target::spec::SanitizerSet;
 use smallvec::SmallVec;
 
 use crate::attributes::llfn_attrs_from_instance;
@@ -119,6 +120,10 @@ impl LlvmType for Reg {
     fn llvm_type<'ll>(&self, cx: &CodegenCx<'ll, '_>) -> &'ll Type {
         match self.kind {
             RegKind::Integer => cx.type_ix(self.size.bits()),
+            RegKind::Pointer => {
+                assert_eq!(self.size, cx.data_layout().pointer_size, "invalid pointer size");
+                cx.type_ptr()
+            }
             RegKind::Float => match self.size.bits() {
                 16 => cx.type_f16(),
                 32 => cx.type_f32(),
@@ -231,9 +236,10 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     cmp::min(cast.unaligned_size(bx).bytes(), self.layout.size.bytes());
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
+                let has_pointers = bx.pointer_map(dst.layout).has_pointers();
                 bx.lifetime_start(llscratch, scratch_size);
                 // ...store the value...
-                bx.store(val, llscratch, scratch_align);
+                bx.store_noptr(val, llscratch, scratch_align);
                 // ... and then memcpy it to the intended destination.
                 bx.memcpy(
                     dst.val.llval,
@@ -242,6 +248,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     scratch_align,
                     bx.const_usize(copy_bytes),
                     MemFlags::empty(),
+                    has_pointers,
                 );
                 bx.lifetime_end(llscratch, scratch_size);
             }
@@ -332,9 +339,8 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             if self.c_variadic { &self.args[..self.fixed_count as usize] } else { &self.args };
 
         // This capacity calculation is approximate.
-        let mut llargument_tys = Vec::with_capacity(
-            self.args.len() + if let PassMode::Indirect { .. } = self.ret.mode { 1 } else { 0 },
-        );
+        let mut llargument_tys =
+            Vec::with_capacity(self.args.len() + (self.ret.is_indirect() as usize));
 
         let llreturn_ty = match &self.ret.mode {
             PassMode::Ignore => cx.type_void(),
@@ -445,11 +451,11 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                 // LLVM also rejects full range.
                 && !scalar.is_always_valid(cx)
             {
-                attributes::apply_to_llfn(llfn, idx, &[llvm::CreateRangeAttr(
-                    cx.llcx,
-                    scalar.size(cx),
-                    scalar.valid_range(cx),
-                )]);
+                attributes::apply_to_llfn(
+                    llfn,
+                    idx,
+                    &[llvm::CreateRangeAttr(cx.llcx, scalar.size(cx), scalar.valid_range(cx))],
+                );
             }
         };
 
@@ -469,10 +475,14 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                 );
                 attributes::apply_to_llfn(llfn, llvm::AttributePlace::Argument(i), &[sret]);
                 if cx.sess().opts.optimize != config::OptLevel::No {
-                    attributes::apply_to_llfn(llfn, llvm::AttributePlace::Argument(i), &[
-                        llvm::AttributeKind::Writable.create_attr(cx.llcx),
-                        llvm::AttributeKind::DeadOnUnwind.create_attr(cx.llcx),
-                    ]);
+                    attributes::apply_to_llfn(
+                        llfn,
+                        llvm::AttributePlace::Argument(i),
+                        &[
+                            llvm::AttributeKind::Writable.create_attr(cx.llcx),
+                            llvm::AttributeKind::DeadOnUnwind.create_attr(cx.llcx),
+                        ],
+                    );
                 }
             }
             PassMode::Cast { cast, pad_i32: _ } => {
@@ -588,9 +598,11 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                         bx.cx.llcx,
                         bx.cx.type_array(bx.cx.type_i8(), arg.layout.size.bytes()),
                     );
-                    attributes::apply_to_callsite(callsite, llvm::AttributePlace::Argument(i), &[
-                        byval,
-                    ]);
+                    attributes::apply_to_callsite(
+                        callsite,
+                        llvm::AttributePlace::Argument(i),
+                        &[byval],
+                    );
                 }
                 PassMode::Direct(attrs)
                 | PassMode::Indirect { attrs, meta_attrs: None, on_stack: false } => {
@@ -622,9 +634,11 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             // This will probably get ignored on all targets but those supporting the TrustZone-M
             // extension (thumbv8m targets).
             let cmse_nonsecure_call = llvm::CreateAttrString(bx.cx.llcx, "cmse_nonsecure_call");
-            attributes::apply_to_callsite(callsite, llvm::AttributePlace::Function, &[
-                cmse_nonsecure_call,
-            ]);
+            attributes::apply_to_callsite(
+                callsite,
+                llvm::AttributePlace::Function,
+                &[cmse_nonsecure_call],
+            );
         }
 
         // Some intrinsics require that an elementtype attribute (with the pointee type of a
@@ -655,10 +669,11 @@ impl From<Conv> for llvm::CallConv {
     fn from(conv: Conv) -> Self {
         match conv {
             Conv::C
-            | Conv::Rust
             | Conv::CCmseNonSecureCall
             | Conv::CCmseNonSecureEntry
             | Conv::RiscvInterrupt { .. } => llvm::CCallConv,
+            Conv::Rust | Conv::Rog => llvm::ROGCallConv,
+            Conv::RogCold => llvm::ROGColdCallConv,
             Conv::Cold => llvm::ColdCallConv,
             Conv::PreserveMost => llvm::PreserveMost,
             Conv::PreserveAll => llvm::PreserveAll,
