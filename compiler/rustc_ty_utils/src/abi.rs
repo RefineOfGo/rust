@@ -245,6 +245,8 @@ fn conv_from_spec_abi(tcx: TyCtxt<'_>, abi: ExternAbi, c_variadic: bool) -> Conv
     use rustc_abi::ExternAbi::*;
     match tcx.sess.target.adjust_abi(abi, c_variadic) {
         Rust | RustCall => Conv::Rust,
+        Rog => Conv::Rog,
+        RogCold => Conv::RogCold,
 
         // This is intentionally not using `Conv::Cold`, as that has to preserve
         // even SIMD registers, which is generally not a good trade-off.
