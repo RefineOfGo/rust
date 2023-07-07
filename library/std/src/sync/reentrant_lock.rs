@@ -90,6 +90,10 @@ pub struct ReentrantLock<T: ?Sized> {
     data: T,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for ReentrantLock<T> {}
+
 cfg_if!(
     if #[cfg(target_has_atomic = "64")] {
         use crate::sync::atomic::{AtomicU64, Ordering::Relaxed};

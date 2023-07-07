@@ -56,7 +56,9 @@ fn has_ffi_unwind_calls(tcx: TyCtxt<'_>, local_def_id: LocalDefId) -> bool {
         if let ExternAbi::RustIntrinsic
         | ExternAbi::Rust
         | ExternAbi::RustCall
-        | ExternAbi::RustCold = sig.abi()
+        | ExternAbi::RustCold
+        | ExternAbi::Rog
+        | ExternAbi::RogCold = sig.abi()
         {
             continue;
         };

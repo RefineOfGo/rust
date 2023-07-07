@@ -330,15 +330,12 @@ impl Step for Llvm {
         // defaults!
         let llvm_targets = match &builder.config.llvm_targets {
             Some(s) => s,
-            None => {
-                "AArch64;ARM;BPF;Hexagon;LoongArch;MSP430;Mips;NVPTX;PowerPC;RISCV;\
-                     Sparc;SystemZ;WebAssembly;X86"
-            }
+            None => "AArch64;LoongArch;X86",
         };
 
         let llvm_exp_targets = match builder.config.llvm_experimental_targets {
             Some(ref s) => s,
-            None => "AVR;M68k;CSKY;Xtensa",
+            None => "",
         };
 
         let assertions = if builder.config.llvm_assertions { "ON" } else { "OFF" };
@@ -447,7 +444,8 @@ impl Step for Llvm {
             cfg.define("LLVM_BUILD_32_BITS", "ON");
         }
 
-        let mut enabled_llvm_projects = Vec::new();
+        // Enable lld by default, ROG needs this.
+        let mut enabled_llvm_projects = vec!["lld"];
 
         if helpers::forcing_clang_based_tests() {
             enabled_llvm_projects.push("clang");
