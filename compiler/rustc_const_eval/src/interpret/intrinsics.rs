@@ -6,7 +6,7 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{self, BinOp, ConstValue, NonDivergingIntrinsic};
 use rustc_middle::ty::layout::{LayoutOf as _, TyAndLayout, ValidityRequirement};
 use rustc_middle::ty::{GenericArgsRef, Ty, TyCtxt};
-use rustc_middle::{bug, ty};
+use rustc_middle::{bug, ptrinfo, ty};
 use rustc_span::symbol::{sym, Symbol};
 use rustc_target::abi::Size;
 use tracing::trace;
@@ -131,6 +131,29 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 };
 
                 self.write_scalar(Scalar::from_target_usize(result, self), dest)?;
+            }
+
+            sym::pointer_map_of => {
+                let ty = instance_args.type_at(0);
+                ensure_monomorphic_enough(self.tcx.tcx, ty)?;
+                let layout = self
+                    .tcx
+                    .layout_of(self.param_env.and(ty))
+                    .map_err(|e| err_inval!(Layout(*e)))?;
+                let ptrmap = ptrinfo::encode(self, layout);
+                let val = self.const_val_to_op(
+                    ConstValue::Slice {
+                        meta: ptrmap.len() as u64,
+                        data: self.tcx.mk_const_alloc(Allocation::from_bytes(
+                            ptrmap,
+                            self.tcx.data_layout.pointer_align.abi,
+                            ty::Mutability::Not,
+                        )),
+                    },
+                    Ty::new_static_u64_slice(self.tcx.tcx),
+                    Some(dest.layout),
+                )?;
+                self.copy_op(&val, dest)?;
             }
 
             sym::pref_align_of

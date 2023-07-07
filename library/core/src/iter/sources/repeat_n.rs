@@ -84,6 +84,10 @@ pub struct RepeatN<A> {
     element: ManuallyDrop<A>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A: Managed> Managed for RepeatN<A> {}
+
 impl<A> RepeatN<A> {
     /// If we haven't already dropped the element, return it in an option.
     ///

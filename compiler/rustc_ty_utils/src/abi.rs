@@ -3,6 +3,7 @@ use std::iter;
 use rustc_hir as hir;
 use rustc_hir::lang_items::LangItem;
 use rustc_middle::bug;
+use rustc_middle::ptrinfo::exact_pointer_slots;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{
     fn_can_unwind, FnAbiError, HasParamEnv, HasTyCtxt, LayoutCx, LayoutOf, TyAndLayout,
@@ -11,8 +12,8 @@ use rustc_middle::ty::{self, InstanceKind, Ty, TyCtxt};
 use rustc_session::config::OptLevel;
 use rustc_span::def_id::DefId;
 use rustc_target::abi::call::{
-    ArgAbi, ArgAttribute, ArgAttributes, ArgExtension, Conv, FnAbi, PassMode, Reg, RegKind,
-    RiscvInterruptKind,
+    ArgAbi, ArgAttribute, ArgAttributes, ArgExtension, CastTarget, Conv, FnAbi, PassMode, Reg,
+    RegKind, RiscvInterruptKind,
 };
 use rustc_target::abi::*;
 use rustc_target::spec::abi::Abi as SpecAbi;
@@ -326,10 +327,15 @@ fn conv_from_spec_abi(tcx: TyCtxt<'_>, abi: SpecAbi, c_variadic: bool) -> Conv {
     use rustc_target::spec::abi::Abi::*;
     match tcx.sess.target.adjust_abi(abi, c_variadic) {
         RustIntrinsic | Rust | RustCall => Conv::Rust,
+        Rog => Conv::Rog,
 
         // This is intentionally not using `Conv::Cold`, as that has to preserve
         // even SIMD registers, which is generally not a good trade-off.
         RustCold => Conv::PreserveMost,
+
+        // ROG specifically requires `Conv::Cold` for things like stack check
+        // prologue or GC write barriers
+        RogCold => Conv::Cold,
 
         // It's the ABI's job to select this, not ours.
         System { .. } => bug!("system abi should be selected elsewhere"),
@@ -726,7 +732,11 @@ fn fn_abi_adjust_for_abi<'tcx>(
         return Ok(());
     }
 
-    if abi == SpecAbi::Rust || abi == SpecAbi::RustCall || abi == SpecAbi::RustIntrinsic {
+    if abi == SpecAbi::Rog
+        || abi == SpecAbi::Rust
+        || abi == SpecAbi::RustCall
+        || abi == SpecAbi::RustIntrinsic
+    {
         // Look up the deduced parameter attributes for this function, if we have its def ID and
         // we're optimizing in non-incremental mode. We'll tag its parameters with those attributes
         // as appropriate.
@@ -799,10 +809,13 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 // Note that the intrinsic ABI is exempt here as
                 // that's how we connect up to LLVM and it's unstable
                 // anyway, we control all calls to it in libstd.
-                Abi::Vector { .. }
-                    if abi != SpecAbi::RustIntrinsic && cx.tcx.sess.target.simd_types_indirect =>
-                {
-                    arg.make_indirect();
+                //
+                // ROG Rust does not support this.
+                Abi::Vector { .. } if abi != SpecAbi::RustIntrinsic => {
+                    assert!(
+                        !cx.tcx.sess.target.simd_types_indirect,
+                        "ROG Rust does not support indirect SIMD types"
+                    );
                     return;
                 }
 
@@ -815,28 +828,45 @@ fn fn_abi_adjust_for_abi<'tcx>(
             assert!(is_indirect_not_on_stack, "{:?}", arg);
 
             let size = arg.layout.size;
-            if !arg.layout.is_unsized() && size <= Pointer(AddressSpace::DATA).size(cx) {
+            let ptr_size = Pointer(AddressSpace::DATA).size(cx);
+
+            if !arg.layout.is_unsized() && size <= ptr_size * 8 {
+                let size_bytes = size.bytes_usize();
+                let ptr_size_bytes = ptr_size.bytes_usize();
+                let mut regs = vec![Reg::i64(); size_bytes / ptr_size_bytes];
+
+                // Mark pointer slots
+                for slot_idx in exact_pointer_slots(cx, arg.layout) {
+                    regs[slot_idx] = Reg::ptr(cx);
+                }
+
+                // Not an exact multiple of pointers.
+                let remains = size_bytes % ptr_size_bytes;
+                if remains != 0 {
+                    regs.push(Reg { kind: RegKind::Integer, size: Size::from_bytes(remains) });
+                }
+
                 // We want to pass small aggregates as immediates, but using
                 // an LLVM aggregate type for this leads to bad optimizations,
-                // so we pick an appropriately sized integer type instead.
-                arg.cast_to(Reg { kind: RegKind::Integer, size });
+                // so we pick an appropriately sized register instead.
+                arg.cast_to(CastTarget::immediate(regs));
             }
 
-            // If we deduced that this parameter was read-only, add that to the attribute list now.
-            //
-            // The `readonly` parameter only applies to pointers, so we can only do this if the
-            // argument was passed indirectly. (If the argument is passed directly, it's an SSA
-            // value, so it's implicitly immutable.)
-            if let (Some(arg_idx), &mut PassMode::Indirect { ref mut attrs, .. }) =
-                (arg_idx, &mut arg.mode)
-            {
-                // The `deduced_param_attrs` list could be empty if this is a type of function
-                // we can't deduce any parameters for, so make sure the argument index is in
-                // bounds.
-                if let Some(deduced_param_attrs) = deduced_param_attrs.get(arg_idx) {
-                    if deduced_param_attrs.read_only {
-                        attrs.regular.insert(ArgAttribute::ReadOnly);
-                        debug!("added deduced read-only attribute");
+            if let Some(arg_idx) = arg_idx {
+                // If we deduced that this parameter was read-only, add that to the attribute list now.
+                //
+                // The `readonly` parameter only applies to pointers, so we can only do this if the
+                // argument was passed indirectly. (If the argument is passed directly, it's an SSA
+                // value, so it's implicitly immutable.)
+                if let PassMode::Indirect { ref mut attrs, .. } = arg.mode {
+                    // The `deduced_param_attrs` list could be empty if this is a type of function
+                    // we can't deduce any parameters for, so make sure the argument index is in
+                    // bounds.
+                    if let Some(deduced_param_attrs) = deduced_param_attrs.get(arg_idx) {
+                        if deduced_param_attrs.read_only {
+                            attrs.regular.insert(ArgAttribute::ReadOnly);
+                            debug!("added deduced read-only attribute");
+                        }
                     }
                 }
             }

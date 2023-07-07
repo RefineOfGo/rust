@@ -24,6 +24,8 @@ mod ffi;
 
 pub use self::ffi::*;
 
+pub const ROG_GC_NAME: &str = "rog";
+
 impl LLVMRustResult {
     pub fn into_result(self) -> Result<(), ()> {
         match self {
@@ -150,9 +152,17 @@ pub fn SetInstructionCallConv(instr: &Value, cc: CallConv) {
         LLVMSetInstructionCallConv(instr, cc as c_uint);
     }
 }
+
 pub fn SetFunctionCallConv(fn_: &Value, cc: CallConv) {
     unsafe {
         LLVMSetFunctionCallConv(fn_, cc as c_uint);
+    }
+}
+
+pub fn SetGC(fn_: &Value, gc: &str) {
+    unsafe {
+        let name = SmallCStr::new(gc);
+        LLVMSetGC(fn_, name.as_ptr())
     }
 }
 

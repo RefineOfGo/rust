@@ -23,6 +23,7 @@ use tracing::debug;
 
 use crate::error::UnsupportedFnAbi;
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
+use crate::ptrinfo::HasPointerMap;
 use crate::query::TyCtxtAt;
 use crate::ty::normalize_erasing_regions::NormalizationError;
 use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt, TypeVisitableExt};
@@ -595,6 +596,18 @@ impl<'tcx, T: HasWasmCAbiOpt> HasWasmCAbiOpt for LayoutCx<'tcx, T> {
 impl<'tcx, T: HasTyCtxt<'tcx>> HasTyCtxt<'tcx> for LayoutCx<'tcx, T> {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx.tcx()
+    }
+}
+
+impl<'tcx, T: HasPointerMap<'tcx>> HasPointerMap<'tcx> for LayoutCx<'tcx, T> {
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        kind: crate::ptrinfo::PointerMapKind,
+        map_fn: impl FnOnce(&crate::ptrinfo::PointerMap) -> R,
+        compute_fn: impl FnOnce() -> crate::ptrinfo::PointerMap,
+    ) -> R {
+        self.tcx.compute_pointer_map(ty, kind, map_fn, compute_fn)
     }
 }
 
@@ -1214,7 +1227,7 @@ pub fn fn_can_unwind(tcx: TyCtxt<'_>, fn_def_id: Option<DefId>, abi: SpecAbi) ->
         | RiscvInterruptS
         | CCmseNonSecureCall
         | Unadjusted => false,
-        Rust | RustCall | RustCold | RustIntrinsic => {
+        Rust | RustCall | RustCold | RustIntrinsic | Rog | RogCold => {
             tcx.sess.panic_strategy() == PanicStrategy::Unwind
         }
     }

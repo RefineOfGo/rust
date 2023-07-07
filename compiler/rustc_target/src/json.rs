@@ -98,6 +98,7 @@ impl ToJson for crate::abi::call::Conv {
         let s = match self {
             Self::C => "C",
             Self::Rust => "Rust",
+            Self::Rog => "Rog",
             Self::Cold => "Cold",
             Self::PreserveMost => "PreserveMost",
             Self::PreserveAll => "PreserveAll",

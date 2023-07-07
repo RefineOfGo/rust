@@ -41,7 +41,7 @@ pub(super) fn check_trait<'tcx>(
     res = res.and(checker.check(lang_items.unsized_const_param_ty_trait(), |checker| {
         visit_implementation_of_const_param_ty(checker, LangItem::UnsizedConstParamTy)
     }));
-
+    res = res.and(checker.check(lang_items.managed_trait(), visit_implementation_of_managed));
     res = res.and(
         checker.check(lang_items.coerce_unsized_trait(), visit_implementation_of_coerce_unsized),
     );
@@ -173,6 +173,20 @@ fn visit_implementation_of_const_param_ty(
         Err(ConstParamTyImplementationError::UnsizedConstParamsFeatureRequired) => {
             let span = tcx.hir().expect_item(impl_did).expect_impl().self_ty.span;
             Err(tcx.dcx().emit_err(errors::ConstParamTyImplOnUnsized { span }))
+        }
+    }
+}
+
+fn visit_implementation_of_managed(checker: &Checker<'_>) -> Result<(), ErrorGuaranteed> {
+    let tcx = checker.tcx;
+    let impl_did = checker.impl_def_id;
+    // Managed types only work on local non-union ADT types.
+    match tcx.type_of(impl_did).instantiate_identity().kind() {
+        ty::Adt(def, ..) if def.did().is_local() && !def.is_union() => Ok(()),
+        ty::Ref(..) | ty::RawPtr(..) | ty::Slice(..) | ty::Array(..) | ty::Error(..) => Ok(()),
+        _ => {
+            let impl_ = tcx.hir().expect_item(impl_did).expect_impl();
+            Err(tcx.dcx().emit_err(errors::ManagedImplOnWrongType { span: impl_.self_ty.span }))
         }
     }
 }

@@ -59,7 +59,7 @@ use rustc_type_ir::{search_graph, CollectAndApply, Interner, TypeFlags, WithCach
 use tracing::{debug, instrument};
 
 use crate::arena::Arena;
-use crate::dep_graph::{DepGraph, DepKindStruct};
+use crate::dep_graph::{DepGraph, DepKindStruct, DepKindStruct};
 use crate::infer::canonical::{CanonicalParamEnvCache, CanonicalVarInfo, CanonicalVarInfos};
 use crate::lint::lint_level;
 use crate::metadata::ModChild;
@@ -67,6 +67,7 @@ use crate::middle::codegen_fn_attrs::CodegenFnAttrs;
 use crate::middle::{resolve_bound_vars, stability};
 use crate::mir::interpret::{self, Allocation, ConstAllocation};
 use crate::mir::{Body, Local, Place, PlaceElem, ProjectionKind, Promoted};
+use crate::ptrinfo::{PointerMap, PointerMapKind};
 use crate::query::plumbing::QuerySystem;
 use crate::query::{IntoQueryParam, LocalCrate, Providers, TyCtxtAt};
 use crate::thir::Thir;
@@ -642,6 +643,7 @@ bidirectional_lang_item_map! {
     Future,
     FutureOutput,
     Iterator,
+    Managed,
     Metadata,
     Option,
     PointeeTrait,
@@ -1301,6 +1303,9 @@ pub struct GlobalCtxt<'tcx> {
     /// Data layout specification for the current target.
     pub data_layout: TargetDataLayout,
 
+    /// Caches the result of Pointer map calculation for each Ty and PointerMapKind.
+    pub pointer_maps: Lock<FxHashMap<(Ty<'tcx>, PointerMapKind), PointerMap>>,
+
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: Lock<interpret::AllocMap<'tcx>>,
 
@@ -1534,6 +1539,7 @@ impl<'tcx> TyCtxt<'tcx> {
             canonical_param_env_cache: Default::default(),
             data_layout,
             alloc_map: Lock::new(interpret::AllocMap::new()),
+            pointer_maps: Default::default(),
             current_gcx,
         }
     }

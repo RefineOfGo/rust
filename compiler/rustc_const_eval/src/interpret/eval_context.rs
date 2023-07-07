@@ -13,6 +13,7 @@ use rustc_infer::traits::ObligationCause;
 use rustc_middle::mir::interpret::{
     CtfeProvenance, ErrorHandled, InvalidMetaKind, ReportedErrorInfo,
 };
+use rustc_middle::ptrinfo::{HasPointerMap, PointerMap, PointerMapKind};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::layout::{
     self, FnAbiError, FnAbiOfHelpers, FnAbiRequest, LayoutError, LayoutOf, LayoutOfHelpers,
@@ -388,6 +389,19 @@ where
 {
     fn param_env(&self) -> ty::ParamEnv<'tcx> {
         self.param_env
+    }
+}
+
+impl<'tcx, M: Machine<'tcx>> HasPointerMap<'tcx> for InterpCx<'tcx, M> {
+    #[inline]
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        kind: PointerMapKind,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
+    ) -> R {
+        self.tcx.compute_pointer_map(ty, kind, map_fn, compute_fn)
     }
 }
 

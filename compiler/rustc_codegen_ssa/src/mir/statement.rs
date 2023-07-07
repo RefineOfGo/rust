@@ -1,4 +1,5 @@
 use rustc_middle::mir::{self, NonDivergingIntrinsic};
+use rustc_middle::ptrinfo;
 use rustc_middle::span_bug;
 use rustc_session::config::OptLevel;
 use tracing::instrument;
@@ -88,7 +89,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let align = pointee_layout.align;
                 let dst = dst_val.immediate();
                 let src = src_val.immediate();
-                bx.memcpy(dst, align, src, align, bytes, crate::MemFlags::empty());
+                let has_pointers = ptrinfo::has_pointers(bx.cx(), dst_val.layout);
+                bx.memcpy(dst, align, src, align, bytes, crate::MemFlags::empty(), has_pointers);
             }
             mir::StatementKind::FakeRead(..)
             | mir::StatementKind::Retag { .. }

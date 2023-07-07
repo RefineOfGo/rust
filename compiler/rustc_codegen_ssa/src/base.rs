@@ -509,9 +509,9 @@ fn get_argc_argv<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         let ptr_align = bx.tcx().data_layout.pointer_align.abi;
         let arg_argc = bx.const_int(cx.type_isize(), 2);
         let arg_argv = bx.alloca(2 * ptr_size, ptr_align);
-        bx.store(param_handle, arg_argv, ptr_align);
+        bx.store_ptr(param_handle, arg_argv);
         let arg_argv_el1 = bx.inbounds_ptradd(arg_argv, bx.const_usize(ptr_size.bytes()));
-        bx.store(param_system_table, arg_argv_el1, ptr_align);
+        bx.store_ptr(param_system_table, arg_argv_el1);
         (arg_argc, arg_argv)
     } else if cx.sess().target.main_needs_argc_argv {
         // Params from native `main()` used as args for rust start function
@@ -575,15 +575,13 @@ pub fn codegen_crate<B: ExtraBackendMethods>(
     metadata: EncodedMetadata,
     need_metadata_module: bool,
 ) -> OngoingCodegen<B> {
-    // Skip crate items and just output metadata in -Z no-codegen mode.
+    // Check crate items and just output metadata in -Z no-codegen mode.
     if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
-        let ongoing_codegen = start_async_codegen(backend, tcx, target_cpu, metadata, None);
-
-        ongoing_codegen.codegen_finished(tcx);
-
-        ongoing_codegen.check_for_errors(tcx.sess);
-
-        return ongoing_codegen;
+        let codegen = start_async_codegen(backend, tcx, target_cpu, metadata, None);
+        tcx.ensure().check_mono_items(());
+        codegen.codegen_finished(tcx);
+        codegen.check_for_errors(tcx.sess);
+        return codegen;
     }
 
     let cgu_name_builder = &mut CodegenUnitNameBuilder::new(tcx);

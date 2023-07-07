@@ -10,6 +10,7 @@ use rustc_infer::traits::{
 };
 use rustc_middle::bug;
 use rustc_middle::mir::interpret::ErrorHandled;
+use rustc_middle::traits::ImplSource;
 use rustc_middle::ty::abstract_const::NotConstEvaluatable;
 use rustc_middle::ty::error::{ExpectedFound, TypeError};
 use rustc_middle::ty::{self, Binder, Const, GenericArgsRef, TypeVisitableExt};
@@ -749,6 +750,10 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
         }
 
         match self.selcx.poly_select(&trait_obligation) {
+            Ok(Some(ImplSource::BuiltinAny(nested))) => {
+                debug!("selecting trait at depth {} yielded Ok(Some)", obligation.recursion_depth);
+                ProcessResult::ChangedAny(mk_pending(nested))
+            }
             Ok(Some(impl_source)) => {
                 debug!("selecting trait at depth {} yielded Ok(Some)", obligation.recursion_depth);
                 ProcessResult::Changed(mk_pending(impl_source.nested_obligations()))

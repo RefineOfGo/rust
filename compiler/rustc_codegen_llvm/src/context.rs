@@ -12,6 +12,9 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::small_c_str::SmallCStr;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::mono::CodegenUnit;
+use rustc_middle::ptrinfo::HasPointerMap;
+use rustc_middle::ptrinfo::PointerMap;
+use rustc_middle::ptrinfo::PointerMapKind;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, LayoutError, LayoutOfHelpers,
     TyAndLayout,
@@ -674,6 +677,19 @@ impl<'ll, 'tcx> MiscMethods<'tcx> for CodegenCx<'ll, 'tcx> {
     }
 }
 
+impl<'ll, 'tcx> HasPointerMap<'tcx> for CodegenCx<'ll, 'tcx> {
+    #[inline]
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        kind: PointerMapKind,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
+    ) -> R {
+        self.tcx.compute_pointer_map(ty, kind, map_fn, compute_fn)
+    }
+}
+
 impl<'ll> CodegenCx<'ll, '_> {
     pub(crate) fn get_intrinsic(&self, key: &str) -> (&'ll Type, &'ll Value) {
         if let Some(v) = self.intrinsics.borrow().get(key).cloned() {
@@ -1039,6 +1055,9 @@ impl<'ll> CodegenCx<'ll, '_> {
         }
 
         ifn!("llvm.ptrmask", fn(ptr, t_isize) -> ptr);
+        ifn!("llvm.gcwrite", fn(ptr, ptr, ptr) -> void);
+        ifn!("llvm.gcatomic.cas", fn(ptr, ptr, ptr, i1, i1) -> mk_struct! {ptr, i1});
+        ifn!("llvm.gcatomic.swap", fn(ptr, ptr, i1) -> ptr);
 
         None
     }

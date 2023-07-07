@@ -1970,12 +1970,13 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 1 field.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field1_finish<'b>(
         &'b mut self,
         name: &str,
         name1: &str,
-        value1: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_struct_new(self, name);
         builder.field(name1, value1);
@@ -1986,14 +1987,15 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 2 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field2_finish<'b>(
         &'b mut self,
         name: &str,
         name1: &str,
-        value1: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
         name2: &str,
-        value2: &dyn Debug,
+        value2: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_struct_new(self, name);
         builder.field(name1, value1);
@@ -2005,16 +2007,17 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 3 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field3_finish<'b>(
         &'b mut self,
         name: &str,
         name1: &str,
-        value1: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
         name2: &str,
-        value2: &dyn Debug,
+        value2: &(impl Debug + ?Sized),
         name3: &str,
-        value3: &dyn Debug,
+        value3: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_struct_new(self, name);
         builder.field(name1, value1);
@@ -2027,18 +2030,19 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 4 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field4_finish<'b>(
         &'b mut self,
         name: &str,
         name1: &str,
-        value1: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
         name2: &str,
-        value2: &dyn Debug,
+        value2: &(impl Debug + ?Sized),
         name3: &str,
-        value3: &dyn Debug,
+        value3: &(impl Debug + ?Sized),
         name4: &str,
-        value4: &dyn Debug,
+        value4: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_struct_new(self, name);
         builder.field(name1, value1);
@@ -2052,20 +2056,21 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 5 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field5_finish<'b>(
         &'b mut self,
         name: &str,
         name1: &str,
-        value1: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
         name2: &str,
-        value2: &dyn Debug,
+        value2: &(impl Debug + ?Sized),
         name3: &str,
-        value3: &dyn Debug,
+        value3: &(impl Debug + ?Sized),
         name4: &str,
-        value4: &dyn Debug,
+        value4: &(impl Debug + ?Sized),
         name5: &str,
-        value5: &dyn Debug,
+        value5: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_struct_new(self, name);
         builder.field(name1, value1);
@@ -2079,12 +2084,13 @@ impl<'a> Formatter<'a> {
     /// Shrinks `derive(Debug)` code, for faster compilation and smaller binaries.
     /// For the cases not covered by `debug_struct_field[12345]_finish`.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_fields_finish<'b>(
         &'b mut self,
         name: &str,
         names: &[&str],
-        values: &[&dyn Debug],
+        values: &[&(impl Debug + ?Sized)],
     ) -> Result {
         assert_eq!(names.len(), values.len());
         let mut builder = builders::debug_struct_new(self, name);
@@ -2129,8 +2135,13 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 1 field.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
-    pub fn debug_tuple_field1_finish<'b>(&'b mut self, name: &str, value1: &dyn Debug) -> Result {
+    pub fn debug_tuple_field1_finish<'b>(
+        &'b mut self,
+        name: &str,
+        value1: &(impl Debug + ?Sized),
+    ) -> Result {
         let mut builder = builders::debug_tuple_new(self, name);
         builder.field(value1);
         builder.finish()
@@ -2140,12 +2151,13 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 2 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field2_finish<'b>(
         &'b mut self,
         name: &str,
-        value1: &dyn Debug,
-        value2: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
+        value2: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_tuple_new(self, name);
         builder.field(value1);
@@ -2157,13 +2169,14 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 3 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field3_finish<'b>(
         &'b mut self,
         name: &str,
-        value1: &dyn Debug,
-        value2: &dyn Debug,
-        value3: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
+        value2: &(impl Debug + ?Sized),
+        value3: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_tuple_new(self, name);
         builder.field(value1);
@@ -2176,14 +2189,15 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 4 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field4_finish<'b>(
         &'b mut self,
         name: &str,
-        value1: &dyn Debug,
-        value2: &dyn Debug,
-        value3: &dyn Debug,
-        value4: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
+        value2: &(impl Debug + ?Sized),
+        value3: &(impl Debug + ?Sized),
+        value4: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_tuple_new(self, name);
         builder.field(value1);
@@ -2197,15 +2211,16 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 5 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field5_finish<'b>(
         &'b mut self,
         name: &str,
-        value1: &dyn Debug,
-        value2: &dyn Debug,
-        value3: &dyn Debug,
-        value4: &dyn Debug,
-        value5: &dyn Debug,
+        value1: &(impl Debug + ?Sized),
+        value2: &(impl Debug + ?Sized),
+        value3: &(impl Debug + ?Sized),
+        value4: &(impl Debug + ?Sized),
+        value5: &(impl Debug + ?Sized),
     ) -> Result {
         let mut builder = builders::debug_tuple_new(self, name);
         builder.field(value1);
@@ -2219,11 +2234,12 @@ impl<'a> Formatter<'a> {
     /// Shrinks `derive(Debug)` code, for faster compilation and smaller
     /// binaries. For the cases not covered by `debug_tuple_field[12345]_finish`.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_fields_finish<'b>(
         &'b mut self,
         name: &str,
-        values: &[&dyn Debug],
+        values: &[&(impl Debug + ?Sized)],
     ) -> Result {
         let mut builder = builders::debug_tuple_new(self, name);
         for value in values {

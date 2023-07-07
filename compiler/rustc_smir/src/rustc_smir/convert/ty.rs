@@ -916,6 +916,8 @@ impl<'tcx> Stable<'tcx> for rustc_target::spec::abi::Abi {
             abi::Abi::RustCold => Abi::RustCold,
             abi::Abi::RiscvInterruptM => Abi::RiscvInterruptM,
             abi::Abi::RiscvInterruptS => Abi::RiscvInterruptS,
+            abi::Abi::Rog => Abi::Rog,
+            abi::Abi::RogCold => Abi::RogCold,
         }
     }
 }

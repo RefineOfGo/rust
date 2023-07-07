@@ -495,6 +495,7 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
     Options.ThreadModel = ThreadModel::Single;
   }
 
+  Options.TLSSize = 12;
   Options.EmitStackSizeSection = EmitStackSizeSection;
 
   if (ArgsCstrBuff != nullptr) {
