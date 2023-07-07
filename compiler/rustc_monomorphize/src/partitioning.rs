@@ -268,8 +268,12 @@ where
         }
         let size_estimate = mono_item.size_estimate(cx.tcx);
 
-        cgu.items_mut()
-            .insert(mono_item, MonoItemData { inlined: false, linkage, visibility, size_estimate });
+        cgu.items_mut().insert(mono_item, MonoItemData {
+            inlined: false,
+            linkage,
+            visibility,
+            size_estimate,
+        });
 
         // Get all inlined items that are reachable from `mono_item` without
         // going via another root item. This includes drop-glue, functions from
@@ -1122,6 +1126,11 @@ where
     }
 }
 
+fn check_mono_items(tcx: TyCtxt<'_>, (): ()) {
+    collector::collect_crate_mono_items(tcx, MonoItemCollectionStrategy::Eager);
+    tcx.dcx().abort_if_errors();
+}
+
 fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitions<'_> {
     let collection_strategy = match tcx.sess.opts.unstable_opts.print_mono_items {
         Some(ref s) => {
@@ -1339,6 +1348,7 @@ fn dump_mono_items_stats<'tcx>(
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
+    providers.check_mono_items = check_mono_items;
     providers.collect_and_partition_mono_items = collect_and_partition_mono_items;
 
     providers.is_codegened_item =
