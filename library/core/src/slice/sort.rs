@@ -19,6 +19,9 @@ struct InsertionHole<T> {
     dest: *mut T,
 }
 
+#[cfg(not(bootstrap))]
+impl<T: Managed> Managed for InsertionHole<T> {}
+
 impl<T> Drop for InsertionHole<T> {
     fn drop(&mut self) {
         // SAFETY: This is a helper class. Please refer to its usage for correctness. Namely, one
@@ -1007,6 +1010,9 @@ where
         dest: *mut T,
     }
 
+    #[cfg(not(bootstrap))]
+    impl<T: Managed> Managed for MergeHole<T> {}
+
     impl<T> Drop for MergeHole<T> {
         fn drop(&mut self) {
             // SAFETY: `T` is not a zero-sized type, and these are pointers into a slice's elements.
@@ -1149,6 +1155,9 @@ pub fn merge_sort<T, CmpF, ElemAllocF, ElemDeallocF, RunAllocF, RunDeallocF>(
         capacity: usize,
         elem_dealloc_fn: ElemDeallocF,
     }
+
+    #[cfg(not(bootstrap))]
+    impl<T: Managed, ElemDeallocF: Fn(*mut T, usize)> Managed for BufGuard<T, ElemDeallocF> {}
 
     impl<T, ElemDeallocF> BufGuard<T, ElemDeallocF>
     where

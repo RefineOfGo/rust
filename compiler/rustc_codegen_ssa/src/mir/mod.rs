@@ -231,8 +231,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
             if local == mir::RETURN_PLACE && fx.fn_abi.ret.is_indirect() {
                 debug!("alloc: {:?} (return place) -> place", local);
-                let llretptr = start_bx.get_param(0);
-                return LocalRef::Place(PlaceRef::new_sized(llretptr, layout));
+                return LocalRef::Place(PlaceRef::new_sized(start_bx.get_param(0), layout));
             }
 
             if memory_locals.contains(local) {
@@ -292,7 +291,6 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let mir = fx.mir;
     let mut idx = 0;
     let mut llarg_idx = fx.fn_abi.ret.is_indirect() as usize;
-
     let mut num_untupled = None;
 
     let codegen_fn_attrs = bx.tcx().codegen_fn_attrs(fx.instance.def_id());
@@ -397,8 +395,7 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                     if let Some(pointee_align) = attrs.pointee_align
                         && pointee_align < arg.layout.align.abi
                     {
-                        // ...unless the argument is underaligned, then we need to copy it to
-                        // a higher-aligned alloca.
+                        // ...unless the argument is underaligned, then we need to copy it to a higher-aligned alloca.
                         let tmp = PlaceRef::alloca(bx, arg.layout);
                         bx.store_fn_arg(arg, &mut llarg_idx, tmp);
                         LocalRef::Place(tmp)

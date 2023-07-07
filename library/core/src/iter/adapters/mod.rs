@@ -156,6 +156,10 @@ pub(crate) struct GenericShunt<'a, I, R> {
     residual: &'a mut Option<R>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I, R> Managed for GenericShunt<'_, I, R> where (I, R): Managed {}
+
 /// Process the given iterator as if it yielded a the item's `Try::Output`
 /// type instead. Any `Try::Residual`s encountered will stop the inner iterator
 /// and be propagated back to the overall result.

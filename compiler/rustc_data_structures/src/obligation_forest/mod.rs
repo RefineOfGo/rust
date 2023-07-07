@@ -140,6 +140,7 @@ pub trait ObligationProcessor {
 pub enum ProcessResult<O, E> {
     Unchanged,
     Changed(Vec<O>),
+    ChangedAny(Vec<O>),
     Error(E),
 }
 
@@ -200,6 +201,10 @@ struct Node<O> {
 
     /// Identifier of the obligation tree to which this node belongs.
     obligation_tree_id: ObligationTreeId,
+
+    /// A counter that represents how many disjunction dependency oblications
+    /// are successful.
+    disjunction_success: Option<Cell<usize>>,
 }
 
 impl<O> Node<O> {
@@ -210,6 +215,7 @@ impl<O> Node<O> {
             dependents: if let Some(parent_index) = parent { vec![parent_index] } else { vec![] },
             has_parent: parent.is_some(),
             obligation_tree_id,
+            disjunction_success: None,
         }
     }
 }
@@ -425,6 +431,7 @@ impl<O: ForestObligation> ObligationForest<O> {
         // Fixpoint computation: we repeat until the inner loop stalls.
         loop {
             let mut has_changed = false;
+            let mut pending_errors = FxHashMap::default();
 
             // This is the super fast path for cheap-to-check conditions.
             let mut index =
@@ -447,6 +454,19 @@ impl<O: ForestObligation> ObligationForest<O> {
                     continue;
                 }
 
+                // Short-circuit already successful disjunction obligations.
+                if node.has_parent {
+                    let i = node.dependents[0];
+                    if let Some(n) = self.nodes[i].disjunction_success.as_ref() {
+                        if n.get() != 0 {
+                            self.nodes[index].state.set(NodeState::Success);
+                            index += 1;
+                            continue;
+                        }
+                    }
+                }
+                let node = &mut self.nodes[index];
+
                 // `processor.process_obligation` can modify the predicate within
                 // `node.obligation`, and that predicate is the key used for
                 // `self.active_cache`. This means that `self.active_cache` can get
@@ -458,10 +478,46 @@ impl<O: ForestObligation> ObligationForest<O> {
                     ProcessResult::Unchanged => {
                         // No change in state.
                     }
-                    ProcessResult::Changed(children) => {
+                    ProcessResult::Error(err) => {
+                        let mut record_error = true;
+                        if node.has_parent {
+                            let i = node.dependents[0];
+                            if let Some(n) = self.nodes[i].disjunction_success.as_ref() {
+                                record_error = false;
+                                if n.get() != 0 {
+                                    has_changed = true;
+                                    self.nodes[index].state.set(NodeState::Success);
+                                }
+                            }
+                        }
+                        if record_error {
+                            has_changed = true;
+                            outcome.record_error(Error {
+                                error: err,
+                                backtrace: self.error_at(index),
+                            });
+                        } else {
+                            pending_errors.insert(self.nodes[index].obligation_tree_id, err);
+                        }
+                    }
+                    res => {
+                        let (children, is_changed_any) = match res {
+                            ProcessResult::Changed(children) => (children, false),
+                            ProcessResult::ChangedAny(children) => (children, true),
+                            _ => unreachable!(),
+                        };
+
                         // We are not (yet) stalled.
                         has_changed = true;
                         node.state.set(NodeState::Success);
+
+                        if is_changed_any {
+                            node.disjunction_success = Some(0.into());
+                        }
+
+                        if children.is_empty() {
+                            self.skip_at(index);
+                        }
 
                         for child in children {
                             let st = self.register_obligation_at(child, Some(index));
@@ -471,10 +527,6 @@ impl<O: ForestObligation> ObligationForest<O> {
                                 self.error_at(index);
                             }
                         }
-                    }
-                    ProcessResult::Error(err) => {
-                        has_changed = true;
-                        outcome.record_error(Error { error: err, backtrace: self.error_at(index) });
                     }
                 }
                 index += 1;
@@ -487,6 +539,7 @@ impl<O: ForestObligation> ObligationForest<O> {
             // state. (Note that this will occur if we invoke
             // `process_obligations` with no pending obligations.)
             if !has_changed {
+                self.commit_errors::<P>(&mut outcome, pending_errors);
                 break;
             }
 
@@ -496,6 +549,36 @@ impl<O: ForestObligation> ObligationForest<O> {
         }
 
         outcome
+    }
+
+    fn skip_at(&self, index: usize) {
+        for idx in &self.nodes[index].dependents {
+            if let Some(v) = self.nodes[*idx].disjunction_success.as_ref() {
+                v.set(v.get() + 1);
+                self.skip_at(*idx);
+            }
+        }
+    }
+
+    fn commit_errors<P>(
+        &self,
+        outcome: &mut P::OUT,
+        mut pending_errors: FxHashMap<ObligationTreeId, P::Error>,
+    ) where
+        P: ObligationProcessor<Obligation = O>,
+    {
+        for (i, node) in self.nodes.iter().enumerate() {
+            if !node.has_parent || node.state.get() != NodeState::Pending {
+                continue;
+            }
+            let parent = node.dependents[0];
+            if self.nodes[parent].disjunction_success != Some(0.into()) {
+                continue;
+            }
+            if let Some(err) = pending_errors.remove(&node.obligation_tree_id) {
+                outcome.record_error(Error { error: err, backtrace: self.error_at(i) });
+            }
+        }
     }
 
     /// Returns a vector of obligations for `p` and all of its

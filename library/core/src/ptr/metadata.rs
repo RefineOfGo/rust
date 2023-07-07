@@ -94,10 +94,10 @@ pub trait Thin = Pointee<Metadata = ()>;
 #[rustc_const_unstable(feature = "ptr_metadata", issue = "81513")]
 #[inline]
 pub const fn metadata<T: ?Sized>(ptr: *const T) -> <T as Pointee>::Metadata {
-    // SAFETY: Accessing the value from the `PtrRepr` union is safe since *const T
-    // and PtrComponents<T> have the same memory layouts. Only std can make this
+    // SAFETY: Transmuting between these types are safe since *const T and
+    // PtrComponents<T> have the same memory layouts. Only std can make this
     // guarantee.
-    unsafe { PtrRepr { const_ptr: ptr }.components.metadata }
+    unsafe { crate::intrinsics::transmute_unchecked::<*const T, PtrComponents<T>>(ptr).metadata }
 }
 
 /// Forms a (possibly-wide) raw pointer from a data pointer and metadata.
@@ -129,13 +129,6 @@ pub const fn from_raw_parts_mut<T: ?Sized>(
     metadata: <T as Pointee>::Metadata,
 ) -> *mut T {
     aggregate_raw_ptr(data_pointer, metadata)
-}
-
-#[repr(C)]
-union PtrRepr<T: ?Sized> {
-    const_ptr: *const T,
-    mut_ptr: *mut T,
-    components: PtrComponents<T>,
 }
 
 #[repr(C)]

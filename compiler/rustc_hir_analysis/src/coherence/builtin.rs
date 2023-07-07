@@ -36,6 +36,7 @@ pub(super) fn check_trait<'tcx>(
     let checker = Checker { tcx, trait_def_id, impl_def_id, impl_header };
     let mut res = checker.check(lang_items.drop_trait(), visit_implementation_of_drop);
     res = res.and(checker.check(lang_items.copy_trait(), visit_implementation_of_copy));
+    res = res.and(checker.check(lang_items.managed_trait(), visit_implementation_of_managed));
     res = res.and(
         checker.check(lang_items.const_param_ty_trait(), visit_implementation_of_const_param_ty),
     );
@@ -112,6 +113,20 @@ fn visit_implementation_of_copy(checker: &Checker<'_>) -> Result<(), ErrorGuaran
         Err(CopyImplementationError::HasDestructor) => {
             let span = tcx.hir().expect_item(impl_did).expect_impl().self_ty.span;
             Err(tcx.dcx().emit_err(errors::CopyImplOnTypeWithDtor { span }))
+        }
+    }
+}
+
+fn visit_implementation_of_managed(checker: &Checker<'_>) -> Result<(), ErrorGuaranteed> {
+    let tcx = checker.tcx;
+    let impl_did = checker.impl_def_id;
+    // Managed types only work on local non-union ADT types.
+    match tcx.type_of(impl_did).instantiate_identity().kind() {
+        ty::Adt(def, ..) if def.did().is_local() && !def.is_union() => Ok(()),
+        ty::Ref(..) | ty::RawPtr(..) | ty::Slice(..) | ty::Array(..) | ty::Error(..) => Ok(()),
+        _ => {
+            let impl_ = tcx.hir().expect_item(impl_did).expect_impl();
+            Err(tcx.dcx().emit_err(errors::ManagedImplOnWrongType { span: impl_.self_ty.span }))
         }
     }
 }

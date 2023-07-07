@@ -1247,7 +1247,8 @@ fn assemble_candidates_from_impls<'cx, 'tcx>(
                 false
             }
             ImplSource::Builtin(BuiltinImplSource::TraitUpcasting { .. }, _)
-            | ImplSource::Builtin(BuiltinImplSource::TupleUnsizing, _) => {
+            | ImplSource::Builtin(BuiltinImplSource::TupleUnsizing, _)
+            | ImplSource::BuiltinAny(..) => {
                 // These traits have no associated types.
                 selcx.tcx().dcx().span_delayed_bug(
                     obligation.cause.span,
@@ -1338,7 +1339,8 @@ fn confirm_select_candidate<'cx, 'tcx>(
         ImplSource::Builtin(BuiltinImplSource::Object { .. }, _)
         | ImplSource::Param(..)
         | ImplSource::Builtin(BuiltinImplSource::TraitUpcasting { .. }, _)
-        | ImplSource::Builtin(BuiltinImplSource::TupleUnsizing, _) => {
+        | ImplSource::Builtin(BuiltinImplSource::TupleUnsizing, _)
+        | ImplSource::BuiltinAny(..) => {
             // we don't create Select candidates with this kind of resolution
             span_bug!(
                 obligation.cause.span,

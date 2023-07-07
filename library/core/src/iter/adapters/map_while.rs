@@ -18,6 +18,10 @@ pub struct MapWhile<I, P> {
     predicate: P,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed, P> Managed for MapWhile<I, P> {}
+
 impl<I, P> MapWhile<I, P> {
     pub(in crate::iter) fn new(iter: I, predicate: P) -> MapWhile<I, P> {
         MapWhile { iter, predicate }
