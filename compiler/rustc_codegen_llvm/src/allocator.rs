@@ -132,6 +132,7 @@ fn create_const_value_function(
         llvm::UnnamedAddr::Global,
         llvm::Visibility::from_generic(tcx.sess.default_visibility()),
         ty,
+        None,
     );
 
     attributes::apply_to_llfn(
@@ -163,6 +164,7 @@ fn create_wrapper_function(
         llvm::UnnamedAddr::Global,
         llvm::Visibility::from_generic(tcx.sess.default_visibility()),
         ty,
+        None,
     );
 
     llfn_attrs_from_instance(cx, tcx, llfn, attrs, None);
@@ -187,6 +189,7 @@ fn create_wrapper_function(
             llvm::UnnamedAddr::Global,
             llvm::Visibility::Hidden,
             ty,
+            None,
         );
         if let Some(no_return) = no_return {
             // -> ! DIFlagNoReturn

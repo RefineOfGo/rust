@@ -3128,6 +3128,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     | sym::Copy
                     | sym::Hash
                     | sym::Debug => true,
+                    sym::Managed => !adt.is_union(),
                     _ => false,
                 };
                 if can_derive {

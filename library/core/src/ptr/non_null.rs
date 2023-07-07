@@ -88,6 +88,9 @@ impl<T: PointeeSized> !Send for NonNull<T> {}
 #[stable(feature = "nonnull", since = "1.25.0")]
 impl<T: PointeeSized> !Sync for NonNull<T> {}
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for NonNull<T> {}
+
 impl<T: Sized> NonNull<T> {
     /// Creates a pointer with the given address and no [provenance][crate::ptr#provenance].
     ///
@@ -128,8 +131,8 @@ impl<T: Sized> NonNull<T> {
     #[must_use]
     #[inline]
     pub const fn dangling() -> Self {
-        let align = crate::ptr::Alignment::of::<T>();
-        NonNull::without_provenance(align.as_nonzero())
+        // Safety: the data pointer of an empty slice is not null.
+        unsafe { NonNull::new_unchecked([].as_mut_ptr()) }
     }
 
     /// Converts an address back to a mutable pointer, picking up some previously 'exposed'

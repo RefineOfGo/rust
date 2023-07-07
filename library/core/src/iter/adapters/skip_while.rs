@@ -20,6 +20,9 @@ pub struct SkipWhile<I, P> {
     predicate: P,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed, P> Managed for SkipWhile<I, P> {}
+
 impl<I, P> SkipWhile<I, P> {
     pub(in crate::iter) fn new(iter: I, predicate: P) -> SkipWhile<I, P> {
         SkipWhile { iter, flag: false, predicate }

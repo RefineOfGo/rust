@@ -138,7 +138,7 @@ impl Once {
 
     #[cold]
     #[track_caller]
-    pub fn call(&self, ignore_poisoning: bool, f: &mut dyn FnMut(&public::OnceState)) {
+    pub fn call(&self, ignore_poisoning: bool, f: &mut impl FnMut(&public::OnceState)) {
         let mut state_and_queued = self.state_and_queued.load(Acquire);
         loop {
             let state = state_and_queued & STATE_MASK;

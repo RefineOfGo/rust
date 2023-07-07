@@ -132,6 +132,7 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::forget
         | sym::frem_algebraic
         | sym::fsub_algebraic
+        | sym::is_pointer_map_exact
         | sym::is_val_statically_known
         | sym::log2f16
         | sym::log2f32
@@ -163,6 +164,7 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::minnumf128
         | sym::mul_with_overflow
         | sym::needs_drop
+        | sym::pointer_map_of
         | sym::powf16
         | sym::powf32
         | sym::powf64
@@ -301,7 +303,8 @@ pub(crate) fn check_intrinsic_type(
             (1, 1, vec![Ty::new_imm_ptr(tcx, param(0))], tcx.types.unit)
         }
         sym::needs_drop => (1, 0, vec![], tcx.types.bool),
-
+        sym::is_pointer_map_exact => (1, 0, vec![], tcx.types.bool),
+        sym::pointer_map_of => (1, 0, vec![], Ty::new_static_u64_slice(tcx)),
         sym::type_name => (1, 0, vec![], Ty::new_static_str(tcx)),
         sym::type_id => {
             (1, 0, vec![], tcx.type_of(tcx.lang_items().type_id().unwrap()).instantiate_identity())

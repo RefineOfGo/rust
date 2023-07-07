@@ -334,6 +334,9 @@ fn process_builtin_attrs(
                 codegen_fn_attrs.patchable_function_entry =
                     parse_patchable_function_entry(tcx, attr);
             }
+            sym::no_gcwb => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_GCWB,
+            sym::no_split => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_SPLIT,
+            sym::no_checkpoint => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_CHECKPOINT,
             _ => {}
         }
     }

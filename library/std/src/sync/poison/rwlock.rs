@@ -88,6 +88,9 @@ pub struct RwLock<T: ?Sized> {
     data: UnsafeCell<T>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for RwLock<T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
 
@@ -124,6 +127,9 @@ pub struct RwLockReadGuard<'rwlock, T: ?Sized + 'rwlock> {
     inner_lock: &'rwlock sys::RwLock,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for RwLockReadGuard<'_, T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !Send for RwLockReadGuard<'_, T> {}
 
@@ -151,6 +157,9 @@ pub struct RwLockWriteGuard<'rwlock, T: ?Sized + 'rwlock> {
     /// The poison guard. See the [`poison`] module for more information.
     poison: poison::Guard,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for RwLockWriteGuard<'_, T> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !Send for RwLockWriteGuard<'_, T> {}
@@ -182,6 +191,9 @@ pub struct MappedRwLockReadGuard<'rwlock, T: ?Sized + 'rwlock> {
     /// A reference to the internal [`sys::RwLock`] that we have read-locked.
     inner_lock: &'rwlock sys::RwLock,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MappedRwLockReadGuard<'_, T> {}
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedRwLockReadGuard<'_, T> {}
@@ -219,6 +231,9 @@ pub struct MappedRwLockWriteGuard<'rwlock, T: ?Sized + 'rwlock> {
     /// The poison guard. See the [`poison`] module for more information.
     poison_guard: poison::Guard,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MappedRwLockWriteGuard<'_, T> {}
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedRwLockWriteGuard<'_, T> {}
