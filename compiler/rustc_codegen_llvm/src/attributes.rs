@@ -276,7 +276,11 @@ fn backchain_attr<'ll>(cx: &CodegenCx<'ll, '_>) -> Option<&'ll Attribute> {
     let requested_features = cx.sess().opts.cg.target_feature.split(',');
     let found_positive = requested_features.clone().any(|r| r == "+backchain");
 
-    if found_positive { Some(llvm::CreateAttrString(cx.llcx, "backchain")) } else { None }
+    if found_positive {
+        Some(llvm::CreateAttrString(cx.llcx, "backchain"))
+    } else {
+        None
+    }
 }
 
 pub(crate) fn target_cpu_attr<'ll>(cx: &CodegenCx<'ll, '_>) -> &'ll Attribute {
@@ -482,6 +486,15 @@ pub(crate) fn llfn_attrs_from_instance<'ll, 'tcx>(
         let allocated_pointer = AttributeKind::AllocatedPointer.create_attr(cx.llcx);
         attributes::apply_to_llfn(llfn, AttributePlace::Argument(0), &[allocated_pointer]);
     }
+
+    if !codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NO_SPLIT) {
+        to_add.push(llvm::CreateAttrString(cx.llcx, "rog-stack-check"));
+    }
+
+    if !codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NO_CHECKPOINT) {
+        to_add.push(llvm::CreateAttrString(cx.llcx, "rog-checkpoint"));
+    }
+
     if let Some(align) = codegen_fn_attrs.alignment {
         llvm::set_alignment(llfn, align);
     }
