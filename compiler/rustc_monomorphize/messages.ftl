@@ -68,3 +68,11 @@ monomorphize_wasm_c_abi_transition =
     .help = the "C" ABI Rust uses on wasm32-unknown-unknown will change to align with the standard "C" ABI for this target
 
 monomorphize_written_to_path = the full type name has been written to '{$path}'
+
+monomorphize_managed_field_in_unmanaged_adt =
+    unmanaged structs/enums/unions cannot hold managed value of type `{$field_ty}`
+    .note = add `#[derive(Managed)]` to the containing struct/enum in order to hold this field
+
+monomorphize_dyn_trait_points_to_managed_value =
+    managed value of type `{$value_ty}` referenced by `{$target_ty}`
+    .note = dynamic values are always unmanaged, thus cannot hold any managed values

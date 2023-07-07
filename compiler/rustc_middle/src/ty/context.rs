@@ -15,7 +15,7 @@ use std::ops::{Bound, Deref};
 use std::sync::{Arc, OnceLock};
 use std::{fmt, iter, mem};
 
-use rustc_abi::{ExternAbi, FieldIdx, Layout, LayoutData, TargetDataLayout, VariantIdx};
+use rustc_abi::{ExternAbi, FieldIdx, Layout, LayoutData, Reg, TargetDataLayout, VariantIdx};
 use rustc_ast as ast;
 use rustc_data_structures::defer;
 use rustc_data_structures::fingerprint::Fingerprint;
@@ -67,6 +67,7 @@ use crate::middle::codegen_fn_attrs::{CodegenFnAttrs, TargetFeature};
 use crate::middle::{resolve_bound_vars, stability};
 use crate::mir::interpret::{self, Allocation, ConstAllocation};
 use crate::mir::{Body, Local, Place, PlaceElem, ProjectionKind, Promoted};
+use crate::ptrinfo::PointerMap;
 use crate::query::plumbing::QuerySystem;
 use crate::query::{IntoQueryParam, LocalCrate, Providers, TyCtxtAt};
 use crate::thir::Thir;
@@ -769,6 +770,7 @@ bidirectional_lang_item_map! {
     Future,
     FutureOutput,
     Iterator,
+    Managed,
     Metadata,
     Option,
     PointeeTrait,
@@ -1463,6 +1465,14 @@ pub struct GlobalCtxt<'tcx> {
     /// Data layout specification for the current target.
     pub data_layout: TargetDataLayout,
 
+    /// Caches the result of Pointer Map calculation for each Ty.
+    pub noptr_cache: Lock<FxHashMap<(Ty<'tcx>, Option<VariantIdx>), bool>>,
+    pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
+    pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
+
+    /// Caches the result of Register Map calculation for each Ty.
+    pub register_maps: Lock<FxHashMap<Ty<'tcx>, Vec<Reg>>>,
+
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: interpret::AllocMap<'tcx>,
 
@@ -1708,6 +1718,10 @@ impl<'tcx> TyCtxt<'tcx> {
             new_solver_canonical_param_env_cache: Default::default(),
             canonical_param_env_cache: Default::default(),
             data_layout,
+            noptr_cache: Default::default(),
+            pointer_maps: Default::default(),
+            managed_cache: Default::default(),
+            register_maps: Default::default(),
             alloc_map: interpret::AllocMap::new(),
             current_gcx,
             jobserver_proxy,

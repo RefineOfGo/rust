@@ -78,6 +78,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     let copy_conditions = self.copy_clone_conditions(obligation);
                     self.assemble_builtin_bound_candidates(copy_conditions, &mut candidates);
                 }
+                Some(LangItem::Managed) => {
+                    // User-defined managed impls are permitted.
+                    self.assemble_candidates_from_impls(obligation, &mut candidates);
+                    let managed_conditions = self.managed_conditions(obligation);
+                    self.assemble_builtin_bound_candidates(managed_conditions, &mut candidates);
+                }
                 Some(LangItem::DiscriminantKind) => {
                     // `DiscriminantKind` is automatically implemented for every type.
                     candidates.vec.push(BuiltinCandidate { has_nested: false });
@@ -1087,7 +1093,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     }
 
     /// Assembles the trait which are built-in to the language itself:
-    /// `Copy`, `Clone` and `Sized`.
+    /// `Copy`, `Clone`, `Sized` and `Managed`.
     #[instrument(level = "debug", skip(self, candidates))]
     fn assemble_builtin_sized_candidate(
         &mut self,
@@ -1100,6 +1106,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     .vec
                     .push(SizedCandidate { has_nested: !nested.skip_binder().is_empty() });
             }
+            BuiltinImplConditions::WhereAny(..) => bug!("WhereAny() does not apply to Sized"),
             BuiltinImplConditions::None => {}
             BuiltinImplConditions::Ambiguous => {
                 candidates.ambiguous = true;
@@ -1120,6 +1127,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 candidates
                     .vec
                     .push(BuiltinCandidate { has_nested: !nested.skip_binder().is_empty() });
+            }
+            BuiltinImplConditions::WhereAny(nested) => {
+                if !nested.skip_binder().is_empty() {
+                    candidates.vec.push(BuiltinCandidate { has_nested: true });
+                }
             }
             BuiltinImplConditions::None => {}
             BuiltinImplConditions::Ambiguous => {

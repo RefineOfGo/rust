@@ -79,6 +79,9 @@ pub struct RepeatN<A> {
     element: MaybeUninit<A>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A: Managed> Managed for RepeatN<A> {}
+
 impl<A> RepeatN<A> {
     /// Returns the element if it hasn't been dropped already.
     fn element_ref(&self) -> Option<&A> {

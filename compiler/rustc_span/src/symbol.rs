@@ -219,6 +219,7 @@ symbols! {
         Cow,
         Debug,
         DebugStruct,
+        DebugTuple,
         Decodable,
         Decoder,
         Default,
@@ -289,6 +290,7 @@ symbols! {
         LintDiagnostic,
         LintPass,
         LocalKey,
+        Managed,
         Mutex,
         MutexGuard,
         N,
@@ -797,9 +799,7 @@ symbols! {
         debug_assert_ne_macro,
         debug_assertions,
         debug_struct,
-        debug_struct_fields_finish,
         debug_tuple,
-        debug_tuple_fields_finish,
         debugger_visualizer,
         decl_macro,
         declare_lint_pass,
@@ -1015,6 +1015,7 @@ symbols! {
         field_init_shorthand,
         file,
         file_options,
+        finish,
         flags,
         float,
         float_to_int_unchecked,
@@ -1314,6 +1315,7 @@ symbols! {
         macro_vis_matcher,
         macros_in_extern,
         main,
+        managed,
         managed_boxes,
         manually_drop,
         map,
@@ -1474,17 +1476,20 @@ symbols! {
         nll,
         no,
         no_builtins,
+        no_checkpoint,
         no_core,
         no_coverage,
         no_crate_inject,
         no_debug,
         no_default_passes,
+        no_gcwb,
         no_implicit_prelude,
         no_inline,
         no_link,
         no_main,
         no_mangle,
         no_sanitize,
+        no_split,
         no_stack_check,
         no_std,
         nomem,
@@ -1614,6 +1619,7 @@ symbols! {
         pointee_trait,
         pointer,
         pointer_like,
+        pointer_map_of,
         poll,
         poll_next,
         position,
@@ -2675,7 +2681,11 @@ impl Interner {
         assert_eq!(
             strings.len(),
             init.len() + extra.len(),
-            "`init` or `extra` contain duplicate symbols",
+            "`init` or `extra` contain duplicate symbols: {:?}",
+            FxIndexSet::from_iter(init.iter().copied())
+                .intersection(&FxIndexSet::from_iter(extra.iter().copied()))
+                .copied()
+                .collect::<Vec<_>>()
         );
         Interner(Lock::new(InternerInner { arena: Default::default(), strings }))
     }

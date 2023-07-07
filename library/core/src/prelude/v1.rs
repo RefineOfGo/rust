@@ -7,6 +7,11 @@
 // No formatting: this file is nothing but re-exports, and their order is worth preserving.
 #![cfg_attr(rustfmt, rustfmt::skip)]
 
+// Re-exported ROG supporting traits
+#[stable(feature = "rog", since = "1.0.0")]
+#[doc(no_inline)]
+pub use crate::marker::Managed;
+
 // Re-exported core operators
 #[stable(feature = "core_prelude", since = "1.4.0")]
 #[doc(no_inline)]
