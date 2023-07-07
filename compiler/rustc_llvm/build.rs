@@ -165,6 +165,14 @@ fn main() {
         println!("cargo:rustc-cfg=llvm_component=\"{component}\"");
     }
 
+    // Rebuild LLVM if library files changed
+    let mut cmd = Command::new(&llvm_config);
+    cmd.arg("--libfiles");
+    cmd.args(&components);
+    for libfile in output(&mut cmd).split_whitespace() {
+        println!("cargo:rerun-if-changed={}", libfile);
+    }
+
     // Link in our own LLVM shims, compiled with the same flags as LLVM
     let mut cmd = Command::new(&llvm_config);
     cmd.arg("--cxxflags");

@@ -9,6 +9,9 @@ use crate::ops::{NeverShortCircuit, Try};
 #[derive(Debug)]
 pub struct ByRefSized<'a, I>(pub &'a mut I);
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for ByRefSized<'_, T> {}
+
 // The following implementations use UFCS-style, rather than trusting autoderef,
 // to avoid accidentally calling the `&mut Iterator` implementations.
 

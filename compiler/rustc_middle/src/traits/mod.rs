@@ -688,27 +688,31 @@ pub enum ImplSource<'tcx, N> {
 
     /// Successful resolution for a builtin impl.
     Builtin(BuiltinImplSource, ThinVec<N>),
+
+    /// Successful resolution for a builtin impl that holds if any of
+    /// the obligations stored in `Vec<N>` holds.
+    BuiltinAny(ThinVec<N>),
 }
 
 impl<'tcx, N> ImplSource<'tcx, N> {
     pub fn nested_obligations(self) -> ThinVec<N> {
         match self {
             ImplSource::UserDefined(i) => i.nested,
-            ImplSource::Param(n) | ImplSource::Builtin(_, n) => n,
+            ImplSource::Param(n) | ImplSource::Builtin(_, n) | ImplSource::BuiltinAny(n) => n,
         }
     }
 
     pub fn borrow_nested_obligations(&self) -> &[N] {
         match self {
             ImplSource::UserDefined(i) => &i.nested,
-            ImplSource::Param(n) | ImplSource::Builtin(_, n) => n,
+            ImplSource::Param(n) | ImplSource::Builtin(_, n) | ImplSource::BuiltinAny(n) => n,
         }
     }
 
     pub fn borrow_nested_obligations_mut(&mut self) -> &mut [N] {
         match self {
             ImplSource::UserDefined(i) => &mut i.nested,
-            ImplSource::Param(n) | ImplSource::Builtin(_, n) => n,
+            ImplSource::Param(n) | ImplSource::Builtin(_, n) | ImplSource::BuiltinAny(n) => n,
         }
     }
 
@@ -726,6 +730,7 @@ impl<'tcx, N> ImplSource<'tcx, N> {
             ImplSource::Builtin(source, n) => {
                 ImplSource::Builtin(source, n.into_iter().map(f).collect())
             }
+            ImplSource::BuiltinAny(n) => ImplSource::BuiltinAny(n.into_iter().map(f).collect()),
         }
     }
 }

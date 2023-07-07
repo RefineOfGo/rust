@@ -43,7 +43,7 @@ use std::fmt;
 #[cfg(feature = "nightly")]
 use std::iter::Step;
 use std::num::{NonZeroUsize, ParseIntError};
-use std::ops::{Add, AddAssign, Deref, Mul, RangeFull, RangeInclusive, Sub};
+use std::ops::{Add, AddAssign, Deref, Mul, RangeFull, RangeInclusive, Sub, SubAssign};
 use std::str::FromStr;
 
 use bitflags::bitflags;
@@ -689,6 +689,10 @@ impl HasDataLayout for &TargetDataLayout {
     }
 }
 
+pub trait HasRegisterMap<'a, Ty> {
+    fn register_map(&self, layout: TyAndLayout<'a, Ty>) -> Vec<Reg>;
+}
+
 /// Endianness of the target, which must match cfg(target-endian).
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Endian {
@@ -910,6 +914,13 @@ impl AddAssign for Size {
     #[inline]
     fn add_assign(&mut self, other: Size) {
         *self = *self + other;
+    }
+}
+
+impl SubAssign for Size {
+    #[inline]
+    fn sub_assign(&mut self, other: Size) {
+        *self = *self - other;
     }
 }
 
