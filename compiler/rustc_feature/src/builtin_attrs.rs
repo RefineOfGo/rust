@@ -350,6 +350,8 @@ pub const BUILTIN_ATTRIBUTES: &[BuiltinAttribute] = &[
     ungated!(export_name, Normal, template!(NameValueStr: "name"), FutureWarnPreceding),
     ungated!(link_section, Normal, template!(NameValueStr: "name"), FutureWarnPreceding),
     ungated!(no_mangle, Normal, template!(Word), WarnFollowing, @only_local: true),
+    ungated!(no_gcwb, Normal, template!(Word), ErrorPreceding, @only_local: true),
+    ungated!(no_split, Normal, template!(Word), ErrorPreceding, @only_local: true),
     ungated!(used, Normal, template!(Word, List: "compiler|linker"), WarnFollowing, @only_local: true),
     ungated!(link_ordinal, Normal, template!(List: "ordinal"), ErrorPreceding),
 

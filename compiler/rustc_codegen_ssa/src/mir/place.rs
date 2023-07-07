@@ -343,6 +343,7 @@ impl<'a, 'tcx, V: CodegenObject> PlaceRef<'tcx, V> {
                     bx.cx().const_uint_big(bx.cx().backend_type(ptr.layout), to),
                     ptr.llval,
                     ptr.align,
+                    ptr.layout,
                 );
             }
             Variants::Multiple {

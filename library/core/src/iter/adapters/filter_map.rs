@@ -18,6 +18,11 @@ pub struct FilterMap<I, F> {
     iter: I,
     f: F,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed, F> Managed for FilterMap<I, F> {}
+
 impl<I, F> FilterMap<I, F> {
     pub(in crate::iter) fn new(iter: I, f: F) -> FilterMap<I, F> {
         FilterMap { iter, f }

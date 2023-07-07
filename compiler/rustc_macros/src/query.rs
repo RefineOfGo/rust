@@ -226,7 +226,7 @@ fn parse_query_modifiers(input: ParseStream<'_>) -> Result<QueryModifiers> {
 }
 
 fn doc_comment_from_desc(list: &Punctuated<Expr, token::Comma>) -> Result<Attribute> {
-    use ::syn::*;
+    use syn::*;
     let mut iter = list.iter();
     let format_str: String = match iter.next() {
         Some(&Expr::Lit(ExprLit { lit: Lit::Str(ref lit_str), .. })) => {
@@ -238,7 +238,7 @@ fn doc_comment_from_desc(list: &Punctuated<Expr, token::Comma>) -> Result<Attrib
     let mut doc_string = fmt_fragments.next().unwrap().to_string();
     iter.map(::quote::ToTokens::to_token_stream).zip(fmt_fragments).for_each(
         |(tts, next_fmt_fragment)| {
-            use ::core::fmt::Write;
+            use core::fmt::Write;
             write!(
                 &mut doc_string,
                 " `{}` {}",

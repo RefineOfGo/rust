@@ -102,6 +102,10 @@ bitflags! {
         const ALLOCATOR_ZEROED          = 1 << 19;
         /// `#[no_builtins]`: indicates that disable implicit builtin knowledge of functions for the function.
         const NO_BUILTINS               = 1 << 20;
+        /// `#[no_split]`: indicates that LLVM should not insert stack-check prologue for this function.
+        const NO_SPLIT                  = 1 << 21;
+        /// `#[no_gcwb]`: indicates that any form of GC write barrier must not exist in this function.
+        const NO_GCWB                   = 1 << 22;
     }
 }
 

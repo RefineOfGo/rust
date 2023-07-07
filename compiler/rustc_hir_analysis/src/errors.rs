@@ -220,6 +220,14 @@ pub struct CopyImplOnNonAdt {
 }
 
 #[derive(Diagnostic)]
+#[diag(hir_analysis_managed_impl_on_wrong_type)]
+pub struct ManagedImplOnWrongType {
+    #[primary_span]
+    #[label]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
 #[diag(hir_analysis_const_param_ty_impl_on_non_adt)]
 pub struct ConstParamTyImplOnNonAdt {
     #[primary_span]

@@ -8,8 +8,8 @@ use crate::value::Value;
 
 use rustc_codegen_ssa::mir::operand::OperandValue;
 use rustc_codegen_ssa::mir::place::PlaceRef;
-use rustc_codegen_ssa::traits::*;
 use rustc_codegen_ssa::MemFlags;
+use rustc_codegen_ssa::{ptrinfo, traits::*};
 use rustc_middle::bug;
 use rustc_middle::ty::layout::LayoutOf;
 pub use rustc_middle::ty::layout::{FAT_PTR_ADDR, FAT_PTR_EXTRA};
@@ -215,7 +215,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
             // uses it for i16 -> {i8, i8}, but not for i24 -> {i8, i8, i8}.
             let can_store_through_cast_ptr = false;
             if can_store_through_cast_ptr {
-                bx.store(val, dst.llval, self.layout.align.abi);
+                bx.store(val, dst.llval, self.layout.align.abi, self.layout);
             } else {
                 // The actual return type is a struct, but the ABI
                 // adaptation code has cast it into some scalar type. The
@@ -235,10 +235,11 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                 let scratch_size = cast.size(bx);
                 let scratch_align = cast.align(bx);
                 let llscratch = bx.alloca(cast.llvm_type(bx), scratch_align);
+                let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), dst.layout);
                 bx.lifetime_start(llscratch, scratch_size);
 
                 // ... where we first store the value...
-                bx.store(val, llscratch, scratch_align);
+                bx.store_noptr(val, llscratch, scratch_align);
 
                 // ... and then memcpy it to the intended destination.
                 bx.memcpy(
@@ -248,6 +249,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     scratch_align,
                     bx.const_usize(self.layout.size.bytes()),
                     MemFlags::empty(),
+                    has_pointers,
                 );
 
                 bx.lifetime_end(llscratch, scratch_size);

@@ -211,6 +211,8 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                 sym::link => self.check_link(hir_id, attr, span, target),
                 sym::link_name => self.check_link_name(hir_id, attr, span, target),
                 sym::link_section => self.check_link_section(hir_id, attr, span, target),
+                sym::no_gcwb => self.check_no_gcwb(hir_id, attr, span, target),
+                sym::no_split => self.check_no_split(hir_id, attr, span, target),
                 sym::no_mangle => self.check_no_mangle(hir_id, attr, span, target),
                 sym::deprecated => self.check_deprecated(hir_id, attr, span, target),
                 sym::macro_use | sym::macro_escape => self.check_macro_use(hir_id, attr, target),
@@ -1716,6 +1718,62 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     attr.span,
                     errors::LinkSection { span },
                 );
+            }
+        }
+    }
+
+    /// Checks if `#[no_gcwb]` is applied to a function or closure.
+    fn check_no_gcwb(&self, hir_id: HirId, attr: &Attribute, span: Span, target: Target) {
+        match target {
+            Target::Fn
+            | Target::Closure
+            | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
+            Target::ForeignFn => {
+                self.tcx.emit_spanned_lint(
+                    UNUSED_ATTRIBUTES,
+                    hir_id,
+                    attr.span,
+                    errors::NoGCWBForeign {
+                        span,
+                        attr_span: attr.span,
+                        foreign_item_kind: match target {
+                            Target::ForeignFn => "function",
+                            Target::ForeignStatic => "static",
+                            _ => unreachable!(),
+                        },
+                    },
+                );
+            }
+            _ => {
+                self.tcx.sess.emit_err(errors::NoGCWB { span });
+            }
+        }
+    }
+
+    /// Checks if `#[no_split]` is applied to a function or closure.
+    fn check_no_split(&self, hir_id: HirId, attr: &Attribute, span: Span, target: Target) {
+        match target {
+            Target::Fn
+            | Target::Closure
+            | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
+            Target::ForeignFn => {
+                self.tcx.emit_spanned_lint(
+                    UNUSED_ATTRIBUTES,
+                    hir_id,
+                    attr.span,
+                    errors::NoSplitForeign {
+                        span,
+                        attr_span: attr.span,
+                        foreign_item_kind: match target {
+                            Target::ForeignFn => "function",
+                            Target::ForeignStatic => "static",
+                            _ => unreachable!(),
+                        },
+                    },
+                );
+            }
+            _ => {
+                self.tcx.sess.emit_err(errors::NoGCWB { span });
             }
         }
     }

@@ -30,6 +30,7 @@ pub fn check_trait(tcx: TyCtxt<'_>, trait_def_id: DefId) {
     Checker { tcx, trait_def_id }
         .check(lang_items.drop_trait(), visit_implementation_of_drop)
         .check(lang_items.copy_trait(), visit_implementation_of_copy)
+        .check(lang_items.managed_trait(), visit_implementation_of_managed)
         .check(lang_items.const_param_ty_trait(), visit_implementation_of_const_param_ty)
         .check(lang_items.coerce_unsized_trait(), visit_implementation_of_coerce_unsized)
         .check(lang_items.dispatch_from_dyn_trait(), visit_implementation_of_dispatch_from_dyn);
@@ -94,6 +95,18 @@ fn visit_implementation_of_copy(tcx: TyCtxt<'_>, impl_did: LocalDefId) {
         }
         Err(CopyImplementationError::HasDestructor) => {
             tcx.dcx().emit_err(errors::CopyImplOnTypeWithDtor { span });
+        }
+    }
+}
+
+fn visit_implementation_of_managed(tcx: TyCtxt<'_>, impl_did: LocalDefId) {
+    // Managed types only work on local non-union ADT types.
+    match tcx.type_of(impl_did).instantiate_identity().kind() {
+        ty::Adt(def, ..) if def.did().is_local() && !def.is_union() => {}
+        ty::Ref(..) | ty::RawPtr(..) | ty::Slice(..) | ty::Array(..) | ty::Error(..) => {}
+        _ => {
+            let impl_ = tcx.hir().expect_item(impl_did).expect_impl();
+            tcx.sess.emit_err(errors::ManagedImplOnWrongType { span: impl_.self_ty.span });
         }
     }
 }

@@ -48,7 +48,11 @@ unsafe impl Sync for Thread {}
 
 impl Thread {
     // unsafe: see thread::Builder::spawn_unchecked for safety requirements
-    pub unsafe fn new(stack: usize, p: Box<dyn FnOnce()>) -> io::Result<Thread> {
+    pub unsafe fn new(
+        stack: usize,
+        stack_base: Option<usize>,
+        p: Box<dyn FnOnce()>,
+    ) -> io::Result<Thread> {
         let p = Box::into_raw(Box::new(p));
         let mut native: libc::pthread_t = mem::zeroed();
         let mut attr: libc::pthread_attr_t = mem::zeroed();
@@ -58,6 +62,7 @@ impl Thread {
         if stack > 0 {
             // Only set the stack if a non-zero value is passed
             // 0 is used as an indication that the default stack size configured in the ESP-IDF menuconfig system should be used
+            assert!(stack_base.is_none());
             assert_eq!(
                 libc::pthread_attr_setstacksize(&mut attr, cmp::max(stack, min_stack_size(&attr))),
                 0
@@ -66,9 +71,27 @@ impl Thread {
 
         #[cfg(not(target_os = "espidf"))]
         {
+            let stack_base = stack_base.unwrap_or_default();
             let stack_size = cmp::max(stack, min_stack_size(&attr));
 
-            match libc::pthread_attr_setstacksize(&mut attr, stack_size) {
+            let set_stack_fn =
+                |attr: *mut libc::pthread_attr_t, stack_base: usize, stack_size: usize| {
+                    if stack_base != 0 {
+                        extern "C" {
+                            // Crate `libc` does not have this function, declare here.
+                            fn pthread_attr_setstack(
+                                attr: *mut libc::pthread_attr_t,
+                                stack_base: libc::size_t,
+                                stack_size: libc::size_t,
+                            ) -> libc::c_int;
+                        }
+                        pthread_attr_setstack(attr, stack_base, stack_size)
+                    } else {
+                        libc::pthread_attr_setstacksize(attr, stack_size)
+                    }
+                };
+
+            match set_stack_fn(&mut attr, stack_base, stack_size) {
                 0 => {}
                 n => {
                     assert_eq!(n, libc::EINVAL);
@@ -79,7 +102,7 @@ impl Thread {
                     let page_size = os::page_size();
                     let stack_size =
                         (stack_size + page_size - 1) & (-(page_size as isize - 1) as usize - 1);
-                    assert_eq!(libc::pthread_attr_setstacksize(&mut attr, stack_size), 0);
+                    assert_eq!(set_stack_fn(&mut attr, stack_base, stack_size), 0);
                 }
             };
         }
@@ -950,7 +973,11 @@ pub mod guard {
                     // Use page size as a fallback.
                     guardsize = PAGE_SIZE.load(Ordering::Relaxed);
                 } else {
-                    panic!("there is no guard page");
+                    // Guard pages don't exist when using explicit stack
+                    // base. Caller is responsible for handling stack
+                    // overflow exceptions.
+                    assert_eq!(libc::pthread_attr_destroy(&mut attr), 0);
+                    return None;
                 }
             }
             let mut stackptr = crate::ptr::null_mut::<libc::c_void>();

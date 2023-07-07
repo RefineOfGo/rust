@@ -511,6 +511,10 @@ pub enum Result<T, E> {
     Err(#[stable(feature = "rust1", since = "1.0.0")] E),
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rust1", since = "1.0.0")]
+impl<T, E> Managed for Result<T, E> where (T, E): Managed {}
+
 /////////////////////////////////////////////////////////////////////////////
 // Type implementation
 /////////////////////////////////////////////////////////////////////////////
@@ -1750,6 +1754,10 @@ pub struct Iter<'a, T: 'a> {
     inner: Option<&'a T>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rust1", since = "1.0.0")]
+impl<T: Managed> Managed for Iter<'_, T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
@@ -1799,6 +1807,10 @@ pub struct IterMut<'a, T: 'a> {
     inner: Option<&'a mut T>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rust1", since = "1.0.0")]
+impl<T: Managed> Managed for IterMut<'_, T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<'a, T> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
@@ -1844,6 +1856,10 @@ unsafe impl<A> TrustedLen for IterMut<'_, A> {}
 pub struct IntoIter<T> {
     inner: Option<T>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rust1", since = "1.0.0")]
+impl<T: Managed> Managed for IntoIter<T> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> Iterator for IntoIter<T> {

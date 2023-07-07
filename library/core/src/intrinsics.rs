@@ -1066,6 +1066,18 @@ extern "rust-intrinsic" {
     #[rustc_nounwind]
     pub fn type_id<T: ?Sized + 'static>() -> u128;
 
+    /// Gets a static byte slice containing encoded pointer map of a type.
+    ///
+    /// Note that, unlike most intrinsics, this is safe to call;
+    /// it does not require an `unsafe` block.
+    /// Therefore, implementations must not require the user to uphold
+    /// any safety invariants.
+    #[cfg(not(bootstrap))]
+    #[rustc_const_stable(feature = "rog", since = "1.0.0")]
+    #[rustc_safe_intrinsic]
+    #[rustc_nounwind]
+    pub fn pointer_map_of<T>() -> &'static [u8];
+
     /// A guard for unsafe functions that cannot ever be executed if `T` is uninhabited:
     /// This will statically either panic, or do nothing.
     ///

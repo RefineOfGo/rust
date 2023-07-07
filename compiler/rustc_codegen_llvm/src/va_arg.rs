@@ -45,7 +45,7 @@ fn emit_direct_ptr_va_arg<'ll, 'tcx>(
     let aligned_size = size.align_to(slot_size).bytes() as i32;
     let full_direct_size = bx.cx().const_i32(aligned_size);
     let next = bx.inbounds_gep(bx.type_i8(), addr, &[full_direct_size]);
-    bx.store(next, va_list_addr, bx.tcx().data_layout.pointer_align.abi);
+    bx.store_noptr(next, va_list_addr, bx.tcx().data_layout.pointer_align.abi);
 
     if size.bytes() < slot_size.bytes() && bx.tcx().sess.target.endian == Endian::Big {
         let adjusted_size = bx.cx().const_i32((slot_size.bytes() - size.bytes()) as i32);
@@ -132,7 +132,7 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
     }
     let new_reg_off_v = bx.add(reg_off_v, bx.const_i32(slot_size as i32));
 
-    bx.store(new_reg_off_v, reg_off, offset_align);
+    bx.store_noptr(new_reg_off_v, reg_off, offset_align);
 
     // Check to see if we have overflowed the registers as a result of this.
     // If we have then we need to use the stack for this value
@@ -218,7 +218,7 @@ fn emit_s390x_va_arg<'ll, 'tcx>(
 
     // Update the register count.
     let new_reg_count_v = bx.add(reg_count_v, bx.const_u64(1));
-    bx.store(new_reg_count_v, reg_count, Align::from_bytes(8).unwrap());
+    bx.store_noptr(new_reg_count_v, reg_count, Align::from_bytes(8).unwrap());
     bx.br(end);
 
     // Emit code to load the value if it was passed in memory.
@@ -234,7 +234,7 @@ fn emit_s390x_va_arg<'ll, 'tcx>(
     // Update the argument overflow area pointer.
     let arg_size = bx.cx().const_u64(padded_size);
     let new_arg_ptr_v = bx.inbounds_gep(bx.type_i8(), arg_ptr_v, &[arg_size]);
-    bx.store(new_arg_ptr_v, arg_ptr, bx.tcx().data_layout.pointer_align.abi);
+    bx.store_ptr(new_arg_ptr_v, arg_ptr);
     bx.br(end);
 
     // Return the appropriate result.

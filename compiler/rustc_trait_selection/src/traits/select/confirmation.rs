@@ -44,10 +44,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
         candidate: SelectionCandidate<'tcx>,
-    ) -> Result<Selection<'tcx>, SelectionError<'tcx>> {
+    ) -> Result<(Selection<'tcx>, bool), SelectionError<'tcx>> {
+        let mut is_disjunction = false;
         let mut impl_src = match candidate {
             BuiltinCandidate { has_nested } => {
-                let data = self.confirm_builtin_candidate(obligation, has_nested);
+                let data =
+                    self.confirm_builtin_candidate(obligation, has_nested, &mut is_disjunction);
                 ImplSource::Builtin(BuiltinImplSource::Misc, data)
             }
 
@@ -138,7 +140,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             subobligation.set_depth_from_parent(obligation.recursion_depth);
         }
 
-        Ok(impl_src)
+        Ok((impl_src, is_disjunction))
     }
 
     fn confirm_projection_candidate(
@@ -236,6 +238,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
         has_nested: bool,
+        is_disjunction: &mut bool,
     ) -> Vec<PredicateObligation<'tcx>> {
         debug!(?obligation, ?has_nested, "confirm_builtin_candidate");
 
@@ -248,11 +251,23 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 self.copy_clone_conditions(obligation)
             } else if Some(trait_def) == lang_items.clone_trait() {
                 self.copy_clone_conditions(obligation)
+            } else if Some(trait_def) == lang_items.managed_trait() {
+                self.managed_conditions(obligation)
             } else {
                 bug!("unexpected builtin trait {:?}", trait_def)
             };
-            let BuiltinImplConditions::Where(nested) = conditions else {
-                bug!("obligation {:?} had matched a builtin impl but now doesn't", obligation);
+            let nested = match conditions {
+                BuiltinImplConditions::Where(nested) => {
+                    *is_disjunction = false;
+                    nested
+                }
+                BuiltinImplConditions::Disjunction(nested) => {
+                    *is_disjunction = true;
+                    nested
+                }
+                _ => {
+                    bug!("obligation {:?} had matched a builtin impl but now doesn't", obligation);
+                }
             };
 
             let cause = obligation.derived_cause(BuiltinDerivedObligation);
@@ -267,8 +282,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             vec![]
         };
 
-        debug!(?obligations);
-
+        debug!(?obligations, ?is_disjunction);
         obligations
     }
 

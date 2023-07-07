@@ -19,6 +19,10 @@ pub struct Skip<I> {
     n: usize,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for Skip<I> {}
+
 impl<I> Skip<I> {
     pub(in crate::iter) fn new(iter: I, n: usize) -> Skip<I> {
         Skip { iter, n }

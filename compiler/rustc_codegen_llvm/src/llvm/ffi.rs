@@ -389,6 +389,20 @@ pub enum AtomicOrdering {
 }
 
 impl AtomicOrdering {
+    pub const fn name(self) -> &'static str {
+        match self {
+            AtomicOrdering::NotAtomic => "not_atomic",
+            AtomicOrdering::Unordered => "unordered",
+            AtomicOrdering::Monotonic => "monotonic",
+            AtomicOrdering::Acquire => "acquire",
+            AtomicOrdering::Release => "release",
+            AtomicOrdering::AcquireRelease => "acq_rel",
+            AtomicOrdering::SequentiallyConsistent => "seq_cst",
+        }
+    }
+}
+
+impl AtomicOrdering {
     pub fn from_generic(ao: rustc_codegen_ssa::common::AtomicOrdering) -> Self {
         match ao {
             rustc_codegen_ssa::common::AtomicOrdering::Unordered => AtomicOrdering::Unordered,
@@ -999,6 +1013,7 @@ extern "C" {
 
     // Operations on functions
     pub fn LLVMSetFunctionCallConv(Fn: &Value, CC: c_uint);
+    pub fn LLVMSetGC(Fn: &Value, Name: *const c_char);
 
     // Operations on parameters
     pub fn LLVMIsAArgument(Val: &Value) -> Option<&Value>;
@@ -1532,6 +1547,7 @@ extern "C" {
 
     /// See llvm::LLVMTypeKind::getTypeID.
     pub fn LLVMRustGetTypeKind(Ty: &Type) -> TypeKind;
+    pub fn LLVMRustGetTypeSize(M: &Module, Ty: &Type) -> usize;
 
     // Operations on array, pointer, and vector types (sequence types)
     pub fn LLVMRustArrayType(ElementType: &Type, ElementCount: u64) -> &Type;
@@ -1539,6 +1555,8 @@ extern "C" {
     // Operations on all values
     pub fn LLVMRustGlobalAddMetadata<'a>(Val: &'a Value, KindID: c_uint, Metadata: &'a Metadata);
     pub fn LLVMRustIsNonGVFunctionPointerTy(Val: &Value) -> bool;
+    pub fn LLVMRustIsConstZero(Val: &Value) -> bool;
+    pub fn LLVMRustIsLocalFrame(Val: &Value) -> bool;
 
     // Operations on scalar constants
     pub fn LLVMRustConstIntGetZExtValue(ConstantVal: &ConstantInt, Value: &mut u64) -> bool;
@@ -1640,6 +1658,7 @@ extern "C" {
         SrcAlign: c_uint,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
     pub fn LLVMRustBuildMemMove<'a>(
         B: &Builder<'a>,
@@ -1649,6 +1668,7 @@ extern "C" {
         SrcAlign: c_uint,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
     pub fn LLVMRustBuildMemSet<'a>(
         B: &Builder<'a>,
@@ -1657,6 +1677,7 @@ extern "C" {
         Val: &'a Value,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
 
     pub fn LLVMRustBuildVectorReduceFAdd<'a>(

@@ -542,6 +542,26 @@ passes_no_mangle_foreign =
     .note = symbol names in extern blocks are not mangled
     .suggestion = remove this attribute
 
+passes_no_gcwb =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_gcwb_foreign =
+    `#[no_gcwb]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = GC is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
+
+passes_no_split =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_split_foreign =
+    `#[no_split]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = stack checking is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
+
 passes_no_patterns =
     patterns not allowed in naked function parameters
 

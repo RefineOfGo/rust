@@ -24,6 +24,17 @@ where
     }
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I> Managed for Intersperse<I>
+where
+    I: Iterator,
+    I::Item: Clone,
+    (I, I::Item): Managed,
+{
+    // empty
+}
+
 #[unstable(feature = "iter_intersperse", reason = "recently added", issue = "79524")]
 impl<I> Iterator for Intersperse<I>
 where
@@ -70,6 +81,10 @@ where
     iter: Peekable<I>,
     needs_sep: bool,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Iterator + Managed, G> Managed for IntersperseWith<I, G> {}
 
 #[unstable(feature = "iter_intersperse", reason = "recently added", issue = "79524")]
 impl<I, G> crate::fmt::Debug for IntersperseWith<I, G>

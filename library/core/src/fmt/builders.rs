@@ -129,7 +129,7 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn field(&mut self, name: &str, value: &dyn fmt::Debug) -> &mut Self {
+    pub fn field(&mut self, name: &str, value: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.field_with(name, |f| value.fmt(f))
     }
 
@@ -326,7 +326,7 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn field(&mut self, value: &dyn fmt::Debug) -> &mut Self {
+    pub fn field(&mut self, value: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.field_with(|f| value.fmt(f))
     }
 
@@ -501,7 +501,7 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn entry(&mut self, entry: &dyn fmt::Debug) -> &mut Self {
+    pub fn entry(&mut self, entry: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.inner.entry_with(|f| entry.fmt(f));
         self
     }
@@ -644,7 +644,7 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn entry(&mut self, entry: &dyn fmt::Debug) -> &mut Self {
+    pub fn entry(&mut self, entry: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.inner.entry_with(|f| entry.fmt(f));
         self
     }
@@ -791,7 +791,11 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn entry(&mut self, key: &dyn fmt::Debug, value: &dyn fmt::Debug) -> &mut Self {
+    pub fn entry(
+        &mut self,
+        key: &(impl fmt::Debug + ?Sized),
+        value: &(impl fmt::Debug + ?Sized),
+    ) -> &mut Self {
         self.key(key).value(value)
     }
 
@@ -827,7 +831,7 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_map_key_value", since = "1.42.0")]
-    pub fn key(&mut self, key: &dyn fmt::Debug) -> &mut Self {
+    pub fn key(&mut self, key: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.key_with(|f| key.fmt(f))
     }
 
@@ -903,7 +907,7 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_map_key_value", since = "1.42.0")]
-    pub fn value(&mut self, value: &dyn fmt::Debug) -> &mut Self {
+    pub fn value(&mut self, value: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.value_with(|f| value.fmt(f))
     }
 

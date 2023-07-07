@@ -5,7 +5,7 @@
 
 use std::fmt;
 use std::num::{NonZeroUsize, ParseIntError};
-use std::ops::{Add, AddAssign, Mul, RangeInclusive, Sub};
+use std::ops::{Add, AddAssign, Mul, RangeInclusive, Sub, SubAssign};
 use std::str::FromStr;
 
 use bitflags::bitflags;
@@ -590,6 +590,13 @@ impl AddAssign for Size {
     #[inline]
     fn add_assign(&mut self, other: Size) {
         *self = *self + other;
+    }
+}
+
+impl SubAssign for Size {
+    #[inline]
+    fn sub_assign(&mut self, other: Size) {
+        *self = *self - other;
     }
 }
 

@@ -22,6 +22,7 @@ use rustc_middle::ty::layout::{
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::Span;
 use rustc_symbol_mangling::typeid::{kcfi_typeid_for_fnabi, typeid_for_fnabi, TypeIdOptions};
+use rustc_target::abi::HasDataLayout;
 use rustc_target::abi::{self, call::FnAbi, Align, Size, WrappingRange};
 use rustc_target::spec::{HasTargetSpec, SanitizerSet, Target};
 use smallvec::SmallVec;
@@ -645,18 +646,52 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         }
     }
 
-    fn store(&mut self, val: &'ll Value, ptr: &'ll Value, align: Align) -> &'ll Value {
-        self.store_with_flags(val, ptr, align, MemFlags::empty())
+    fn is_const_zero(&mut self, val: &'ll Value) -> bool {
+        unsafe { llvm::LLVMRustIsConstZero(val) }
     }
 
-    fn store_with_flags(
+    fn is_local_frame(&mut self, val: &'ll Value) -> bool {
+        unsafe { llvm::LLVMRustIsLocalFrame(val) }
+    }
+
+    fn store_ptr(&mut self, val: &'ll Value, ptr: &'ll Value) {
+        self.store_ptr_with_flags(val, ptr, MemFlags::empty());
+    }
+
+    fn store_ptr_with_flags(&mut self, val: &'ll Value, ptr: &'ll Value, flags: MemFlags) {
+        debug!("StorePtr {:?} -> {:?}", val, ptr);
+        assert!(!flags.contains(MemFlags::UNALIGNED), "unaligned pointer store");
+        assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal pointer store");
+        let ty = self.cx.val_ty(val);
+        self.check_scalar(ty);
+        if self.is_local_frame(ptr) {
+            debug!("StorePtr: Slot {:?} is in local frame, no write barriers needed.", val);
+            self.store_noptr_with_flags(val, ptr, self.data_layout().pointer_align.abi, flags);
+        } else {
+            llvm::AddCallSiteAttributes(
+                self.call_intrinsic("llvm.gcwrite", &[val, self.cx.const_null(ty), ptr]),
+                llvm::AttributePlace::Function,
+                &[llvm::CreateAttrStringValue(
+                    self.cx.llcx,
+                    "volatile",
+                    if flags.contains(MemFlags::VOLATILE) { "true" } else { "false" },
+                )],
+            );
+        }
+    }
+
+    fn store_noptr(&mut self, val: &'ll Value, ptr: &'ll Value, align: Align) {
+        self.store_noptr_with_flags(val, ptr, align, MemFlags::empty());
+    }
+
+    fn store_noptr_with_flags(
         &mut self,
         val: &'ll Value,
         ptr: &'ll Value,
         align: Align,
         flags: MemFlags,
-    ) -> &'ll Value {
-        debug!("Store {:?} -> {:?} ({:?})", val, ptr, flags);
+    ) {
+        debug!("StoreNoPtr {:?} -> {:?} ({:?})", val, ptr, flags);
         assert_eq!(self.cx.type_kind(self.cx.val_ty(ptr)), TypeKind::Pointer);
         unsafe {
             let store = llvm::LLVMBuildStore(self.llbuilder, val, ptr);
@@ -675,18 +710,42 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 let node = llvm::LLVMMDNodeInContext(self.cx.llcx, &one, 1);
                 llvm::LLVMSetMetadata(store, llvm::MD_nontemporal as c_uint, node);
             }
-            store
         }
     }
 
-    fn atomic_store(
+    fn atomic_store_ptr(
+        &mut self,
+        val: &'ll Value,
+        ptr: &'ll Value,
+        order: rustc_codegen_ssa::common::AtomicOrdering,
+    ) {
+        debug!("AtomicStorePtr {:?} -> {:?}", val, ptr);
+        let ty = self.cx.val_ty(val);
+        self.check_scalar(ty);
+        if self.is_local_frame(ptr) {
+            debug!("AtomicStorePtr: Slot {:?} is in local frame, no write barriers needed.", val);
+            self.atomic_store_noptr(val, ptr, order, self.data_layout().pointer_size);
+        } else {
+            llvm::AddCallSiteAttributes(
+                self.call_intrinsic("llvm.gcwrite", &[val, self.cx.const_null(ty), ptr]),
+                llvm::AttributePlace::Function,
+                &[llvm::CreateAttrStringValue(
+                    self.cx.llcx,
+                    "order",
+                    AtomicOrdering::from_generic(order).name(),
+                )],
+            );
+        }
+    }
+
+    fn atomic_store_noptr(
         &mut self,
         val: &'ll Value,
         ptr: &'ll Value,
         order: rustc_codegen_ssa::common::AtomicOrdering,
         size: Size,
     ) {
-        debug!("Store {:?} -> {:?}", val, ptr);
+        debug!("AtomicStoreNoPtr {:?} -> {:?}", val, ptr);
         assert_eq!(self.cx.type_kind(self.cx.val_ty(ptr)), TypeKind::Pointer);
         unsafe {
             let store = llvm::LLVMRustBuildAtomicStore(
@@ -874,9 +933,11 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         src_align: Align,
         size: &'ll Value,
         flags: MemFlags,
+        has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memcpy not supported");
         let size = self.intcast(size, self.type_isize(), false);
+        let is_local = self.is_local_frame(dst);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
             llvm::LLVMRustBuildMemCpy(
@@ -887,6 +948,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
+                has_pointers && !is_local,
             );
         }
     }
@@ -899,9 +961,11 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         src_align: Align,
         size: &'ll Value,
         flags: MemFlags,
+        has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memmove not supported");
         let size = self.intcast(size, self.type_isize(), false);
+        let is_local = self.is_local_frame(dst);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
             llvm::LLVMRustBuildMemMove(
@@ -912,6 +976,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
+                has_pointers && !is_local,
             );
         }
     }
@@ -923,7 +988,13 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         size: &'ll Value,
         align: Align,
         flags: MemFlags,
+        has_pointers: bool,
     ) {
+        assert!(
+            !has_pointers || self.is_const_zero(fill_byte),
+            "Cannot fill pointer memory with arbitrary bytes"
+        );
+        let is_local = self.is_local_frame(ptr);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
             llvm::LLVMRustBuildMemSet(
@@ -933,6 +1004,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 fill_byte,
                 size,
                 is_volatile,
+                has_pointers && !is_local,
             );
         }
     }
@@ -1073,21 +1145,47 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         failure_order: rustc_codegen_ssa::common::AtomicOrdering,
         weak: bool,
     ) -> &'ll Value {
-        let weak = if weak { llvm::True } else { llvm::False };
+        let ty = self.cx.val_ty(src);
+        self.check_scalar(ty);
         unsafe {
-            let value = llvm::LLVMBuildAtomicCmpXchg(
-                self.llbuilder,
-                dst,
-                cmp,
-                src,
-                AtomicOrdering::from_generic(order),
-                AtomicOrdering::from_generic(failure_order),
-                llvm::False, // SingleThreaded
-            );
-            llvm::LLVMSetWeak(value, weak);
-            value
+            if self.cx.type_kind(ty) == TypeKind::Pointer && !self.is_local_frame(dst) {
+                let value = self.call_intrinsic(
+                    "llvm.gcatomic.cas",
+                    &[dst, cmp, src, self.cx.const_bool(weak), self.cx.const_bool(false)],
+                );
+                llvm::AddCallSiteAttributes(
+                    value,
+                    llvm::AttributePlace::Function,
+                    &[
+                        llvm::CreateAttrStringValue(
+                            self.cx.llcx,
+                            "order",
+                            AtomicOrdering::from_generic(order).name(),
+                        ),
+                        llvm::CreateAttrStringValue(
+                            self.cx.llcx,
+                            "failure_order",
+                            AtomicOrdering::from_generic(failure_order).name(),
+                        ),
+                    ],
+                );
+                value
+            } else {
+                let value = llvm::LLVMBuildAtomicCmpXchg(
+                    self.llbuilder,
+                    dst,
+                    cmp,
+                    src,
+                    AtomicOrdering::from_generic(order),
+                    AtomicOrdering::from_generic(failure_order),
+                    llvm::False, // SingleThreaded
+                );
+                llvm::LLVMSetWeak(value, if weak { llvm::True } else { llvm::False });
+                value
+            }
         }
     }
+
     fn atomic_rmw(
         &mut self,
         op: rustc_codegen_ssa::common::AtomicRmwBinOp,
@@ -1095,15 +1193,32 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         src: &'ll Value,
         order: rustc_codegen_ssa::common::AtomicOrdering,
     ) -> &'ll Value {
+        let ty = self.cx.val_ty(src);
+        self.check_scalar(ty);
         unsafe {
-            llvm::LLVMBuildAtomicRMW(
-                self.llbuilder,
-                AtomicRmwBinOp::from_generic(op),
-                dst,
-                src,
-                AtomicOrdering::from_generic(order),
-                llvm::False, // SingleThreaded
-            )
+            if self.cx.type_kind(ty) == TypeKind::Pointer && !self.is_local_frame(dst) {
+                let value = self
+                    .call_intrinsic("llvm.gcatomic.swap", &[dst, src, self.cx.const_bool(false)]);
+                llvm::AddCallSiteAttributes(
+                    value,
+                    llvm::AttributePlace::Function,
+                    &[llvm::CreateAttrStringValue(
+                        self.cx.llcx,
+                        "order",
+                        AtomicOrdering::from_generic(order).name(),
+                    )],
+                );
+                value
+            } else {
+                llvm::LLVMBuildAtomicRMW(
+                    self.llbuilder,
+                    AtomicRmwBinOp::from_generic(op),
+                    dst,
+                    src,
+                    AtomicOrdering::from_generic(order),
+                    llvm::False, // SingleThreaded
+                )
+            }
         }
     }
 
@@ -1389,6 +1504,28 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
     pub fn catch_ret(&mut self, funclet: &Funclet<'ll>, unwind: &'ll BasicBlock) -> &'ll Value {
         let ret = unsafe { llvm::LLVMBuildCatchRet(self.llbuilder, funclet.cleanuppad(), unwind) };
         ret.expect("LLVM does not have support for catchret")
+    }
+
+    fn check_scalar(&mut self, ty: &'ll Type) {
+        let size = unsafe { llvm::LLVMRustGetTypeSize(self.llmod, ty) };
+        let kind = self.cx.type_kind(ty);
+        assert!(
+            (size <= self.data_layout().pointer_size.bytes_usize())
+                || !matches!(
+                    kind,
+                    TypeKind::Void
+                        | TypeKind::Label
+                        | TypeKind::Struct
+                        | TypeKind::Array
+                        | TypeKind::Vector
+                        | TypeKind::Metadata
+                        | TypeKind::Token
+                        | TypeKind::ScalableVector
+                ),
+            "Aggregate type larger than a word: kind={:?}, size={}",
+            kind,
+            size
+        );
     }
 
     fn check_call<'b>(

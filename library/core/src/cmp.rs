@@ -622,6 +622,10 @@ impl Ordering {
 #[repr(transparent)]
 pub struct Reverse<T>(#[stable(feature = "reverse_cmp_key", since = "1.19.0")] pub T);
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Reverse<T> {}
+
 #[stable(feature = "reverse_cmp_key", since = "1.19.0")]
 impl<T: PartialOrd> PartialOrd for Reverse<T> {
     #[inline]
