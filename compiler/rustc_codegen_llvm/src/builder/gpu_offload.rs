@@ -260,6 +260,7 @@ fn declare_offload_fn<'ll>(
         llvm::UnnamedAddr::No,
         llvm::Visibility::Default,
         ty,
+        None,
     )
 }
 
@@ -350,7 +351,12 @@ fn gen_call_handling<'ll>(
 
     // Step 1)
     unsafe { llvm::LLVMRustPositionBefore(builder.llbuilder, kernel_call) };
-    builder.memset(tgt_bin_desc_alloca, cx.get_const_i8(0), cx.get_const_i64(32), Align::EIGHT);
+    builder.memset_noptr(
+        tgt_bin_desc_alloca,
+        cx.get_const_i8(0),
+        cx.get_const_i64(32),
+        Align::EIGHT,
+    );
 
     let mapper_fn_ty = cx.type_func(&[cx.type_ptr()], cx.type_void());
     let register_lib_decl = declare_offload_fn(&cx, "__tgt_register_lib", mapper_fn_ty);

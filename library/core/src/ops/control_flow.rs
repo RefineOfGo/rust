@@ -98,6 +98,9 @@ pub enum ControlFlow<B, C = ()> {
     // is a no-op conversion in the `Try` implementation.
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<B, C> Managed for ControlFlow<B, C> where (B, C): Managed {}
+
 #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
 impl<B, C> ops::Try for ControlFlow<B, C> {
     type Output = C;
