@@ -3,9 +3,9 @@ use std::ops::Bound;
 use std::{cmp, fmt};
 
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, ExternAbi, FieldIdx, FieldsShape, HasDataLayout, LayoutData,
-    PointeeInfo, PointerKind, Primitive, ReprOptions, Scalar, Size, TagEncoding, TargetDataLayout,
-    TyAbiInterface, VariantIdx, Variants,
+    AddressSpace, Align, BackendRepr, ExternAbi, FieldIdx, FieldsShape, HasDataLayout,
+    HasRegisterMap, LayoutData, PointeeInfo, PointerKind, Primitive, ReprOptions, Scalar, Size,
+    TagEncoding, TargetDataLayout, TyAbiInterface, VariantIdx, Variants,
 };
 use rustc_error_messages::DiagMessage;
 use rustc_errors::{
@@ -27,6 +27,7 @@ use {rustc_abi as abi, rustc_hir as hir};
 
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use crate::query::TyCtxtAt;
+use crate::reg_map::RegisterMap;
 use crate::ty::normalize_erasing_regions::NormalizationError;
 use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt, TypeVisitableExt};
 
@@ -329,6 +330,12 @@ pub struct LayoutCx<'tcx> {
 impl<'tcx> LayoutCx<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> Self {
         Self { calc: abi::LayoutCalculator::new(tcx), typing_env }
+    }
+}
+
+impl<'tcx> HasRegisterMap<'tcx, Ty<'tcx>> for LayoutCx<'tcx> {
+    fn register_map(&self, layout: TyAndLayout<'tcx>) -> Vec<abi::Reg> {
+        RegisterMap::resolve(self, layout)
     }
 }
 
@@ -1286,7 +1293,7 @@ pub fn fn_can_unwind(tcx: TyCtxt<'_>, fn_def_id: Option<DefId>, abi: ExternAbi) 
         | CCmseNonSecureCall
         | CCmseNonSecureEntry
         | Unadjusted => false,
-        Rust | RustCall | RustCold | RustIntrinsic => {
+        Rust | RustCall | RustCold | RustIntrinsic | Rog | RogCold => {
             tcx.sess.panic_strategy() == PanicStrategy::Unwind
         }
     }
