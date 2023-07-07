@@ -212,6 +212,13 @@ where
         Err(NoSolution)
     }
 
+    fn consider_builtin_managed_candidate(
+        _ecx: &mut EvalCtxt<'_, D>,
+        _goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution> {
+        unimplemented!("Managed is not implemented for next trait solver")
+    }
+
     fn consider_builtin_fn_ptr_trait_candidate(
         _ecx: &mut EvalCtxt<'_, D>,
         _goal: Goal<I, Self>,

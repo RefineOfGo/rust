@@ -8,6 +8,7 @@ use rustc_abi::Size;
 use rustc_apfloat::ieee::{Double, Half, Quad, Single};
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{self, BinOp, ConstValue, NonDivergingIntrinsic};
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::layout::{LayoutOf as _, TyAndLayout, ValidityRequirement};
 use rustc_middle::ty::{GenericArgsRef, Ty, TyCtxt};
 use rustc_middle::{bug, ty};
@@ -22,6 +23,30 @@ use super::{
     err_unsup_format, interp_ok, throw_inval, throw_ub_custom, throw_ub_format,
 };
 use crate::fluent_generated as fluent;
+
+#[derive(Clone, Copy)]
+struct PointerMapCx<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    typing_env: ty::TypingEnv<'tcx>,
+}
+
+impl rustc_abi::HasDataLayout for PointerMapCx<'_> {
+    fn data_layout(&self) -> &rustc_abi::TargetDataLayout {
+        &self.tcx.data_layout
+    }
+}
+
+impl<'tcx> ty::layout::HasTyCtxt<'tcx> for PointerMapCx<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+}
+
+impl<'tcx> ty::layout::HasTypingEnv<'tcx> for PointerMapCx<'tcx> {
+    fn typing_env(&self) -> ty::TypingEnv<'tcx> {
+        self.typing_env
+    }
+}
 
 /// Directly returns an `Allocation` containing an absolute path representation of the given type.
 pub(crate) fn alloc_type_name<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> ConstAllocation<'tcx> {
@@ -53,6 +78,22 @@ pub(crate) fn eval_nullary_intrinsic<'tcx>(
         sym::type_id => {
             ensure_monomorphic_enough(tcx, tp_ty)?;
             ConstValue::from_u128(tcx.type_id_hash(tp_ty).as_u128())
+        }
+        sym::pointer_map_of => {
+            let layout = tcx
+                .layout_of(typing_env.as_query_input(tp_ty))
+                .map_err(|e| err_inval!(Layout(*e)))?;
+            let pcx = PointerMapCx { tcx, typing_env };
+            let ptrmap = pcx.pointer_map(layout).encode();
+            ConstValue::Slice {
+                meta: ptrmap.len() as u64,
+                data: tcx.mk_const_alloc(Allocation::from_bytes(
+                    ptrmap,
+                    tcx.data_layout.pointer_align.abi,
+                    ty::Mutability::Not,
+                    (),
+                )),
+            }
         }
         sym::variant_count => match match tp_ty.kind() {
             // Pattern types have the same number of variants as their base type.
@@ -137,7 +178,11 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 self.write_scalar(Scalar::from_target_usize(result, self), dest)?;
             }
 
-            sym::needs_drop | sym::type_id | sym::type_name | sym::variant_count => {
+            sym::pointer_map_of
+            | sym::needs_drop
+            | sym::type_id
+            | sym::type_name
+            | sym::variant_count => {
                 let gid = GlobalId { instance, promoted: None };
                 let ty = self
                     .tcx

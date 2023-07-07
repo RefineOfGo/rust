@@ -70,6 +70,9 @@ pub struct Repeat<A> {
     element: A,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A: Managed> Managed for Repeat<A> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<A: Clone> Iterator for Repeat<A> {
     type Item = A;

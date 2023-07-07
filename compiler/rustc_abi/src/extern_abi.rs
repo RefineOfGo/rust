@@ -36,6 +36,14 @@ pub enum ExternAbi {
     /// Stronger than just `#[cold]` because `fn` pointers might be incompatible.
     RustCold,
 
+    /// ROG-specific ABI for bridging ROG Go user-code & Rust runtime.
+    /// This ABI is guaranteed to be mapped into LLVM's "rogcc".
+    Rog,
+    /// ROG-specific ABI that is very unlikely to be called, like `rog_write_barrier`,
+    /// `rog_bulk_write_barrier` or `rog_morestack_abi`.
+    /// This ABI is guaranteed to be mapped into LLVM's "coldcc".
+    RogCold,
+
     /// Unstable impl detail that directly uses Rust types to describe the ABI to LLVM.
     /// Even normally-compatible Rust types can become ABI-incompatible with this ABI!
     Unadjusted,
@@ -171,6 +179,8 @@ abi_impls! {
             Win64 { unwind: false } =><= "win64",
             Win64 { unwind: true } =><= "win64-unwind",
             X86Interrupt =><= "x86-interrupt",
+            Rog =><= "rog",
+            RogCold =><= "rog-cold",
     }
 }
 
@@ -219,6 +229,11 @@ impl StableOrd for ExternAbi {
 }
 
 impl ExternAbi {
+    pub fn is_lto_aware(self) -> bool {
+        use ExternAbi::*;
+        matches!(self, C { .. } | Rog)
+    }
+
     /// An ABI "like Rust"
     ///
     /// These ABIs are fully controlled by the Rust compiler, which means they
@@ -227,7 +242,7 @@ impl ExternAbi {
     /// - are subject to change between compiler versions
     pub fn is_rustic_abi(self) -> bool {
         use ExternAbi::*;
-        matches!(self, Rust | RustCall | RustCold)
+        matches!(self, Rust | RustCall | RustCold | Rog | RogCold)
     }
 
     pub fn supports_varargs(self) -> bool {

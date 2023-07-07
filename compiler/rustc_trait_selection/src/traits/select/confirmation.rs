@@ -40,12 +40,15 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         Ok(match candidate {
             SizedCandidate { has_nested } => {
                 let data = self.confirm_builtin_candidate(obligation, has_nested);
-                ImplSource::Builtin(BuiltinImplSource::Misc, data)
+                assert!(
+                    matches!(data, ImplSource::Builtin(BuiltinImplSource::Misc, ..)),
+                    "BuiltinAny() does not apply to Sized"
+                );
+                data
             }
 
             BuiltinCandidate { has_nested } => {
-                let data = self.confirm_builtin_candidate(obligation, has_nested);
-                ImplSource::Builtin(BuiltinImplSource::Misc, data)
+                self.confirm_builtin_candidate(obligation, has_nested)
             }
 
             TransmutabilityCandidate => {
@@ -244,20 +247,29 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
         has_nested: bool,
-    ) -> PredicateObligations<'tcx> {
+    ) -> Selection<'tcx> {
         debug!(?obligation, ?has_nested, "confirm_builtin_candidate");
 
         let tcx = self.tcx();
+        let mut is_disjunction = false;
         let obligations = if has_nested {
             let trait_def = obligation.predicate.def_id();
             let conditions = match tcx.as_lang_item(trait_def) {
                 Some(LangItem::Sized) => self.sized_conditions(obligation),
                 Some(LangItem::Copy | LangItem::Clone) => self.copy_clone_conditions(obligation),
+                Some(LangItem::Managed) => self.managed_conditions(obligation),
                 Some(LangItem::FusedIterator) => self.fused_iterator_conditions(obligation),
                 other => bug!("unexpected builtin trait {trait_def:?} ({other:?})"),
             };
-            let BuiltinImplConditions::Where(types) = conditions else {
-                bug!("obligation {:?} had matched a builtin impl but now doesn't", obligation);
+            let types = match conditions {
+                BuiltinImplConditions::Where(types) => types,
+                BuiltinImplConditions::WhereAny(types) => {
+                    is_disjunction = true;
+                    types
+                }
+                _ => {
+                    bug!("obligation {:?} had matched a builtin impl but now doesn't", obligation);
+                }
             };
             let types = self.infcx.enter_forall_and_leak_universe(types);
 
@@ -273,9 +285,12 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             PredicateObligations::new()
         };
 
-        debug!(?obligations);
-
-        obligations
+        debug!(?obligations, ?is_disjunction);
+        if is_disjunction {
+            ImplSource::BuiltinAny(obligations)
+        } else {
+            ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
+        }
     }
 
     #[instrument(level = "debug", skip(self))]

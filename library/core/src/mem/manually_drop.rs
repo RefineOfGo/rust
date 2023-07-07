@@ -158,6 +158,9 @@ pub struct ManuallyDrop<T: ?Sized> {
     value: T,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for ManuallyDrop<T> {}
+
 impl<T> ManuallyDrop<T> {
     /// Wrap a value to be manually dropped.
     ///

@@ -142,7 +142,6 @@ generate! {
     filter_map,
     find,
     find_map,
-    finish,
     finish_non_exhaustive,
     first,
     flat_map,

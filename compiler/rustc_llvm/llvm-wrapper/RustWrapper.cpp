@@ -1453,6 +1453,10 @@ LLVMRustGetDiagInfoKind(LLVMDiagnosticInfoRef DI) {
   return toRust((DiagnosticKind)unwrap(DI)->getKind());
 }
 
+extern "C" size_t LLVMRustGetTypeSize(LLVMModuleRef M, LLVMTypeRef Ty) {
+  return unwrap(M)->getDataLayout().getTypeAllocSize(unwrap(Ty));
+}
+
 // This is kept distinct from LLVMGetTypeKind, because when
 // a new type kind is added, the Rust-side enum must be
 // updated or UB will result.
@@ -1564,31 +1568,51 @@ LLVMRustUnpackSMDiagnostic(LLVMSMDiagnosticRef DRef, RustStringRef MessageOut,
   return true;
 }
 
-extern "C" LLVMValueRef LLVMRustBuildMemCpy(LLVMBuilderRef B, LLVMValueRef Dst,
-                                            unsigned DstAlign, LLVMValueRef Src,
-                                            unsigned SrcAlign,
-                                            LLVMValueRef Size,
-                                            bool IsVolatile) {
-  return wrap(unwrap(B)->CreateMemCpy(unwrap(Dst), MaybeAlign(DstAlign),
-                                      unwrap(Src), MaybeAlign(SrcAlign),
-                                      unwrap(Size), IsVolatile));
+extern "C" LLVMValueRef LLVMRustBuildMemCpy(LLVMBuilderRef B,
+                                            LLVMValueRef Dst, unsigned DstAlign,
+                                            LLVMValueRef Src, unsigned SrcAlign,
+                                            LLVMValueRef Size, bool IsVolatile,
+                                            bool NeedBarriers) {
+  Value *dst = unwrap(Dst);
+  Value *src = unwrap(Src);
+  Value *size = unwrap(Size);
+  IRBuilder<> *irb = unwrap(B);
+  if (NeedBarriers) {
+    return wrap(irb->CreateGCMemCpy(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  } else {
+    return wrap(irb->CreateMemCpy(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  }
 }
 
-extern "C" LLVMValueRef
-LLVMRustBuildMemMove(LLVMBuilderRef B, LLVMValueRef Dst, unsigned DstAlign,
-                     LLVMValueRef Src, unsigned SrcAlign, LLVMValueRef Size,
-                     bool IsVolatile) {
-  return wrap(unwrap(B)->CreateMemMove(unwrap(Dst), MaybeAlign(DstAlign),
-                                       unwrap(Src), MaybeAlign(SrcAlign),
-                                       unwrap(Size), IsVolatile));
+extern "C" LLVMValueRef LLVMRustBuildMemMove(LLVMBuilderRef B,
+                                             LLVMValueRef Dst, unsigned DstAlign,
+                                             LLVMValueRef Src, unsigned SrcAlign,
+                                             LLVMValueRef Size, bool IsVolatile,
+                                             bool NeedBarriers) {
+  Value *dst = unwrap(Dst);
+  Value *src = unwrap(Src);
+  Value *size = unwrap(Size);
+  IRBuilder<> *irb = unwrap(B);
+  if (NeedBarriers) {
+    return wrap(irb->CreateGCMemMove(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  } else {
+    return wrap(irb->CreateMemMove(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  }
 }
 
-extern "C" LLVMValueRef LLVMRustBuildMemSet(LLVMBuilderRef B, LLVMValueRef Dst,
-                                            unsigned DstAlign, LLVMValueRef Val,
-                                            LLVMValueRef Size,
-                                            bool IsVolatile) {
-  return wrap(unwrap(B)->CreateMemSet(unwrap(Dst), unwrap(Val), unwrap(Size),
-                                      MaybeAlign(DstAlign), IsVolatile));
+extern "C" LLVMValueRef LLVMRustBuildMemSet(LLVMBuilderRef B,
+                                            LLVMValueRef Dst, unsigned DstAlign,
+                                            LLVMValueRef Val, LLVMValueRef Size,
+                                            bool IsVolatile, bool NeedBarriers) {
+  Value *dst = unwrap(Dst);
+  Value *val = unwrap(Val);
+  Value *size = unwrap(Size);
+  IRBuilder<> *irb = unwrap(B);
+  if (NeedBarriers) {
+    return wrap(irb->CreateGCMemSet(dst, val, size, MaybeAlign(DstAlign), IsVolatile));
+  } else {
+    return wrap(irb->CreateMemSet(dst, val, size, MaybeAlign(DstAlign), IsVolatile));
+  }
 }
 
 extern "C" void LLVMRustPositionBuilderAtStart(LLVMBuilderRef B,
@@ -1910,6 +1934,19 @@ extern "C" int32_t LLVMRustGetElementTypeArgIndex(LLVMValueRef CallSite) {
     return 1;
   }
   return -1;
+}
+
+extern "C" bool LLVMRustIsLocalFrame(LLVMValueRef V) {
+  Value *val = unwrap<Value>(V);
+  GetElementPtrInst *gep;
+  for (;;) {
+    val = val->stripPointerCastsForAliasAnalysis();
+    gep = dyn_cast<GetElementPtrInst>(val);
+    if (gep == nullptr) {
+      return isa<AllocaInst>(*val);
+    }
+    val = gep->getPointerOperand();
+  }
 }
 
 extern "C" bool LLVMRustIsNonGVFunctionPointerTy(LLVMValueRef V) {

@@ -56,7 +56,7 @@ fn emit_direct_ptr_va_arg<'ll, 'tcx>(
     let aligned_size = size.align_to(slot_size).bytes() as i32;
     let full_direct_size = bx.cx().const_i32(aligned_size);
     let next = bx.inbounds_ptradd(addr, full_direct_size);
-    bx.store(next, va_list_addr, bx.tcx().data_layout.pointer_align.abi);
+    bx.store_noptr(next, va_list_addr, bx.tcx().data_layout.pointer_align.abi);
 
     if size.bytes() < slot_size.bytes()
         && bx.tcx().sess.target.endian == Endian::Big
@@ -195,7 +195,7 @@ fn emit_aapcs_va_arg<'ll, 'tcx>(
     }
     let new_reg_off_v = bx.add(reg_off_v, bx.const_i32(slot_size as i32));
 
-    bx.store(new_reg_off_v, reg_off, offset_align);
+    bx.store_noptr(new_reg_off_v, reg_off, offset_align);
 
     // Check to see if we have overflowed the registers as a result of this.
     // If we have then we need to use the stack for this value
@@ -324,7 +324,7 @@ fn emit_powerpc_va_arg<'ll, 'tcx>(
         // Increase the used-register count.
         let reg_incr = if is_i64 || (is_f64 && is_soft_float_abi) { 2 } else { 1 };
         let new_num_regs = bx.add(num_regs, bx.cx.const_u8(reg_incr));
-        bx.store(new_num_regs, num_regs_addr, dl.i8_align.abi);
+        bx.store_noptr(new_num_regs, num_regs_addr, dl.i8_align.abi);
 
         bx.br(end);
 
@@ -334,7 +334,7 @@ fn emit_powerpc_va_arg<'ll, 'tcx>(
     let mem_addr = {
         bx.switch_to_block(in_mem);
 
-        bx.store(bx.const_u8(max_regs), num_regs_addr, dl.i8_align.abi);
+        bx.store_noptr(bx.const_u8(max_regs), num_regs_addr, dl.i8_align.abi);
 
         // Everything in the overflow area is rounded up to a size of at least 4.
         let overflow_area_align = Align::from_bytes(4).unwrap();
@@ -362,7 +362,8 @@ fn emit_powerpc_va_arg<'ll, 'tcx>(
 
         // Increase the overflow area.
         overflow_area = bx.inbounds_ptradd(overflow_area, bx.const_usize(size.bytes()));
-        bx.store(overflow_area, overflow_area_ptr, dl.pointer_align.abi);
+        // va_args lives on stack, so we can treat this as no-ptr.
+        bx.store_noptr(overflow_area, overflow_area_ptr, dl.pointer_align.abi);
 
         bx.br(end);
 
@@ -442,7 +443,7 @@ fn emit_s390x_va_arg<'ll, 'tcx>(
 
     // Update the register count.
     let new_reg_count_v = bx.add(reg_count_v, bx.const_u64(1));
-    bx.store(new_reg_count_v, reg_count, Align::from_bytes(8).unwrap());
+    bx.store_noptr(new_reg_count_v, reg_count, Align::from_bytes(8).unwrap());
     bx.br(end);
 
     // Emit code to load the value if it was passed in memory.
@@ -457,7 +458,7 @@ fn emit_s390x_va_arg<'ll, 'tcx>(
     // Update the argument overflow area pointer.
     let arg_size = bx.cx().const_u64(padded_size);
     let new_arg_ptr_v = bx.inbounds_ptradd(arg_ptr_v, arg_size);
-    bx.store(new_arg_ptr_v, overflow_arg_area, dl.pointer_align.abi);
+    bx.store_ptr(new_arg_ptr_v, overflow_arg_area);
     bx.br(end);
 
     // Return the appropriate result.
@@ -648,8 +649,8 @@ fn emit_x86_64_sysv64_va_arg<'ll, 'tcx>(
                     let field0 = tmp;
                     let field1 = bx.inbounds_ptradd(tmp, bx.const_u32(offset as u32));
 
-                    bx.store(reg_lo, field0, align);
-                    bx.store(reg_hi, field1, align);
+                    bx.store_noptr(reg_lo, field0, align);
+                    bx.store_noptr(reg_hi, field1, align);
 
                     tmp
                 }
@@ -671,8 +672,8 @@ fn emit_x86_64_sysv64_va_arg<'ll, 'tcx>(
                     let field0 = tmp;
                     let field1 = bx.inbounds_ptradd(tmp, bx.const_u32(offset as u32));
 
-                    bx.store(reg_lo, field0, align_lo);
-                    bx.store(reg_hi, field1, align_hi);
+                    bx.store_noptr(reg_lo, field0, align_lo);
+                    bx.store_noptr(reg_hi, field1, align_hi);
 
                     tmp
                 }
@@ -696,14 +697,14 @@ fn emit_x86_64_sysv64_va_arg<'ll, 'tcx>(
         let offset = bx.const_u32(num_gp_registers * 8);
         let sum = bx.add(gp_offset_v, offset);
         // An alignment of 8 because `__va_list_tag` is 8-aligned and this is its first field.
-        bx.store(sum, gp_offset_ptr, Align::from_bytes(8).unwrap());
+        bx.store_noptr(sum, gp_offset_ptr, Align::from_bytes(8).unwrap());
     }
 
     // l->fp_offset = l->fp_offset + num_fp * 16.
     if num_fp_registers > 0 {
         let offset = bx.const_u32(num_fp_registers * 16);
         let sum = bx.add(fp_offset_v, offset);
-        bx.store(sum, fp_offset_ptr, Align::from_bytes(4).unwrap());
+        bx.store_noptr(sum, fp_offset_ptr, Align::from_bytes(4).unwrap());
     }
 
     bx.br(end);
@@ -736,6 +737,7 @@ fn copy_to_temporary_if_more_aligned<'ll, 'tcx>(
             src_align,
             bx.const_u32(layout.layout.size().bytes() as u32),
             MemFlags::empty(),
+            false, // copy to stack, treat as no-ptr.
         );
         tmp
     } else {
@@ -771,7 +773,8 @@ fn x86_64_sysv64_va_arg_from_memory<'ll, 'tcx>(
     let size_in_bytes = layout.layout.size().bytes();
     let offset = bx.const_i32(size_in_bytes.next_multiple_of(8) as i32);
     let overflow_arg_area = bx.inbounds_ptradd(overflow_arg_area_v, offset);
-    bx.store(overflow_arg_area, overflow_arg_area_ptr, dl.pointer_align.abi);
+    // va_args lives on stack, so we can treat it as no-ptr.
+    bx.store_noptr(overflow_arg_area, overflow_arg_area_ptr, dl.pointer_align.abi);
 
     mem_addr
 }
@@ -825,7 +828,8 @@ fn emit_xtensa_va_arg<'ll, 'tcx>(
 
     bx.switch_to_block(from_regsave);
     // update va_ndx
-    bx.store(offset_next, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
+    // `va_list`s are on stack, so we don't need write barriers here
+    bx.store_noptr(offset_next, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
 
     // (*va).va_reg
     let regsave_area_ptr = bx.inbounds_ptradd(va_list_addr, bx.cx.const_usize(va_reg_offset));
@@ -849,7 +853,8 @@ fn emit_xtensa_va_arg<'ll, 'tcx>(
     // va_ndx = offset_next_corrected;
     let offset_next_corrected = bx.add(offset_next, bx.const_i32(slot_size));
     // update va_ndx
-    bx.store(offset_next_corrected, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
+    // `va_list`s are on stack, so we don't need write barriers here
+    bx.store_noptr(offset_next_corrected, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
 
     // let stack_value_ptr = unsafe { (*va).va_stk.byte_add(offset_corrected) };
     let stack_area_ptr = bx.inbounds_ptradd(va_list_addr, bx.cx.const_usize(0));

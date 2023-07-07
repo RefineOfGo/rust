@@ -6,7 +6,7 @@
 
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit, SizedTypeProperties};
-use core::ptr::{self, Alignment, NonNull, Unique};
+use core::ptr::{self, NonNull, Unique};
 use core::{cmp, hint};
 
 #[cfg(not(no_global_oom_handling))]
@@ -75,6 +75,11 @@ pub(crate) struct RawVec<T, A: Allocator = Global> {
     inner: RawVecInner<A>,
     _marker: PhantomData<T>,
 }
+
+/// This is not meant to make `RawVec<T, A>: Managed`, but rather trigger a compilation error when
+/// user accidentally created `Vec<T> where T: Managed`.
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, A: Allocator> Managed for RawVec<T, A> {}
 
 /// Like a `RawVec`, but only generic over the allocator, not the type.
 ///
@@ -177,7 +182,7 @@ impl<T, A: Allocator> RawVec<T, A> {
     /// the returned `RawVec`.
     #[inline]
     pub(crate) const fn new_in(alloc: A) -> Self {
-        Self { inner: RawVecInner::new_in(alloc, Alignment::of::<T>()), _marker: PhantomData }
+        Self { inner: RawVecInner::new_in::<T>(alloc), _marker: PhantomData }
     }
 
     /// Like `with_capacity`, but parameterized over the choice of
@@ -409,10 +414,20 @@ unsafe impl<#[may_dangle] T, A: Allocator> Drop for RawVec<T, A> {
 
 impl<A: Allocator> RawVecInner<A> {
     #[inline]
-    const fn new_in(alloc: A, align: Alignment) -> Self {
-        let ptr = Unique::from_non_null(NonNull::without_provenance(align.as_nonzero()));
+    const fn new_in<T>(alloc: A) -> Self {
+        let ptr = Unique::<T>::dangling().cast();
         // `cap: 0` means "unallocated". zero-sized types are ignored.
         Self { ptr, cap: ZERO_CAP, alloc }
+    }
+
+    #[inline]
+    fn with_alignment_in(alloc: A, align: usize) -> Self {
+        assert!(align.is_power_of_two());
+        let ptr = <[u8]>::as_mut_ptr(&mut []);
+        let ptr = ptr.with_addr((ptr.expose_provenance() + align - 1) & !(align - 1));
+        // `cap: 0` means "unallocated". zero-sized types are ignored.
+        // Safety: ptr cannot be null.
+        Self { ptr: unsafe { Unique::new_unchecked(ptr) }, cap: ZERO_CAP, alloc }
     }
 
     #[cfg(not(no_global_oom_handling))]
@@ -465,7 +480,7 @@ impl<A: Allocator> RawVecInner<A> {
 
         // Don't allocate here because `Drop` will not deallocate when `capacity` is 0.
         if layout.size() == 0 {
-            return Ok(Self::new_in(alloc, elem_layout.alignment()));
+            return Ok(Self::with_alignment_in(alloc, elem_layout.align()));
         }
 
         if let Err(err) = alloc_guard(layout.size()) {
