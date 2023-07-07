@@ -16,6 +16,7 @@ use crate::mir::place::PlaceRef;
 use crate::MemFlags;
 
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs;
+use rustc_middle::ptrinfo;
 use rustc_middle::ty::layout::{HasParamEnv, TyAndLayout};
 use rustc_middle::ty::{Instance, Ty};
 use rustc_session::config::OptLevel;
@@ -170,21 +171,84 @@ pub trait BuilderMethods<'a, 'tcx>:
     fn range_metadata(&mut self, load: Self::Value, range: WrappingRange);
     fn nonnull_metadata(&mut self, load: Self::Value);
 
-    fn store(&mut self, val: Self::Value, ptr: Self::Value, align: Align) -> Self::Value;
+    fn is_const_zero(&mut self, val: Self::Value) -> bool;
+    fn is_local_frame(&mut self, val: Self::Value) -> bool;
+
+    fn store_ptr(&mut self, val: Self::Value, ptr: Self::Value);
+    fn store_ptr_with_flags(&mut self, val: Self::Value, ptr: Self::Value, flags: MemFlags);
+
+    fn store_noptr(&mut self, val: Self::Value, ptr: Self::Value, align: Align);
+    fn store_noptr_with_flags(
+        &mut self,
+        val: Self::Value,
+        ptr: Self::Value,
+        align: Align,
+        flags: MemFlags,
+    );
+
+    fn store(
+        &mut self,
+        val: Self::Value,
+        ptr: Self::Value,
+        align: Align,
+        layout: TyAndLayout<'tcx>,
+    ) {
+        self.store_with_flags(val, ptr, align, MemFlags::empty(), layout);
+    }
+
     fn store_with_flags(
         &mut self,
         val: Self::Value,
         ptr: Self::Value,
         align: Align,
         flags: MemFlags,
-    ) -> Self::Value;
-    fn atomic_store(
+        layout: TyAndLayout<'tcx>,
+    ) {
+        if ptrinfo::has_pointers(self.cx(), layout) && !self.is_local_frame(ptr) {
+            assert!(
+                align >= self.data_layout().pointer_align.abi,
+                "invalid pointer alignment: {:?}",
+                align
+            );
+            if layout.size == self.data_layout().pointer_size {
+                self.store_ptr_with_flags(val, ptr, flags);
+            } else {
+                let ty = self.backend_type(layout);
+                let temp = self.alloca(ty, align);
+                let size = self.const_usize(layout.size.bytes());
+                self.lifetime_start(temp, layout.size);
+                self.store_noptr(val, temp, align);
+                self.memcpy(ptr, align, temp, align, size, flags, true);
+                self.lifetime_end(temp, layout.size);
+            }
+        } else {
+            self.store_noptr_with_flags(val, ptr, align, flags);
+        }
+    }
+
+    fn atomic_store_ptr(&mut self, val: Self::Value, ptr: Self::Value, order: AtomicOrdering);
+    fn atomic_store_noptr(
         &mut self,
         val: Self::Value,
         ptr: Self::Value,
         order: AtomicOrdering,
         size: Size,
     );
+
+    fn atomic_store(
+        &mut self,
+        val: Self::Value,
+        ptr: Self::Value,
+        order: AtomicOrdering,
+        layout: TyAndLayout<'tcx>,
+    ) {
+        if ptrinfo::has_pointers(self.cx(), layout) {
+            assert_eq!(layout.size, self.data_layout().pointer_size);
+            self.atomic_store_ptr(val, ptr, order);
+        } else {
+            self.atomic_store_noptr(val, ptr, order, layout.size);
+        }
+    }
 
     fn gep(&mut self, ty: Self::Type, ptr: Self::Value, indices: &[Self::Value]) -> Self::Value;
     fn inbounds_gep(
@@ -251,6 +315,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         src_align: Align,
         size: Self::Value,
         flags: MemFlags,
+        has_pointers: bool,
     );
     fn memmove(
         &mut self,
@@ -260,6 +325,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         src_align: Align,
         size: Self::Value,
         flags: MemFlags,
+        has_pointers: bool,
     );
     fn memset(
         &mut self,
@@ -268,6 +334,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         size: Self::Value,
         align: Align,
         flags: MemFlags,
+        has_pointers: bool,
     );
 
     /// *Typed* copy for non-overlapping places.
@@ -291,7 +358,16 @@ pub trait BuilderMethods<'a, 'tcx>:
             temp.val.store(self, dst);
         } else if !dst.layout.is_zst() {
             let bytes = self.const_usize(dst.layout.size.bytes());
-            self.memcpy(dst.llval, dst.align, src.llval, src.align, bytes, MemFlags::empty());
+            let has_pointers = ptrinfo::has_pointers(self.cx(), dst.layout);
+            self.memcpy(
+                dst.llval,
+                dst.align,
+                src.llval,
+                src.align,
+                bytes,
+                MemFlags::empty(),
+                has_pointers,
+            );
         }
     }
 

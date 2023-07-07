@@ -55,6 +55,7 @@ pub mod errors;
 pub mod meth;
 pub mod mir;
 pub mod mono_item;
+pub mod pass_by_val;
 pub mod size_of_val;
 pub mod target_features;
 pub mod traits;

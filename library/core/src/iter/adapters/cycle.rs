@@ -16,6 +16,10 @@ pub struct Cycle<I> {
     iter: I,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for Cycle<I> {}
+
 impl<I: Clone> Cycle<I> {
     pub(in crate::iter) fn new(iter: I) -> Cycle<I> {
         Cycle { orig: iter.clone(), iter }

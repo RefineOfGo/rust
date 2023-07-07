@@ -16,6 +16,9 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::small_c_str::SmallCStr;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::mono::CodegenUnit;
+use rustc_middle::ptrinfo::PointerMap;
+use rustc_middle::ptrinfo::PointerMapKind;
+use rustc_middle::ptrinfo::PointerMapMethods;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, LayoutError, LayoutOfHelpers,
     TyAndLayout,
@@ -81,6 +84,10 @@ pub struct CodegenCx<'ll, 'tcx> {
     /// Mapping of scalar types to llvm types.
     pub scalar_lltypes: RefCell<FxHashMap<Ty<'tcx>, &'ll Type>>,
 
+    /// Mapping of scalar types to flattened llvm types.
+    pub flattened_lltypes: RefCell<FxHashMap<(Ty<'tcx>, Option<VariantIdx>), &'ll Type>>,
+
+    pub pointer_maps: RefCell<FxHashMap<(Ty<'tcx>, PointerMapKind), PointerMap>>,
     pub isize_ty: &'ll Type,
 
     pub coverage_cx: Option<coverageinfo::CrateCoverageContext<'ll, 'tcx>>,
@@ -447,6 +454,8 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             compiler_used_statics: RefCell::new(Vec::new()),
             type_lowering: Default::default(),
             scalar_lltypes: Default::default(),
+            flattened_lltypes: Default::default(),
+            pointer_maps: Default::default(),
             isize_ty,
             coverage_cx,
             dbg_cx,
@@ -598,6 +607,19 @@ impl<'ll, 'tcx> MiscMethods<'tcx> for CodegenCx<'ll, 'tcx> {
             // instead of #[start]
             None
         }
+    }
+}
+
+impl<'ll, 'tcx> PointerMapMethods<'tcx> for CodegenCx<'ll, 'tcx> {
+    #[inline]
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        kind: PointerMapKind,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
+    ) -> R {
+        map_fn(self.pointer_maps.borrow_mut().entry((ty, kind)).or_insert_with(compute_fn))
     }
 }
 
@@ -966,6 +988,9 @@ impl<'ll> CodegenCx<'ll, '_> {
         }
 
         ifn!("llvm.ptrmask", fn(ptr, t_isize) -> ptr);
+        ifn!("llvm.gcwrite", fn(ptr, ptr, ptr) -> void);
+        ifn!("llvm.gcatomic.cas", fn(ptr, ptr, ptr, i1, i1) -> mk_struct! {ptr, i1});
+        ifn!("llvm.gcatomic.swap", fn(ptr, ptr, i1) -> ptr);
 
         None
     }

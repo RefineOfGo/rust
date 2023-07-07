@@ -1,6 +1,14 @@
 #![cfg_attr(
     feature = "nightly",
-    feature(associated_type_defaults, min_specialization, never_type, rustc_attrs)
+    feature(
+        associated_type_defaults,
+        get_mut_unchecked,
+        min_specialization,
+        never_type,
+        new_uninit,
+        rustc_attrs,
+        unwrap_infallible,
+    )
 )]
 #![allow(rustc::usage_of_ty_tykind)]
 #![cfg_attr(feature = "nightly", allow(internal_features))]

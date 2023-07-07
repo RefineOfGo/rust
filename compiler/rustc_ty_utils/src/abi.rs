@@ -324,10 +324,15 @@ fn conv_from_spec_abi(tcx: TyCtxt<'_>, abi: SpecAbi, c_variadic: bool) -> Conv {
     use rustc_target::spec::abi::Abi::*;
     match tcx.sess.target.adjust_abi(abi, c_variadic) {
         RustIntrinsic | Rust | RustCall => Conv::Rust,
+        Rog => Conv::Rog,
 
         // This is intentionally not using `Conv::Cold`, as that has to preserve
         // even SIMD registers, which is generally not a good trade-off.
         RustCold => Conv::PreserveMost,
+
+        // ROG specifically requires `Conv::Cold` for things like stack check
+        // prologue or GC write barriers
+        RogCold => Conv::Cold,
 
         // It's the ABI's job to select this, not ours.
         System { .. } => bug!("system abi should be selected elsewhere"),
@@ -642,7 +647,7 @@ fn fn_abi_new_uncached<'tcx>(
             layout
         };
 
-        let mut arg = ArgAbi::new(cx, layout, |layout, scalar, offset| {
+        let mut arg = ArgAbi::new(cx, conv, layout, |layout, scalar, offset| {
             let mut attrs = ArgAttributes::new();
             adjust_for_rust_scalar(
                 *cx,
@@ -724,7 +729,11 @@ fn fn_abi_adjust_for_abi<'tcx>(
         return Ok(());
     }
 
-    if abi == SpecAbi::Rust || abi == SpecAbi::RustCall || abi == SpecAbi::RustIntrinsic {
+    if abi == SpecAbi::Rog
+        || abi == SpecAbi::Rust
+        || abi == SpecAbi::RustCall
+        || abi == SpecAbi::RustIntrinsic
+    {
         // Look up the deduced parameter attributes for this function, if we have its def ID and
         // we're optimizing in non-incremental mode. We'll tag its parameters with those attributes
         // as appropriate.
@@ -763,10 +772,13 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 // Note that the intrinsic ABI is exempt here as
                 // that's how we connect up to LLVM and it's unstable
                 // anyway, we control all calls to it in libstd.
-                Abi::Vector { .. }
-                    if abi != SpecAbi::RustIntrinsic && cx.tcx.sess.target.simd_types_indirect =>
-                {
-                    arg.make_indirect();
+                //
+                // Note: ROG Rust does not support this.
+                Abi::Vector { .. } if abi != SpecAbi::RustIntrinsic => {
+                    assert!(
+                        !cx.tcx.sess.target.simd_types_indirect,
+                        "ROG Rust does not support indirect SIMD types"
+                    );
                     return;
                 }
 
@@ -786,21 +798,21 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 arg.cast_to(Reg { kind: RegKind::Integer, size });
             }
 
-            // If we deduced that this parameter was read-only, add that to the attribute list now.
-            //
-            // The `readonly` parameter only applies to pointers, so we can only do this if the
-            // argument was passed indirectly. (If the argument is passed directly, it's an SSA
-            // value, so it's implicitly immutable.)
-            if let (Some(arg_idx), &mut PassMode::Indirect { ref mut attrs, .. }) =
-                (arg_idx, &mut arg.mode)
-            {
-                // The `deduced_param_attrs` list could be empty if this is a type of function
-                // we can't deduce any parameters for, so make sure the argument index is in
-                // bounds.
-                if let Some(deduced_param_attrs) = deduced_param_attrs.get(arg_idx) {
-                    if deduced_param_attrs.read_only {
-                        attrs.regular.insert(ArgAttribute::ReadOnly);
-                        debug!("added deduced read-only attribute");
+            if let Some(arg_idx) = arg_idx {
+                // If we deduced that this parameter was read-only, add that to the attribute list now.
+                //
+                // The `readonly` parameter only applies to pointers, so we can only do this if the
+                // argument was passed indirectly. (If the argument is passed directly, it's an SSA
+                // value, so it's implicitly immutable.)
+                if let PassMode::Indirect { ref mut attrs, .. } = arg.mode {
+                    // The `deduced_param_attrs` list could be empty if this is a type of function
+                    // we can't deduce any parameters for, so make sure the argument index is in
+                    // bounds.
+                    if let Some(deduced_param_attrs) = deduced_param_attrs.get(arg_idx) {
+                        if deduced_param_attrs.read_only {
+                            attrs.regular.insert(ArgAttribute::ReadOnly);
+                            debug!("added deduced read-only attribute");
+                        }
                     }
                 }
             }

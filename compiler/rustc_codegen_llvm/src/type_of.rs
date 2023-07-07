@@ -1,10 +1,11 @@
 use crate::common::*;
 use crate::type_::Type;
+use rustc_codegen_ssa::pass_by_val::can_pass_by_value;
 use rustc_codegen_ssa::traits::*;
-use rustc_middle::bug;
 use rustc_middle::ty::layout::{LayoutOf, TyAndLayout};
 use rustc_middle::ty::print::{with_no_trimmed_paths, with_no_visible_paths};
 use rustc_middle::ty::{self, Ty, TypeVisitableExt};
+use rustc_middle::{bug, ptrinfo};
 use rustc_target::abi::HasDataLayout;
 use rustc_target::abi::{Abi, Align, FieldsShape};
 use rustc_target::abi::{Int, Pointer, F128, F16, F32, F64};
@@ -167,6 +168,7 @@ pub trait LayoutLlvmExt<'tcx> {
         immediate: bool,
     ) -> &'a Type;
     fn scalar_copy_llvm_type<'a>(&self, cx: &CodegenCx<'a, 'tcx>) -> Option<&'a Type>;
+    fn flattened_type<'a>(&self, cx: &CodegenCx<'a, 'tcx>) -> &'a Type;
 }
 
 impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
@@ -347,5 +349,39 @@ impl<'tcx> LayoutLlvmExt<'tcx> for TyAndLayout<'tcx> {
         // FIXME: The above only handled integer arrays; surely more things
         // would also be possible. Be careful about provenance, though!
         None
+    }
+
+    fn flattened_type<'a>(&self, cx: &CodegenCx<'a, 'tcx>) -> &'a Type {
+        debug_assert!(
+            can_pass_by_value(cx, *self),
+            "flattened types must be able to pass as values: ty={self:#?}"
+        );
+
+        // Check the cache.
+        let variant_index = match self.variants {
+            Variants::Single { index } => Some(index),
+            _ => None,
+        };
+
+        if let Some(llty) = cx.flattened_lltypes.borrow().get(&(self.ty, variant_index)) {
+            return llty;
+        }
+
+        let ptr_size = cx.data_layout().pointer_size.bytes_usize();
+        let num_slots = self.size.bytes_usize() / ptr_size;
+        let ptr_slots = ptrinfo::exact_pointer_slots(cx, *self);
+
+        let llty = if ptr_slots.is_empty() {
+            cx.type_array(cx.type_i64(), num_slots as u64)
+        } else if ptr_slots.len() == num_slots {
+            cx.type_array(cx.type_ptr(), num_slots as u64)
+        } else {
+            let mut slots = vec![cx.type_i64(); num_slots];
+            ptr_slots.into_iter().for_each(|i| slots[i] = cx.type_ptr());
+            cx.type_struct(&slots, false)
+        };
+
+        cx.flattened_lltypes.borrow_mut().insert((self.ty, variant_index), llty);
+        llty
     }
 }

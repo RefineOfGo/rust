@@ -35,6 +35,10 @@ pub struct Successors<T, F> {
     succ: F,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, F> Managed for Successors<T, F> {}
+
 #[stable(feature = "iter_successors", since = "1.34.0")]
 impl<T, F> Iterator for Successors<T, F>
 where
