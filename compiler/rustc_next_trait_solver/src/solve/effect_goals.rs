@@ -210,6 +210,13 @@ where
         todo!("Copy/Clone is not yet const")
     }
 
+    fn consider_builtin_managed_candidate(
+        _ecx: &mut EvalCtxt<'_, D>,
+        _goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution> {
+        unimplemented!("Managed is not implemented for next trait solver")
+    }
+
     fn consider_builtin_pointer_like_candidate(
         _ecx: &mut EvalCtxt<'_, D>,
         _goal: Goal<I, Self>,

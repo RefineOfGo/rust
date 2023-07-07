@@ -45,7 +45,11 @@ unsafe impl Sync for Thread {}
 
 impl Thread {
     // unsafe: see thread::Builder::spawn_unchecked for safety requirements
-    pub unsafe fn new(stack: usize, p: Box<dyn FnOnce()>) -> io::Result<Thread> {
+    pub unsafe fn new(
+        stack: usize,
+        #[cfg(not(target_os = "espidf"))] stack_base: Option<usize>,
+        p: Box<dyn FnOnce()>,
+    ) -> io::Result<Thread> {
         let p = Box::into_raw(Box::new(p));
         let mut native: libc::pthread_t = mem::zeroed();
         let mut attr: libc::pthread_attr_t = mem::zeroed();
@@ -63,9 +67,27 @@ impl Thread {
 
         #[cfg(not(target_os = "espidf"))]
         {
+            let stack_base = stack_base.unwrap_or_default();
             let stack_size = cmp::max(stack, min_stack_size(&attr));
 
-            match libc::pthread_attr_setstacksize(&mut attr, stack_size) {
+            let set_stack_fn =
+                |attr: *mut libc::pthread_attr_t, stack_base: usize, stack_size: usize| {
+                    if stack_base != 0 {
+                        extern "C" {
+                            // Crate `libc` does not have this function, declare here.
+                            fn pthread_attr_setstack(
+                                attr: *mut libc::pthread_attr_t,
+                                stack_base: libc::size_t,
+                                stack_size: libc::size_t,
+                            ) -> libc::c_int;
+                        }
+                        pthread_attr_setstack(attr, stack_base, stack_size)
+                    } else {
+                        libc::pthread_attr_setstacksize(attr, stack_size)
+                    }
+                };
+
+            match set_stack_fn(&mut attr, stack_base, stack_size) {
                 0 => {}
                 n => {
                     assert_eq!(n, libc::EINVAL);
@@ -76,7 +98,7 @@ impl Thread {
                     let page_size = os::page_size();
                     let stack_size =
                         (stack_size + page_size - 1) & (-(page_size as isize - 1) as usize - 1);
-                    assert_eq!(libc::pthread_attr_setstacksize(&mut attr, stack_size), 0);
+                    assert_eq!(set_stack_fn(&mut attr, stack_base, stack_size), 0);
                 }
             };
         }

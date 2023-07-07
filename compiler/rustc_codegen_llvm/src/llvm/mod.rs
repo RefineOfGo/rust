@@ -9,6 +9,7 @@ use std::string::FromUtf8Error;
 
 use libc::c_uint;
 use rustc_abi::{Align, Size, WrappingRange};
+use rustc_data_structures::small_c_str::SmallCStr;
 use rustc_llvm::RustString;
 
 pub use self::AtomicRmwBinOp::*;
@@ -24,6 +25,8 @@ use crate::common::AsCCharPtr;
 pub mod archive_ro;
 pub mod diagnostic;
 mod ffi;
+
+pub const ROG_GC_NAME: &str = "rog";
 
 impl LLVMRustResult {
     pub fn into_result(self) -> Result<(), ()> {
@@ -166,9 +169,29 @@ pub fn SetInstructionCallConv(instr: &Value, cc: CallConv) {
         LLVMSetInstructionCallConv(instr, cc as c_uint);
     }
 }
+
 pub fn SetFunctionCallConv(fn_: &Value, cc: CallConv) {
     unsafe {
         LLVMSetFunctionCallConv(fn_, cc as c_uint);
+    }
+}
+
+pub fn GetGC(fn_: &Value) -> Option<String> {
+    unsafe {
+        let name = LLVMGetGC(fn_);
+        if name.is_null() {
+            return None;
+        }
+        let err = CStr::from_ptr(name).to_bytes();
+        let err = String::from_utf8_lossy(err).to_string();
+        Some(err)
+    }
+}
+
+pub fn SetGC(fn_: &Value, gc: &str) {
+    unsafe {
+        let name = SmallCStr::new(gc);
+        LLVMSetGC(fn_, name.as_ptr())
     }
 }
 

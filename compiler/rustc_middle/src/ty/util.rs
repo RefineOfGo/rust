@@ -1272,6 +1272,46 @@ impl<'tcx> Ty<'tcx> {
         }
     }
 
+    /// Checks whether values of this type `T` implement the `Managed` trait.
+    pub fn is_managed(self, tcx: TyCtxt<'tcx>, param_env: ty::ParamEnv<'tcx>) -> bool {
+        !self.is_trivially_unmanaged() && tcx.is_managed_raw(param_env.and(self))
+    }
+
+    /// Fast path helper for testing if a type is not `Managed`.
+    ///
+    /// Returning true means the type is known to not be `Managed`. Returning
+    /// `false` means nothing -- could be `Managed`, might not be.
+    fn is_trivially_unmanaged(self) -> bool {
+        match self.kind() {
+            ty::Bool
+            | ty::Char
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Float(_)
+            | ty::Foreign(_)
+            | ty::Str
+            | ty::FnDef(..)
+            | ty::FnPtr(..)
+            | ty::Dynamic(..)
+            | ty::Never
+            | ty::Error(_)
+            | ty::CoroutineClosure(..)
+            | ty::Coroutine(..)
+            | ty::CoroutineWitness(..) => true,
+            ty::Adt(..) | ty::Closure(..) => false,
+            ty::Array(elem_ty, _)
+            | ty::Pat(elem_ty, _)
+            | ty::Slice(elem_ty)
+            | ty::RawPtr(elem_ty, _)
+            | ty::Ref(_, elem_ty, _) => elem_ty.is_trivially_unmanaged(),
+            ty::Tuple(fields) => fields.iter().all(Self::is_trivially_unmanaged),
+            ty::Alias(..) | ty::Param(_) | ty::Bound(..) | ty::Placeholder(_) | ty::Infer(_) => {
+                tracing::debug!("suspicious type, assuming unmanaged {self:#?}");
+                true
+            }
+        }
+    }
+
     /// Get morphology of the async drop glue, needed for types which do not
     /// use async drop. To get async drop glue morphology for a definition see
     /// [`TyCtxt::async_drop_glue_morphology`]. Used for `AsyncDestruct::Destructor`

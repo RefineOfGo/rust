@@ -480,6 +480,8 @@ impl RustcInternal for Abi {
             Abi::RustCold => rustc_abi::ExternAbi::RustCold,
             Abi::RiscvInterruptM => rustc_abi::ExternAbi::RiscvInterruptM,
             Abi::RiscvInterruptS => rustc_abi::ExternAbi::RiscvInterruptS,
+            Abi::Rog => rustc_abi::ExternAbi::Rog,
+            Abi::RogCold => rustc_abi::ExternAbi::RogCold,
         }
     }
 }

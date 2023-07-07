@@ -7,7 +7,7 @@ use crate::char::EscapeDebugExtArgs;
 use crate::marker::PhantomData;
 use crate::num::fmt as numfmt;
 use crate::ops::Deref;
-use crate::{iter, mem, result, str};
+use crate::{mem, result, str};
 
 mod builders;
 #[cfg(not(no_fp_fmt_parse))]
@@ -1986,6 +1986,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 1 field.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field1_finish<'b>(
         &'b mut self,
@@ -2002,6 +2003,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 2 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field2_finish<'b>(
         &'b mut self,
@@ -2021,6 +2023,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 3 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field3_finish<'b>(
         &'b mut self,
@@ -2043,6 +2046,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 4 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field4_finish<'b>(
         &'b mut self,
@@ -2068,6 +2072,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_struct_fields_finish` is more general, but this is
     /// faster for 5 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field5_finish<'b>(
         &'b mut self,
@@ -2095,6 +2100,7 @@ impl<'a> Formatter<'a> {
     /// Shrinks `derive(Debug)` code, for faster compilation and smaller binaries.
     /// For the cases not covered by `debug_struct_field[12345]_finish`.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_fields_finish<'b>(
         &'b mut self,
@@ -2104,7 +2110,7 @@ impl<'a> Formatter<'a> {
     ) -> Result {
         assert_eq!(names.len(), values.len());
         let mut builder = builders::debug_struct_new(self, name);
-        for (name, value) in iter::zip(names, values) {
+        for (name, value) in crate::iter::zip(names, values) {
             builder.field(name, value);
         }
         builder.finish()
@@ -2145,6 +2151,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 1 field.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field1_finish<'b>(&'b mut self, name: &str, value1: &dyn Debug) -> Result {
         let mut builder = builders::debug_tuple_new(self, name);
@@ -2156,6 +2163,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 2 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field2_finish<'b>(
         &'b mut self,
@@ -2173,6 +2181,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 3 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field3_finish<'b>(
         &'b mut self,
@@ -2192,6 +2201,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 4 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field4_finish<'b>(
         &'b mut self,
@@ -2213,6 +2223,7 @@ impl<'a> Formatter<'a> {
     /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
     /// for 5 fields.
     #[doc(hidden)]
+    #[cfg(bootstrap)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field5_finish<'b>(
         &'b mut self,

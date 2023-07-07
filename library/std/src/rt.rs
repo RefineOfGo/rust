@@ -96,6 +96,9 @@ fn handle_rt_panic(e: Box<dyn Any + Send>) {
 // Even though it is an `u8`, it only ever has 4 values. These are documented in
 // `compiler/rustc_session/src/config/sigpipe.rs`.
 #[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(not(bootstrap), no_gcwb)]
+#[cfg_attr(not(bootstrap), no_split)]
+#[cfg_attr(not(bootstrap), no_checkpoint)]
 unsafe fn init(argc: isize, argv: *const *const u8, sigpipe: u8) {
     #[cfg_attr(target_os = "teeos", allow(unused_unsafe))]
     unsafe {
@@ -152,6 +155,9 @@ pub(crate) fn cleanup() {
 // To reduce the generated code of the new `lang_start`, this function is doing
 // the real work.
 #[cfg(not(test))]
+#[cfg_attr(not(bootstrap), no_gcwb)]
+#[cfg_attr(not(bootstrap), no_split)]
+#[cfg_attr(not(bootstrap), no_checkpoint)]
 fn lang_start_internal(
     main: &(dyn Fn() -> i32 + Sync + crate::panic::RefUnwindSafe),
     argc: isize,
@@ -184,6 +190,10 @@ fn lang_start_internal(
 }
 
 #[cfg(not(any(test, doctest)))]
+#[cfg_attr(not(bootstrap), no_gcwb)]
+#[cfg_attr(not(bootstrap), no_split)]
+#[cfg_attr(not(bootstrap), no_checkpoint)]
+#[inline(never)]
 #[lang = "start"]
 fn lang_start<T: crate::process::Termination + 'static>(
     main: fn() -> T,
@@ -191,6 +201,12 @@ fn lang_start<T: crate::process::Termination + 'static>(
     argv: *const *const u8,
     sigpipe: u8,
 ) -> isize {
+    #[cfg(not(bootstrap))]
+    unsafe {
+        core::checkpoint::disable();
+        core::gcwb::disable();
+        core::stack::set_stack_limit(0);
+    }
     let Ok(v) = lang_start_internal(
         &move || crate::sys::backtrace::__rust_begin_short_backtrace(main).report().to_i32(),
         argc,

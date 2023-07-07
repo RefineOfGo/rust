@@ -217,18 +217,19 @@ use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, DefIdMap, LocalDefId};
 use rustc_hir::lang_items::LangItem;
+use rustc_middle::managed::ManagedChecker;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::mir::interpret::{AllocId, ErrorHandled, GlobalAlloc, Scalar};
 use rustc_middle::mir::mono::{InstantiationMode, MonoItem};
-use rustc_middle::mir::visit::Visitor as MirVisitor;
-use rustc_middle::mir::{self, Location, MentionedItem, traversal};
+use rustc_middle::mir::visit::{TyContext, Visitor as MirVisitor};
+use rustc_middle::mir::{self, HasLocalDecls, Location, MentionedItem, traversal};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::print::{shrunk_instance_name, with_no_trimmed_paths};
 use rustc_middle::ty::{
-    self, AssocKind, GenericArgs, GenericParamDefKind, Instance, InstanceKind, Ty, TyCtxt,
-    TypeFoldable, TypeVisitableExt, VtblEntry,
+    self, AssocKind, GenericArgs, GenericParamDefKind, Instance, InstanceKind, ParamEnv, Ty,
+    TyCtxt, TypeFoldable, TypeVisitableExt, VtblEntry,
 };
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, span_bug};
@@ -603,6 +604,20 @@ fn check_recursion_limit<'tcx>(
     (def_id, recursion_depth)
 }
 
+fn check_managed_fields<'tcx>(tcx: TyCtxt<'tcx>, mc: ManagedChecker<'tcx>, ty: Ty<'tcx>) {
+    if let ty::Adt(adt, args) = *ty.kind() {
+        if !mc.is_managed(ty) {
+            if let Some(field) = mc.find_managed_field(adt, args) {
+                tcx.dcx().emit_err(errors::ManagedFieldInUnmanagedAdt {
+                    field_span: tcx.def_span(field.did),
+                    field_ty: field.ty(tcx, args).to_string(),
+                    note: (),
+                });
+            }
+        }
+    }
+}
+
 struct MirUsedCollector<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     body: &'a mir::Body<'tcx>,
@@ -613,6 +628,7 @@ struct MirUsedCollector<'a, 'tcx> {
     instance: Instance<'tcx>,
     visiting_call_terminator: bool,
     move_check: move_check::MoveCheckState,
+    mc: ManagedChecker<'tcx>,
 }
 
 impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
@@ -623,7 +639,7 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
         trace!("monomorphize: self.instance={:?}", self.instance);
         self.instance.instantiate_mir_and_normalize_erasing_regions(
             self.tcx,
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             ty::EarlyBinder::bind(value),
         )
     }
@@ -655,6 +671,22 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
+    fn visit_ty(&mut self, ty: Ty<'tcx>, _: TyContext) {
+        let ty = self.monomorphize(ty);
+        check_managed_fields(self.tcx, self.mc, ty);
+        self.super_ty(ty);
+    }
+
+    fn visit_local(
+        &mut self,
+        local: mir::Local,
+        _context: mir::visit::PlaceContext,
+        location: Location,
+    ) {
+        let local_ty = self.body.local_decls()[local].ty;
+        self.visit_ty(local_ty, TyContext::Location(location));
+    }
+
     fn visit_rvalue(&mut self, rvalue: &mir::Rvalue<'tcx>, location: Location) {
         debug!("visiting rvalue {:?}", *rvalue);
 
@@ -684,6 +716,14 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                 if (target_ty.is_trait() && !source_ty.is_trait())
                     || (target_ty.is_dyn_star() && !source_ty.is_dyn_star())
                 {
+                    if self.mc.is_managed(source_ty) {
+                        self.tcx.dcx().emit_err(errors::DynTraitPointsToManagedValue {
+                            span,
+                            value_ty: source_ty.to_string(),
+                            target_ty: target_ty.to_string(),
+                            note: (),
+                        });
+                    }
                     create_mono_items_for_vtable_methods(
                         self.tcx,
                         target_ty,
@@ -731,19 +771,21 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                     self.used_items.push(respan(span, MonoItem::Static(def_id)));
                 }
             }
+            mir::Rvalue::ShallowInitBox(_, ty) => {
+                self.visit_ty(Ty::new_box(self.tcx, ty), TyContext::Location(location));
+            }
             _ => { /* not interesting */ }
         }
 
         self.super_rvalue(rvalue, location);
     }
 
-    /// This does not walk the MIR of the constant as that is not needed for codegen, all we need is
-    /// to ensure that the constant evaluates successfully and walk the result.
     #[instrument(skip(self), level = "debug")]
     fn visit_const_operand(&mut self, constant: &mir::ConstOperand<'tcx>, location: Location) {
         // No `super_constant` as we don't care about `visit_ty`/`visit_ty_const`.
         let Some(val) = self.eval_constant(constant) else { return };
         collect_const_value(self.tcx, val, self.used_items);
+        self.super_const_operand(constant, location);
     }
 
     fn visit_terminator(&mut self, terminator: &mir::Terminator<'tcx>, location: Location) {
@@ -844,6 +886,7 @@ fn visit_drop_use<'tcx>(
     output: &mut MonoItems<'tcx>,
 ) {
     let instance = Instance::resolve_drop_in_place(tcx, ty);
+    check_managed_fields(tcx, ManagedChecker::new(tcx), ty);
     visit_instance_use(tcx, instance, is_direct_call, source, output);
 }
 
@@ -860,7 +903,7 @@ fn visit_fn_use<'tcx>(
         let instance = if is_direct_call {
             ty::Instance::expect_resolve(tcx, ty::ParamEnv::reveal_all(), def_id, args, source)
         } else {
-            match ty::Instance::resolve_for_fn_ptr(tcx, ty::ParamEnv::reveal_all(), def_id, args) {
+            match ty::Instance::resolve_for_fn_ptr(tcx, ParamEnv::reveal_all(), def_id, args) {
                 Some(instance) => instance,
                 _ => bug!("failed to resolve instance for {ty}"),
             }
@@ -962,14 +1005,18 @@ fn should_codegen_locally<'tcx>(tcx: TyCtxtAt<'tcx>, instance: Instance<'tcx>) -
         return false;
     }
 
-    if !tcx.is_mir_available(def_id) {
-        tcx.dcx().emit_fatal(NoOptimizedMir {
-            span: tcx.def_span(def_id),
-            crate_name: tcx.crate_name(def_id.krate),
-        });
+    if tcx.is_mir_available(def_id) {
+        return true;
     }
 
-    true
+    if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
+        return false;
+    }
+
+    tcx.dcx().emit_fatal(NoOptimizedMir {
+        span: tcx.def_span(def_id),
+        crate_name: tcx.crate_name(def_id.krate),
+    });
 }
 
 /// For a given pair of source and target type that occur in an unsizing coercion,
@@ -1019,7 +1066,7 @@ fn find_vtable_types_for_unsizing<'tcx>(
     target_ty: Ty<'tcx>,
 ) -> (Ty<'tcx>, Ty<'tcx>) {
     let ptr_vtable = |inner_source: Ty<'tcx>, inner_target: Ty<'tcx>| {
-        let param_env = ty::ParamEnv::reveal_all();
+        let param_env = ParamEnv::reveal_all();
         let type_has_metadata = |ty: Ty<'tcx>| -> bool {
             if ty.is_sized(tcx.tcx, param_env) {
                 return false;
@@ -1227,6 +1274,7 @@ fn collect_items_of_instance<'tcx>(
         instance,
         visiting_call_terminator: false,
         move_check: MoveCheckState::new(),
+        mc: ManagedChecker::new(tcx),
     };
 
     if mode == CollectionMode::UsedItems {
@@ -1481,13 +1529,13 @@ impl<'v> RootCollector<'_, 'v> {
         // regions must appear in the argument
         // listing.
         let main_ret_ty = self.tcx.normalize_erasing_regions(
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             main_ret_ty.no_bound_vars().unwrap(),
         );
 
         let start_instance = Instance::expect_resolve(
             self.tcx,
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             start_def_id,
             self.tcx.mk_args(&[main_ret_ty.into()]),
             DUMMY_SP,
@@ -1545,7 +1593,7 @@ fn create_mono_items_for_default_impls<'tcx>(
         return;
     }
 
-    let param_env = ty::ParamEnv::reveal_all();
+    let param_env = ParamEnv::reveal_all();
     let trait_ref = tcx.normalize_erasing_regions(param_env, trait_ref);
     let overridden_methods = tcx.impl_item_implementor_ids(item.owner_id);
     for method in tcx.provided_trait_methods(trait_ref.def_id) {
