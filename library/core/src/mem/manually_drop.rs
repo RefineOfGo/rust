@@ -158,6 +158,10 @@ pub struct ManuallyDrop<T: ?Sized> {
     value: T,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed + ?Sized> Managed for ManuallyDrop<T> {}
+
 impl<T> ManuallyDrop<T> {
     /// Wrap a value to be manually dropped.
     ///

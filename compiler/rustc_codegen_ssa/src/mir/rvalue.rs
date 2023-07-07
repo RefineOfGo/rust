@@ -1,6 +1,7 @@
 use std::assert_matches::assert_matches;
 
 use arrayvec::ArrayVec;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
@@ -96,18 +97,27 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 if let OperandValue::Immediate(v) = cg_elem.val {
                     let start = dest.val.llval;
                     let size = bx.const_usize(dest.layout.size.bytes());
+                    let has_pointers = bx.pointer_map(dest.layout).has_pointers();
 
                     // Use llvm.memset.p0i8.* to initialize all zero arrays
                     if bx.cx().const_to_opt_u128(v, false) == Some(0) {
                         let fill = bx.cx().const_u8(0);
-                        bx.memset(start, fill, size, dest.val.align, MemFlags::empty());
+                        bx.memset(
+                            start,
+                            fill,
+                            size,
+                            dest.val.align,
+                            MemFlags::empty(),
+                            has_pointers,
+                        );
                         return;
                     }
 
                     // Use llvm.memset.p0i8.* to initialize byte arrays
                     let v = bx.from_immediate(v);
                     if bx.cx().val_ty(v) == bx.cx().type_i8() {
-                        bx.memset(start, v, size, dest.val.align, MemFlags::empty());
+                        assert!(!has_pointers, "cannot fill managed memory with arbitrary bytes");
+                        bx.memset(start, v, size, dest.val.align, MemFlags::empty(), false);
                         return;
                     }
                 }

@@ -66,6 +66,10 @@ pub struct Once<T> {
     inner: crate::option::IntoIter<T>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Once<T> {}
+
 #[stable(feature = "iter_once", since = "1.2.0")]
 impl<T> Iterator for Once<T> {
     type Item = T;
