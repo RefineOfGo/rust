@@ -1044,6 +1044,7 @@ extern "C" {
         FunctionTy: &'a Type,
     ) -> &'a Value;
     pub fn LLVMSetFunctionCallConv(Fn: &Value, CC: c_uint);
+    pub fn LLVMSetGC(Fn: &Value, Name: *const c_char);
     pub fn LLVMRustAddFunctionAttributes<'a>(
         Fn: &'a Value,
         index: c_uint,

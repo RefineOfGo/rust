@@ -654,24 +654,33 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     ) -> &'ll Value {
         debug!("Store {:?} -> {:?} ({:?})", val, ptr, flags);
         assert_eq!(self.cx.type_kind(self.cx.val_ty(ptr)), TypeKind::Pointer);
+        let ty = self.cx.val_ty(val);
         unsafe {
-            let store = llvm::LLVMBuildStore(self.llbuilder, val, ptr);
-            let align =
-                if flags.contains(MemFlags::UNALIGNED) { 1 } else { align.bytes() as c_uint };
-            llvm::LLVMSetAlignment(store, align);
-            if flags.contains(MemFlags::VOLATILE) {
-                llvm::LLVMSetVolatile(store, llvm::True);
+            if self.cx.type_kind(ty) == TypeKind::Pointer {
+                assert!(!flags.contains(MemFlags::VOLATILE), "volatile pointer store");
+                assert!(!flags.contains(MemFlags::UNALIGNED), "unaligned pointer store");
+                assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal pointer store");
+                let nil = self.cx.const_null(ty);
+                self.call_intrinsic("llvm.gcwrite", &[val, &nil, ptr])
+            } else {
+                let store = llvm::LLVMBuildStore(self.llbuilder, val, ptr);
+                let align =
+                    if flags.contains(MemFlags::UNALIGNED) { 1 } else { align.bytes() as c_uint };
+                llvm::LLVMSetAlignment(store, align);
+                if flags.contains(MemFlags::VOLATILE) {
+                    llvm::LLVMSetVolatile(store, llvm::True);
+                }
+                if flags.contains(MemFlags::NONTEMPORAL) {
+                    // According to LLVM [1] building a nontemporal store must
+                    // *always* point to a metadata value of the integer 1.
+                    //
+                    // [1]: https://llvm.org/docs/LangRef.html#store-instruction
+                    let one = self.cx.const_i32(1);
+                    let node = llvm::LLVMMDNodeInContext(self.cx.llcx, &one, 1);
+                    llvm::LLVMSetMetadata(store, llvm::MD_nontemporal as c_uint, node);
+                }
+                store
             }
-            if flags.contains(MemFlags::NONTEMPORAL) {
-                // According to LLVM [1] building a nontemporal store must
-                // *always* point to a metadata value of the integer 1.
-                //
-                // [1]: https://llvm.org/docs/LangRef.html#store-instruction
-                let one = self.cx.const_i32(1);
-                let node = llvm::LLVMMDNodeInContext(self.cx.llcx, &one, 1);
-                llvm::LLVMSetMetadata(store, llvm::MD_nontemporal as c_uint, node);
-            }
-            store
         }
     }
 
@@ -682,17 +691,24 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         order: rustc_codegen_ssa::common::AtomicOrdering,
         size: Size,
     ) {
-        debug!("Store {:?} -> {:?}", val, ptr);
+        debug!("AtomicStore {:?} -> {:?}", val, ptr);
         assert_eq!(self.cx.type_kind(self.cx.val_ty(ptr)), TypeKind::Pointer);
+        let ty = self.cx.val_ty(val);
         unsafe {
-            let store = llvm::LLVMRustBuildAtomicStore(
-                self.llbuilder,
-                val,
-                ptr,
-                AtomicOrdering::from_generic(order),
-            );
-            // LLVM requires the alignment of atomic stores to be at least the size of the type.
-            llvm::LLVMSetAlignment(store, size.bytes() as c_uint);
+            if self.cx.type_kind(ty) == TypeKind::Pointer {
+                let nil = self.cx.const_null(ty);
+                self.atomic_fence(order, SynchronizationScope::CrossThread);
+                self.call_intrinsic("llvm.gcwrite", &[val, &nil, ptr]);
+            } else {
+                let store = llvm::LLVMRustBuildAtomicStore(
+                    self.llbuilder,
+                    val,
+                    ptr,
+                    AtomicOrdering::from_generic(order),
+                );
+                // LLVM requires the alignment of atomic stores to be at least the size of the type.
+                llvm::LLVMSetAlignment(store, size.bytes() as c_uint);
+            };
         }
     }
 
