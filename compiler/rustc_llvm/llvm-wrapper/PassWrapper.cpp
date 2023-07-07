@@ -372,6 +372,7 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
   if (UseWasmEH)
     Options.ExceptionModel = ExceptionHandling::Wasm;
 
+  Options.TLSSize = 12;
   Options.EmitStackSizeSection = EmitStackSizeSection;
 
 #if LLVM_VERSION_GE(21, 0)

@@ -89,6 +89,9 @@ impl AbiMap {
             (ExternAbi::RustCold, _) if self.os == OsKind::Windows => CanonAbi::Rust,
             (ExternAbi::RustCold, _) => CanonAbi::RustCold,
 
+            (ExternAbi::Rog, _) => CanonAbi::Rog,
+            (ExternAbi::RogCold, _) => CanonAbi::RogCold,
+
             (ExternAbi::Custom, _) => CanonAbi::Custom,
 
             (ExternAbi::System { .. }, ArchKind::X86)

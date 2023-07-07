@@ -1254,6 +1254,7 @@ pub(crate) fn start_codegen<'tcx>(
     let codegen = tcx.sess.time("codegen_crate", move || {
         if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
             // Skip crate items and just output metadata in -Z no-codegen mode.
+            tcx.ensure_ok().check_mono_items(());
             tcx.sess.dcx().abort_if_errors();
 
             // Linker::link will skip join_codegen in case of a CodegenResults Any value.

@@ -674,6 +674,9 @@ impl Ordering {
 #[repr(transparent)]
 pub struct Reverse<T>(#[stable(feature = "reverse_cmp_key", since = "1.19.0")] pub T);
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Reverse<T> {}
+
 #[stable(feature = "reverse_cmp_key", since = "1.19.0")]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 impl<T: [const] PartialOrd> const PartialOrd for Reverse<T> {

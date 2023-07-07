@@ -1128,6 +1128,10 @@ where
     }
 }
 
+fn check_mono_items(tcx: TyCtxt<'_>, (): ()) {
+    collector::collect_crate_mono_items(tcx, MonoItemCollectionStrategy::Eager);
+}
+
 fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> MonoItemPartitions<'_> {
     let collection_strategy = if tcx.sess.link_dead_code() {
         MonoItemCollectionStrategy::Eager
@@ -1313,6 +1317,7 @@ fn dump_mono_items_stats<'tcx>(
 }
 
 pub(crate) fn provide(providers: &mut Providers) {
+    providers.check_mono_items = check_mono_items;
     providers.collect_and_partition_mono_items = collect_and_partition_mono_items;
 
     providers.is_codegened_item =

@@ -331,6 +331,9 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                         | [sym::rustc_dirty, ..]
                         | [sym::rustc_if_this_changed, ..]
                         | [sym::rustc_then_this_would_need, ..] => self.check_rustc_dirty_clean(attr),
+                        [sym::no_gcwb, ..] => self.check_no_gcwb(hir_id, attr, span, target),
+                        [sym::no_split, ..] => self.check_no_split(hir_id, attr, span, target),
+                        [sym::no_checkpoint, ..] => self.check_no_checkpoint(hir_id, attr, span, target),
                         [sym::autodiff_forward, ..] | [sym::autodiff_reverse, ..] => {
                             self.check_autodiff(hir_id, attr, span, target)
                         }
@@ -651,9 +654,10 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     && self.tcx.def_kind(did).has_codegen_attrs()
                     && kind != &InlineAttr::Never
                 {
+                    let abi = self.tcx.fn_sig(did).skip_binder().abi();
                     let attrs = self.tcx.codegen_fn_attrs(did);
                     // Not checking naked as `#[inline]` is forbidden for naked functions anyways.
-                    if attrs.contains_extern_indicator() {
+                    if !abi.is_lto_aware() && attrs.contains_extern_indicator() {
                         self.tcx.emit_node_span_lint(
                             UNUSED_ATTRIBUTES,
                             hir_id,
@@ -1244,6 +1248,90 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
     fn check_rustc_dirty_clean(&self, attr: &Attribute) {
         if !self.tcx.sess.opts.unstable_opts.query_dep_graph {
             self.dcx().emit_err(errors::RustcDirtyClean { span: attr.span() });
+        }
+    }
+
+    /// Checks if `#[no_gcwb]` is applied to a function or closure.
+    fn check_no_gcwb(&self, hir_id: HirId, attr: &Attribute, span: Span, target: Target) {
+        match target {
+            Target::Fn
+            | Target::Closure
+            | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
+            Target::ForeignFn => {
+                self.tcx.emit_node_span_lint(
+                    UNUSED_ATTRIBUTES,
+                    hir_id,
+                    attr.span(),
+                    errors::NoGCWBForeign {
+                        span,
+                        attr_span: attr.span(),
+                        foreign_item_kind: match target {
+                            Target::ForeignFn => "function",
+                            Target::ForeignStatic => "static",
+                            _ => unreachable!(),
+                        },
+                    },
+                );
+            }
+            _ => {
+                self.tcx.dcx().emit_err(errors::NoGCWB { span });
+            }
+        }
+    }
+
+    /// Checks if `#[no_split]` is applied to a function or closure.
+    fn check_no_split(&self, hir_id: HirId, attr: &Attribute, span: Span, target: Target) {
+        match target {
+            Target::Fn
+            | Target::Closure
+            | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
+            Target::ForeignFn => {
+                self.tcx.emit_node_span_lint(
+                    UNUSED_ATTRIBUTES,
+                    hir_id,
+                    attr.span(),
+                    errors::NoSplitForeign {
+                        span,
+                        attr_span: attr.span(),
+                        foreign_item_kind: match target {
+                            Target::ForeignFn => "function",
+                            Target::ForeignStatic => "static",
+                            _ => unreachable!(),
+                        },
+                    },
+                );
+            }
+            _ => {
+                self.tcx.dcx().emit_err(errors::NoSplit { span });
+            }
+        }
+    }
+
+    /// Checks if `#[no_checkpoint]` is applied to a function or closure.
+    fn check_no_checkpoint(&self, hir_id: HirId, attr: &Attribute, span: Span, target: Target) {
+        match target {
+            Target::Fn
+            | Target::Closure
+            | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
+            Target::ForeignFn => {
+                self.tcx.emit_node_span_lint(
+                    UNUSED_ATTRIBUTES,
+                    hir_id,
+                    attr.span(),
+                    errors::NoCheckPointForeign {
+                        span,
+                        attr_span: attr.span(),
+                        foreign_item_kind: match target {
+                            Target::ForeignFn => "function",
+                            Target::ForeignStatic => "static",
+                            _ => unreachable!(),
+                        },
+                    },
+                );
+            }
+            _ => {
+                self.tcx.dcx().emit_err(errors::NoCheckPoint { span });
+            }
         }
     }
 

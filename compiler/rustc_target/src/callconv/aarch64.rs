@@ -32,6 +32,7 @@ where
 
         let valid_unit = match unit.kind {
             RegKind::Integer => false,
+            RegKind::Pointer => false,
             // The softfloat ABI treats floats like integers, so they
             // do not get homogeneous aggregate treatment.
             RegKind::Float => cx.target_spec().abi != Abi::SoftFloat,

@@ -269,8 +269,8 @@ passes_ineffective_unstable_impl = an `#[unstable]` annotation here has no effec
     .note = see issue #55436 <https://github.com/rust-lang/rust/issues/55436> for more information
 
 passes_inline_ignored_for_exported =
-    `#[inline]` is ignored on externally exported functions
-    .help = externally exported functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]`
+    `#[inline]` is ignored on externally exported non-lto-aware functions
+    .help = externally exported non-lto-aware functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]` attributes that uses ABI other than "C" or "rog"
 
 passes_inner_crate_level_attr =
     crate-level attribute should be in the root module
@@ -381,6 +381,36 @@ passes_no_main_function =
     .consider_adding_main_at_crate = consider adding a `main` function at the crate level
     .teach_note = If you don't know the basics of Rust, you can go look to the Rust Book to get started: https://doc.rust-lang.org/book/
     .non_function_main = non-function item at `crate::main` is found
+
+passes_no_gcwb =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_gcwb_foreign =
+    `#[no_gcwb]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = GC is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
+
+passes_no_split =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_split_foreign =
+    `#[no_split]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = stack checking is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
+
+passes_no_checkpoint =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_checkpoint_foreign =
+    `#[no_checkpoint]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = runtime check-point is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
 
 passes_non_exhaustive_with_default_field_values =
     `#[non_exhaustive]` can't be used to annotate items with default field values

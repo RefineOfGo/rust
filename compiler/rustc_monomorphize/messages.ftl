@@ -80,3 +80,11 @@ monomorphize_static_initializer_cyclic =  static initializer forms a cycle invol
     .note = cyclic static initializers are not supported for target `{$target}`
 
 monomorphize_symbol_already_defined = symbol `{$symbol}` is already defined
+
+monomorphize_managed_field_in_unmanaged_adt =
+    unmanaged structs/enums/unions cannot hold managed value of type `{$field_ty}`
+    .note = add `#[derive(Managed)]` to the containing struct/enum in order to hold this field
+
+monomorphize_dyn_trait_points_to_managed_value =
+    managed value of type `{$value_ty}` referenced by `{$target_ty}`
+    .note = dynamic values are always unmanaged, thus cannot hold any managed values
