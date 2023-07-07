@@ -10,6 +10,7 @@ use crate::value::Value;
 
 use rustc_codegen_ssa::base::{wants_msvc_seh, wants_wasm_eh};
 use rustc_codegen_ssa::errors as ssa_errors;
+use rustc_codegen_ssa::ptrinfo::PointerMap;
 use rustc_codegen_ssa::traits::*;
 use rustc_data_structures::base_n;
 use rustc_data_structures::fx::FxHashMap;
@@ -81,6 +82,8 @@ pub struct CodegenCx<'ll, 'tcx> {
     /// Mapping of scalar types to llvm types.
     pub scalar_lltypes: RefCell<FxHashMap<Ty<'tcx>, &'ll Type>>,
 
+    pub pointer_maps: RefCell<FxHashMap<Ty<'tcx>, PointerMap>>,
+    pub pointee_infos: RefCell<FxHashMap<(Ty<'tcx>, Size), Option<PointeeInfo>>>,
     pub isize_ty: &'ll Type,
 
     pub coverage_cx: Option<coverageinfo::CrateCoverageContext<'ll, 'tcx>>,
@@ -447,6 +450,8 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             compiler_used_statics: RefCell::new(Vec::new()),
             type_lowering: Default::default(),
             scalar_lltypes: Default::default(),
+            pointer_maps: Default::default(),
+            pointee_infos: Default::default(),
             isize_ty,
             coverage_cx,
             dbg_cx,
@@ -568,6 +573,10 @@ impl<'ll, 'tcx> MiscMethods<'tcx> for CodegenCx<'ll, 'tcx> {
 
     fn codegen_unit(&self) -> &'tcx CodegenUnit<'tcx> {
         self.codegen_unit
+    }
+
+    fn pointer_maps(&self) -> &RefCell<FxHashMap<Ty<'tcx>, PointerMap>> {
+        &self.pointer_maps
     }
 
     fn set_frame_pointer_type(&self, llfn: &'ll Value) {
@@ -966,6 +975,9 @@ impl<'ll> CodegenCx<'ll, '_> {
         }
 
         ifn!("llvm.ptrmask", fn(ptr, t_isize) -> ptr);
+        ifn!("llvm.gcwrite", fn(ptr, ptr, ptr) -> void);
+        ifn!("llvm.gcatomic.cas", fn(ptr, ptr, ptr, i1, i1) -> mk_struct! {ptr, i1});
+        ifn!("llvm.gcatomic.swap", fn(ptr, ptr, i1) -> ptr);
 
         None
     }

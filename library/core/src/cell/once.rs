@@ -35,6 +35,10 @@ pub struct OnceCell<T> {
     inner: UnsafeCell<Option<T>>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for OnceCell<T> {}
+
 impl<T> OnceCell<T> {
     /// Creates a new empty cell.
     #[inline]

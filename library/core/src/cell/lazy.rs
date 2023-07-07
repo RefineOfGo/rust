@@ -9,6 +9,10 @@ enum State<T, F> {
     Poisoned,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, F> Managed for State<T, F> {}
+
 /// A value which is initialized on the first access.
 ///
 /// For a thread-safe version of this struct, see [`std::sync::LazyLock`].
@@ -40,6 +44,10 @@ enum State<T, F> {
 pub struct LazyCell<T, F = fn() -> T> {
     state: UnsafeCell<State<T, F>>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, F: FnOnce() -> T> Managed for LazyCell<T, F> {}
 
 impl<T, F: FnOnce() -> T> LazyCell<T, F> {
     /// Creates a new lazy value with the given initializing function.

@@ -1,3 +1,5 @@
+use crate::ptrinfo::PointerMap;
+
 use super::BackendTypes;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_middle::mir::mono::CodegenUnit;
@@ -15,6 +17,7 @@ pub trait MiscMethods<'tcx>: BackendTypes {
     fn eh_personality(&self) -> Self::Value;
     fn sess(&self) -> &Session;
     fn codegen_unit(&self) -> &'tcx CodegenUnit<'tcx>;
+    fn pointer_maps(&self) -> &RefCell<FxHashMap<Ty<'tcx>, PointerMap>>;
     fn set_frame_pointer_type(&self, llfn: Self::Function);
     fn apply_target_cpu_attr(&self, llfn: Self::Function);
     /// Declares the extern "C" main function for the entry point. Returns None if the symbol already exists.

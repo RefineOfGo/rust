@@ -38,7 +38,7 @@ fn abi_can_unwind(abi: Abi) -> bool {
         | CCmseNonSecureCall
         | Wasm
         | Unadjusted => false,
-        RustIntrinsic | Rust | RustCall | RustCold => unreachable!(), // these ABIs are already skipped earlier
+        RustIntrinsic | Rust | RustCall | RustCold | RogCold => unreachable!(), // these ABIs are already skipped earlier
     }
 }
 
@@ -85,7 +85,9 @@ fn has_ffi_unwind_calls(tcx: TyCtxt<'_>, local_def_id: LocalDefId) -> bool {
 
         // Rust calls cannot themselves create foreign unwinds.
         // We assume this is true for intrinsics as well.
-        if let Abi::RustIntrinsic | Abi::Rust | Abi::RustCall | Abi::RustCold = sig.abi() {
+        if let Abi::RustIntrinsic | Abi::Rust | Abi::RustCall | Abi::RustCold | Abi::RogCold =
+            sig.abi()
+        {
             continue;
         };
 

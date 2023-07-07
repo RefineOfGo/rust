@@ -1,13 +1,17 @@
 use super::operand::{OperandRef, OperandValue};
 use super::place::PlaceRef;
 use super::FunctionCx;
+use crate::common::IntPredicate;
 use crate::errors;
 use crate::errors::InvalidMonomorphization;
 use crate::meth;
+use crate::ptrinfo::PointerMap;
 use crate::size_of_val;
 use crate::traits::*;
 use crate::MemFlags;
+use crate::{errors, ptrinfo};
 
+use rustc_middle::mir::{interpret::Allocation, ConstValue};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_session::config::OptLevel;
 use rustc_span::{sym, Span};
@@ -30,10 +34,12 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), layout);
+
     if allow_overlap {
-        bx.memmove(dst, align, src, align, size, flags);
+        bx.memmove(dst, align, src, align, size, flags, has_pointers);
     } else {
-        bx.memcpy(dst, align, src, align, size, flags);
+        bx.memcpy(dst, align, src, align, size, flags, has_pointers);
     }
 }
 
@@ -50,7 +56,8 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    bx.memset(dst, val, size, align, flags);
+    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), layout);
+    bx.memset(dst, val, size, align, flags, has_pointers);
 }
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -123,6 +130,15 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     if let OperandValue::Pair(_, meta) = args[0].val { Some(meta) } else { None };
                 let (_, llalign) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
                 llalign
+            }
+            sym::pointer_map_of => {
+                let layout = bx.layout_of(fn_args.type_at(0));
+                let ptrmap = PointerMap::resolve(bx.cx(), layout).encode();
+                let alloc = bx.tcx().mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(
+                    ptrmap.as_slice(),
+                ));
+                let val = ConstValue::Slice { data: alloc, meta: alloc.inner().size().bytes() };
+                OperandRef::from_const(bx, val, ret_ty).immediate_or_packed_pair(bx)
             }
             sym::vtable_size | sym::vtable_align => {
                 let vtable = args[0].immediate();
@@ -387,9 +403,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             let success = bx.from_immediate(success);
 
                             let dest = result.project_field(bx, 0);
-                            bx.store(val, dest.llval, dest.align);
+                            bx.store(val, dest.llval, dest.align, dest.layout);
                             let dest = result.project_field(bx, 1);
-                            bx.store(success, dest.llval, dest.align);
+                            bx.store_noptr(success, dest.llval, dest.align);
                         } else {
                             invalid_monomorphization(ty);
                         }
@@ -461,7 +477,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         };
 
                         let ty = fn_args.type_at(0);
-                        if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
+                        if int_type_width_signed(ty, bx.tcx()).is_some()
+                            || (ty.is_unsafe_ptr() && matches!(atom_op, AtomicRmwBinOp::AtomicXchg))
+                        {
                             let ptr = args[0].immediate();
                             let val = args[1].immediate();
                             bx.atomic_rmw(atom_op, ptr, val, parse_ordering(bx, ordering))
@@ -511,7 +529,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         if !fn_abi.ret.is_ignore() {
             if let PassMode::Cast { .. } = &fn_abi.ret.mode {
-                bx.store(llval, result.llval, result.align);
+                bx.store(llval, result.llval, result.align, result.layout);
             } else {
                 OperandRef::from_immediate_or_packed_pair(bx, llval, result.layout)
                     .val
