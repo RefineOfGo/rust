@@ -19,6 +19,10 @@ pub struct Inspect<I, F> {
     iter: I,
     f: F,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed, F> Managed for Inspect<I, F> {}
+
 impl<I, F> Inspect<I, F> {
     pub(in crate::iter) fn new(iter: I, f: F) -> Inspect<I, F> {
         Inspect { iter, f }

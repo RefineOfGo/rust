@@ -345,6 +345,7 @@ pub(crate) fn generate_enzyme_call<'ll, 'tcx>(
         llvm::UnnamedAddr::No,
         llvm::Visibility::Default,
         enzyme_ty,
+        None,
     );
 
     let num_args = llvm::LLVMCountParams(&fn_to_diff);
@@ -372,5 +373,5 @@ pub(crate) fn generate_enzyme_call<'ll, 'tcx>(
 
     let call = builder.call(enzyme_ty, None, None, ad_fn, &args, None, None);
 
-    builder.store_to_place(call, dest.val);
+    builder.store_to_place(call, dest.val, dest.layout);
 }
