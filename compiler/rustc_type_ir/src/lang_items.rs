@@ -28,6 +28,7 @@ pub enum TraitSolverLangItem {
     Future,
     FutureOutput,
     Iterator,
+    Managed,
     Metadata,
     Option,
     PointeeTrait,

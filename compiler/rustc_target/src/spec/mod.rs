@@ -2691,7 +2691,7 @@ impl Default for TargetOptions {
             emit_debug_gdb_scripts: true,
             requires_uwtable: false,
             default_uwtable: false,
-            simd_types_indirect: true,
+            simd_types_indirect: false,
             limit_rdylib_exports: true,
             override_export_symbols: None,
             merge_functions: MergeFunctions::Aliases,
@@ -2780,7 +2780,9 @@ impl Target {
             | RustCall
             | Unadjusted
             | Cdecl { .. }
-            | RustCold => true,
+            | RustCold
+            | Rog
+            | RogCold => true,
             EfiApi => {
                 ["arm", "aarch64", "riscv32", "riscv64", "x86", "x86_64"].contains(&&self.arch[..])
             }

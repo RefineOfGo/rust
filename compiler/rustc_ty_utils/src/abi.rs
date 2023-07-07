@@ -5,6 +5,7 @@ use rustc_abi::{BackendRepr, PointerKind, Scalar, Size};
 use rustc_hir as hir;
 use rustc_hir::lang_items::LangItem;
 use rustc_middle::bug;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{
     FnAbiError, HasParamEnv, HasTyCtxt, LayoutCx, LayoutOf, TyAndLayout, fn_can_unwind,
@@ -293,6 +294,8 @@ fn conv_from_spec_abi(tcx: TyCtxt<'_>, abi: SpecAbi, c_variadic: bool) -> Conv {
     use rustc_target::spec::abi::Abi::*;
     match tcx.sess.target.adjust_abi(abi, c_variadic) {
         RustIntrinsic | Rust | RustCall => Conv::Rust,
+        Rog => Conv::Rog,
+        RogCold => Conv::RogCold,
 
         // This is intentionally not using `Conv::Cold`, as that has to preserve
         // even SIMD registers, which is generally not a good trade-off.
@@ -676,7 +679,12 @@ fn fn_abi_adjust_for_abi<'tcx>(
 
     let tcx = cx.tcx();
 
-    if abi == SpecAbi::Rust || abi == SpecAbi::RustCall || abi == SpecAbi::RustIntrinsic {
+    if abi == SpecAbi::Rog
+        || abi == SpecAbi::RogCold
+        || abi == SpecAbi::Rust
+        || abi == SpecAbi::RustCall
+        || abi == SpecAbi::RustIntrinsic
+    {
         fn_abi.adjust_for_rust_abi(cx, abi);
 
         // Look up the deduced parameter attributes for this function, if we have its def ID and

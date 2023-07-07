@@ -64,6 +64,7 @@ register_builtin! {
     Default => default_expand,
     Debug => debug_expand,
     Hash => hash_expand,
+    Managed => managed_expand,
     Ord => ord_expand,
     PartialOrd => partial_ord_expand,
     Eq => eq_expand,
@@ -870,4 +871,14 @@ fn partial_ord_expand(span: Span, tt: &tt::Subtree) -> ExpandResult<tt::Subtree>
             }
         }
     })
+}
+
+fn managed_expand(span: Span, tt: &tt::Subtree) -> ExpandResult<tt::Subtree> {
+    let krate = dollar_crate(span);
+    expand_simple_derive(
+        span,
+        tt,
+        quote! { span => #krate::marker::Managed },
+        |_| quote! { span => },
+    )
 }

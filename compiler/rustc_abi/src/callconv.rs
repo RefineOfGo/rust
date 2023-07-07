@@ -14,6 +14,7 @@ use crate::{BackendRepr, FieldsShape, TyAbiInterface, TyAndLayout};
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum RegKind {
     Integer,
+    Pointer,
     Float,
     Vector,
 }
@@ -45,6 +46,12 @@ impl Reg {
 }
 
 impl Reg {
+    pub fn ptr<C: HasDataLayout>(cx: &C) -> Reg {
+        Reg { kind: RegKind::Pointer, size: cx.data_layout().pointer_size }
+    }
+}
+
+impl Reg {
     pub fn align<C: HasDataLayout>(&self, cx: &C) -> Align {
         let dl = cx.data_layout();
         match self.kind {
@@ -57,6 +64,10 @@ impl Reg {
                 65..=128 => dl.i128_align.abi,
                 _ => panic!("unsupported integer: {self:?}"),
             },
+            RegKind::Pointer => {
+                assert_eq!(self.size, dl.pointer_size, "invalid pointer size");
+                dl.pointer_align.abi
+            }
             RegKind::Float => match self.size.bits() {
                 16 => dl.f16_align.abi,
                 32 => dl.f32_align.abi,

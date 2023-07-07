@@ -290,8 +290,28 @@ impl CastTarget {
         }
     }
 
-    /// When you only access the range containing valid data, you can use this unaligned size;
-    /// otherwise, use the safer `size` method.
+    pub fn immediate<R: AsRef<[Reg]>>(regs: R) -> CastTarget {
+        let regs = regs.as_ref();
+        let mut prefix = [None; 8];
+
+        assert!(regs.len() <= 9);
+        let (tail, head) = regs.split_last().expect("cast into no registers");
+        head.iter().copied().enumerate().for_each(|(i, r)| prefix[i] = Some(r));
+
+        CastTarget {
+            prefix,
+            rest: Uniform::from(*tail),
+            attrs: ArgAttributes {
+                regular: ArgAttribute::default(),
+                arg_ext: ArgExtension::None,
+                pointee_size: Size::ZERO,
+                pointee_align: None,
+            },
+        }
+    }
+}
+
+impl CastTarget {
     pub fn unaligned_size<C: HasDataLayout>(&self, _cx: &C) -> Size {
         // Prefix arguments are passed in specific designated registers
         let prefix_size = self
@@ -339,8 +359,7 @@ pub struct ArgAbi<'a, Ty> {
 // Needs to be a custom impl because of the bounds on the `TyAndLayout` debug impl.
 impl<'a, Ty: fmt::Display> fmt::Debug for ArgAbi<'a, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ArgAbi { layout, mode } = self;
-        f.debug_struct("ArgAbi").field("layout", layout).field("mode", mode).finish()
+        f.debug_struct("ArgAbi").field("layout", &self.layout).field("mode", &self.mode).finish()
     }
 }
 
@@ -532,6 +551,8 @@ pub enum Conv {
     // should have its own backend (e.g. LLVM) support.
     C,
     Rust,
+    Rog,
+    RogCold,
 
     Cold,
     PreserveMost,
@@ -559,6 +580,13 @@ pub enum Conv {
     AvrNonBlockingInterrupt,
 
     RiscvInterrupt { kind: RiscvInterruptKind },
+}
+
+impl Conv {
+    #[inline(always)]
+    pub fn use_rogcc(self) -> bool {
+        matches!(self, Conv::Rog | Conv::Rust)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]
@@ -832,11 +860,28 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             assert!(is_indirect_not_on_stack);
 
             let size = arg.layout.size;
-            if !arg.layout.is_unsized() && size <= Pointer(AddressSpace::DATA).size(cx) {
+            let ptr_size = Pointer(AddressSpace::DATA).size(cx);
+
+            if !arg.layout.is_unsized() && size <= ptr_size * 8 {
+                let size_bytes = size.bytes_usize();
+                let ptr_size_bytes = ptr_size.bytes_usize();
+                let mut regs = vec![Reg::i64(); size_bytes / ptr_size_bytes];
+
+                // Mark pointer slots
+                for slot_idx in cx.pointer_map(arg.layout).exact_pointer_slots() {
+                    regs[slot_idx] = Reg::ptr(cx);
+                }
+
+                // Not an exact multiple of pointers.
+                let remains = size_bytes % ptr_size_bytes;
+                if remains != 0 {
+                    regs.push(Reg { kind: RegKind::Integer, size: Size::from_bytes(remains) });
+                }
+
                 // We want to pass small aggregates as immediates, but using
                 // an LLVM aggregate type for this leads to bad optimizations,
-                // so we pick an appropriately sized integer type instead.
-                arg.cast_to(Reg { kind: RegKind::Integer, size });
+                // so we pick an appropriately sized register instead.
+                arg.cast_to(CastTarget::immediate(regs));
             }
         }
     }
@@ -849,6 +894,9 @@ impl FromStr for Conv {
         match s {
             "C" => Ok(Conv::C),
             "Rust" => Ok(Conv::Rust),
+            "Rog" => Ok(Conv::Rog),
+            "RogCold" => Ok(Conv::RogCold),
+            "Cold" => Ok(Conv::Cold),
             "RustCold" => Ok(Conv::Rust),
             "ArmAapcs" => Ok(Conv::ArmAapcs),
             "CCmseNonSecureCall" => Ok(Conv::CCmseNonSecureCall),

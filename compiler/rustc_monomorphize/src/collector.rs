@@ -210,32 +210,33 @@ mod move_check;
 use std::path::PathBuf;
 
 use move_check::MoveCheckState;
-use rustc_data_structures::sync::{LRef, MTLock, par_for_each_in};
+use rustc_data_structures::sync::{par_for_each_in, LRef, MTLock};
 use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, DefIdMap, LocalDefId};
 use rustc_hir::lang_items::LangItem;
+use rustc_middle::managed::{ManagedChecker, ManagedSelf};
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::mir::interpret::{AllocId, ErrorHandled, GlobalAlloc, Scalar};
 use rustc_middle::mir::mono::{InstantiationMode, MonoItem};
-use rustc_middle::mir::visit::Visitor as MirVisitor;
-use rustc_middle::mir::{self, Location, MentionedItem, traversal};
+use rustc_middle::mir::visit::{TyContext, Visitor as MirVisitor};
+use rustc_middle::mir::{self, traversal, Location, MentionedItem};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::print::{shrunk_instance_name, with_no_trimmed_paths};
 use rustc_middle::ty::{
-    self, AssocKind, GenericArgs, GenericParamDefKind, Instance, InstanceKind, Ty, TyCtxt,
-    TypeFoldable, TypeVisitableExt, VtblEntry,
+    self, AssocKind, GenericArgs, GenericParamDefKind, Instance, InstanceKind, ParamEnv, Ty,
+    TyCtxt, TypeFoldable, TypeVisitableExt, VtblEntry,
 };
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, span_bug};
-use rustc_session::Limit;
 use rustc_session::config::EntryFnType;
-use rustc_span::source_map::{Spanned, dummy_spanned, respan};
-use rustc_span::symbol::{Ident, sym};
-use rustc_span::{DUMMY_SP, Span};
+use rustc_session::Limit;
+use rustc_span::source_map::{dummy_spanned, respan, Spanned};
+use rustc_span::symbol::{sym, Ident};
+use rustc_span::{Span, DUMMY_SP};
 use rustc_target::abi::Size;
 use tracing::{debug, instrument, trace};
 
@@ -613,6 +614,7 @@ struct MirUsedCollector<'a, 'tcx> {
     instance: Instance<'tcx>,
     visiting_call_terminator: bool,
     move_check: move_check::MoveCheckState,
+    mc: ManagedChecker<'tcx>,
 }
 
 impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
@@ -623,7 +625,7 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
         trace!("monomorphize: self.instance={:?}", self.instance);
         self.instance.instantiate_mir_and_normalize_erasing_regions(
             self.tcx,
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             ty::EarlyBinder::bind(value),
         )
     }
@@ -655,6 +657,33 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
+    fn visit_ty(&mut self, ty: Ty<'tcx>, _: TyContext) {
+        let ty = self.monomorphize(ty);
+        self.super_ty(ty);
+
+        if let ty::Adt(adt, args) = *ty.kind() {
+            if self.mc.is_managed_self(ty) != ManagedSelf::Yes {
+                if let Some(field) = self.mc.find_managed_field(adt, args) {
+                    let field_ty = field.ty(self.tcx, args).to_string();
+                    let field_span = self.tcx.def_span(field.did);
+                    if adt.is_union() {
+                        self.tcx.dcx().emit_err(errors::ManagedUnionField {
+                            field_span,
+                            field_ty,
+                            note: (),
+                        });
+                    } else {
+                        self.tcx.dcx().emit_err(errors::ManagedFieldInUnmanagedAdt {
+                            field_span,
+                            field_ty,
+                            note: (),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     fn visit_rvalue(&mut self, rvalue: &mir::Rvalue<'tcx>, location: Location) {
         debug!("visiting rvalue {:?}", *rvalue);
 
@@ -684,6 +713,14 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                 if (target_ty.is_trait() && !source_ty.is_trait())
                     || (target_ty.is_dyn_star() && !source_ty.is_dyn_star())
                 {
+                    if self.mc.is_managed(source_ty) {
+                        self.tcx.dcx().emit_err(errors::DynTraitPointsToManagedValue {
+                            span,
+                            value_ty: source_ty.to_string(),
+                            target_ty: target_ty.to_string(),
+                            note: (),
+                        });
+                    }
                     create_mono_items_for_vtable_methods(
                         self.tcx,
                         target_ty,
@@ -860,7 +897,7 @@ fn visit_fn_use<'tcx>(
         let instance = if is_direct_call {
             ty::Instance::expect_resolve(tcx, ty::ParamEnv::reveal_all(), def_id, args, source)
         } else {
-            match ty::Instance::resolve_for_fn_ptr(tcx, ty::ParamEnv::reveal_all(), def_id, args) {
+            match ty::Instance::resolve_for_fn_ptr(tcx, ParamEnv::reveal_all(), def_id, args) {
                 Some(instance) => instance,
                 _ => bug!("failed to resolve instance for {ty}"),
             }
@@ -962,14 +999,18 @@ fn should_codegen_locally<'tcx>(tcx: TyCtxtAt<'tcx>, instance: Instance<'tcx>) -
         return false;
     }
 
-    if !tcx.is_mir_available(def_id) {
-        tcx.dcx().emit_fatal(NoOptimizedMir {
-            span: tcx.def_span(def_id),
-            crate_name: tcx.crate_name(def_id.krate),
-        });
+    if tcx.is_mir_available(def_id) {
+        return true;
     }
 
-    true
+    if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
+        return false;
+    }
+
+    tcx.dcx().emit_fatal(NoOptimizedMir {
+        span: tcx.def_span(def_id),
+        crate_name: tcx.crate_name(def_id.krate),
+    });
 }
 
 /// For a given pair of source and target type that occur in an unsizing coercion,
@@ -1019,7 +1060,7 @@ fn find_vtable_types_for_unsizing<'tcx>(
     target_ty: Ty<'tcx>,
 ) -> (Ty<'tcx>, Ty<'tcx>) {
     let ptr_vtable = |inner_source: Ty<'tcx>, inner_target: Ty<'tcx>| {
-        let param_env = ty::ParamEnv::reveal_all();
+        let param_env = ParamEnv::reveal_all();
         let type_has_metadata = |ty: Ty<'tcx>| -> bool {
             if ty.is_sized(tcx.tcx, param_env) {
                 return false;
@@ -1227,6 +1268,7 @@ fn collect_items_of_instance<'tcx>(
         instance,
         visiting_call_terminator: false,
         move_check: MoveCheckState::new(),
+        mc: ManagedChecker::new(tcx),
     };
 
     if mode == CollectionMode::UsedItems {
@@ -1481,13 +1523,13 @@ impl<'v> RootCollector<'_, 'v> {
         // regions must appear in the argument
         // listing.
         let main_ret_ty = self.tcx.normalize_erasing_regions(
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             main_ret_ty.no_bound_vars().unwrap(),
         );
 
         let start_instance = Instance::expect_resolve(
             self.tcx,
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             start_def_id,
             self.tcx.mk_args(&[main_ret_ty.into()]),
             DUMMY_SP,
@@ -1545,7 +1587,7 @@ fn create_mono_items_for_default_impls<'tcx>(
         return;
     }
 
-    let param_env = ty::ParamEnv::reveal_all();
+    let param_env = ParamEnv::reveal_all();
     let trait_ref = tcx.normalize_erasing_regions(param_env, trait_ref);
     let overridden_methods = tcx.impl_item_implementor_ids(item.owner_id);
     for method in tcx.provided_trait_methods(trait_ref.def_id) {
