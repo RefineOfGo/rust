@@ -69,6 +69,7 @@ register_builtin! {
     Default => default_expand,
     Debug => debug_expand,
     Hash => hash_expand,
+    Managed => managed_expand,
     Ord => ord_expand,
     PartialOrd => partial_ord_expand,
     Eq => eq_expand,
@@ -1467,4 +1468,14 @@ fn coerce_pointee_expand(
             result
         }
     }
+}
+
+fn managed_expand(span: Span, tt: &tt::TopSubtree) -> ExpandResult<tt::TopSubtree> {
+    let krate = dollar_crate(span);
+    expand_simple_derive(
+        span,
+        tt,
+        quote! { span => #krate::marker::Managed },
+        |_| quote! { span => },
+    )
 }

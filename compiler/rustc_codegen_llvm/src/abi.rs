@@ -7,6 +7,7 @@ use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::{PlaceRef, PlaceValue};
 use rustc_codegen_ssa::traits::*;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::LayoutOf;
 use rustc_middle::{bug, ty};
@@ -120,6 +121,10 @@ impl LlvmType for Reg {
     fn llvm_type<'ll>(&self, cx: &CodegenCx<'ll, '_>) -> &'ll Type {
         match self.kind {
             RegKind::Integer => cx.type_ix(self.size.bits()),
+            RegKind::Pointer => {
+                assert_eq!(self.size, cx.data_layout().pointer_size, "invalid pointer size");
+                cx.type_ptr()
+            }
             RegKind::Float => match self.size.bits() {
                 16 => cx.type_f16(),
                 32 => cx.type_f32(),
@@ -232,9 +237,10 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     cmp::min(cast.unaligned_size(bx).bytes(), self.layout.size.bytes());
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
+                let has_pointers = bx.pointer_map(dst.layout).has_pointers();
                 bx.lifetime_start(llscratch, scratch_size);
                 // ...store the value...
-                bx.store(val, llscratch, scratch_align);
+                bx.store_noptr(val, llscratch, scratch_align);
                 // ... and then memcpy it to the intended destination.
                 bx.memcpy(
                     dst.val.llval,
@@ -243,6 +249,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     scratch_align,
                     bx.const_usize(copy_bytes),
                     MemFlags::empty(),
+                    has_pointers,
                 );
                 bx.lifetime_end(llscratch, scratch_size);
             }
@@ -333,9 +340,8 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             if self.c_variadic { &self.args[..self.fixed_count as usize] } else { &self.args };
 
         // This capacity calculation is approximate.
-        let mut llargument_tys = Vec::with_capacity(
-            self.args.len() + if let PassMode::Indirect { .. } = self.ret.mode { 1 } else { 0 },
-        );
+        let mut llargument_tys =
+            Vec::with_capacity(self.args.len() + (self.ret.is_indirect() as usize));
 
         let llreturn_ty = match &self.ret.mode {
             PassMode::Ignore => cx.type_void(),
@@ -664,10 +670,11 @@ impl llvm::CallConv {
     pub(crate) fn from_conv(conv: Conv, arch: &str) -> Self {
         match conv {
             Conv::C
-            | Conv::Rust
             | Conv::CCmseNonSecureCall
             | Conv::CCmseNonSecureEntry
             | Conv::RiscvInterrupt { .. } => llvm::CCallConv,
+            Conv::Rust | Conv::Rog => llvm::ROGCallConv,
+            Conv::RogCold => llvm::ROGColdCallConv,
             Conv::Cold => llvm::ColdCallConv,
             Conv::PreserveMost => llvm::PreserveMost,
             Conv::PreserveAll => llvm::PreserveAll,

@@ -11,9 +11,9 @@ use rustc_data_structures::stable_hasher::{
     HashStable, StableCompare, StableHasher, ToStableHashKey,
 };
 use rustc_data_structures::sync::Lock;
-use rustc_macros::{Decodable, Encodable, HashStable_Generic, symbols};
+use rustc_macros::{symbols, Decodable, Encodable, HashStable_Generic};
 
-use crate::{DUMMY_SP, Edition, Span, with_session_globals};
+use crate::{with_session_globals, Edition, Span, DUMMY_SP};
 
 #[cfg(test)]
 mod tests;
@@ -208,6 +208,7 @@ symbols! {
         Cow,
         Debug,
         DebugStruct,
+        DebugTuple,
         Decodable,
         Decoder,
         Default,
@@ -274,6 +275,7 @@ symbols! {
         LintDiagnostic,
         LintPass,
         LocalKey,
+        Managed,
         Mutex,
         MutexGuard,
         N,
@@ -762,9 +764,7 @@ symbols! {
         debug_assert_ne_macro,
         debug_assertions,
         debug_struct,
-        debug_struct_fields_finish,
         debug_tuple,
-        debug_tuple_fields_finish,
         debugger_visualizer,
         decl_macro,
         declare_lint_pass,
@@ -957,6 +957,7 @@ symbols! {
         field_init_shorthand,
         file,
         file_options,
+        finish,
         float,
         float_to_int_unchecked,
         floorf128,
@@ -1252,6 +1253,7 @@ symbols! {
         macro_vis_matcher,
         macros_in_extern,
         main,
+        managed,
         managed_boxes,
         manually_drop,
         map,
@@ -1405,17 +1407,20 @@ symbols! {
         nll,
         no,
         no_builtins,
+        no_checkpoint,
         no_core,
         no_coverage,
         no_crate_inject,
         no_debug,
         no_default_passes,
+        no_gcwb,
         no_implicit_prelude,
         no_inline,
         no_link,
         no_main,
         no_mangle,
         no_sanitize,
+        no_split,
         no_stack_check,
         no_std,
         nomem,
@@ -1540,6 +1545,7 @@ symbols! {
         pointee_trait,
         pointer,
         pointer_like,
+        pointer_map_of,
         poll,
         poll_next,
         post_dash_lto: "post-lto",
@@ -2629,10 +2635,10 @@ pub mod kw {
 /// For example `sym::rustfmt` or `sym::u8`.
 pub mod sym {
     // Used from a macro in `librustc_feature/accepted.rs`
-    use super::Symbol;
     pub use super::kw::MacroRules as macro_rules;
     #[doc(inline)]
     pub use super::sym_generated::*;
+    use super::Symbol;
 
     /// Get the symbol for an integer.
     ///

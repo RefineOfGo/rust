@@ -5,6 +5,27 @@ use rustc_middle::ty::Ty;
 use rustc_span::{Span, Symbol};
 
 #[derive(Diagnostic)]
+#[diag(monomorphize_managed_field_in_unmanaged_adt)]
+pub(crate) struct ManagedFieldInUnmanagedAdt {
+    #[primary_span]
+    pub field_span: Span,
+    pub field_ty: String,
+    #[note]
+    pub note: (),
+}
+
+#[derive(Diagnostic)]
+#[diag(monomorphize_dyn_trait_points_to_managed_value)]
+pub(crate) struct DynTraitPointsToManagedValue {
+    #[primary_span]
+    pub span: Span,
+    pub value_ty: String,
+    pub target_ty: String,
+    #[note]
+    pub note: (),
+}
+
+#[derive(Diagnostic)]
 #[diag(monomorphize_recursion_limit)]
 pub(crate) struct RecursionLimit {
     #[primary_span]

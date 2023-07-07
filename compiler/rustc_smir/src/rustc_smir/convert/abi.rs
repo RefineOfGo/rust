@@ -98,6 +98,8 @@ impl<'tcx> Stable<'tcx> for callconv::Conv {
         match self {
             Conv::C => CallConvention::C,
             Conv::Rust => CallConvention::Rust,
+            Conv::Rog => CallConvention::Rog,
+            Conv::RogCold => CallConvention::RogCold,
             Conv::Cold => CallConvention::Cold,
             Conv::PreserveMost => CallConvention::PreserveMost,
             Conv::PreserveAll => CallConvention::PreserveAll,

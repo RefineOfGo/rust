@@ -13,7 +13,7 @@ use std::ops::{Bound, Deref};
 use std::sync::{Arc, OnceLock};
 use std::{fmt, iter, mem};
 
-use rustc_abi::{ExternAbi, FieldIdx, Layout, LayoutData, TargetDataLayout, VariantIdx};
+use rustc_abi::{ExternAbi, FieldIdx, Layout, LayoutData, Reg, TargetDataLayout, VariantIdx};
 use rustc_ast as ast;
 use rustc_data_structures::defer;
 use rustc_data_structures::fingerprint::Fingerprint;
@@ -66,6 +66,7 @@ use crate::middle::codegen_fn_attrs::{CodegenFnAttrs, TargetFeature};
 use crate::middle::{resolve_bound_vars, stability};
 use crate::mir::interpret::{self, Allocation, ConstAllocation};
 use crate::mir::{Body, Local, Place, PlaceElem, ProjectionKind, Promoted};
+use crate::ptrinfo::PointerMap;
 use crate::query::plumbing::QuerySystem;
 use crate::query::{IntoQueryParam, LocalCrate, Providers, TyCtxtAt};
 use crate::thir::Thir;
@@ -710,6 +711,7 @@ bidirectional_lang_item_map! {
     Future,
     FutureOutput,
     Iterator,
+    Managed,
     Metadata,
     Option,
     PointeeTrait,
@@ -1099,13 +1101,10 @@ impl<'tcx> CommonLifetimes<'tcx> {
             .map(|i| {
                 (0..NUM_PREINTERNED_RE_LATE_BOUNDS_V)
                     .map(|v| {
-                        mk(ty::ReBound(
-                            ty::DebruijnIndex::from(i),
-                            ty::BoundRegion {
-                                var: ty::BoundVar::from(v),
-                                kind: ty::BoundRegionKind::Anon,
-                            },
-                        ))
+                        mk(ty::ReBound(ty::DebruijnIndex::from(i), ty::BoundRegion {
+                            var: ty::BoundVar::from(v),
+                            kind: ty::BoundRegionKind::Anon,
+                        }))
                     })
                     .collect()
             })
@@ -1389,6 +1388,13 @@ pub struct GlobalCtxt<'tcx> {
     /// Data layout specification for the current target.
     pub data_layout: TargetDataLayout,
 
+    /// Caches the result of Pointer Map calculation for each Ty.
+    pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
+    pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
+
+    /// Caches the result of Register Map calculation for each Ty.
+    pub register_maps: Lock<FxHashMap<Ty<'tcx>, Vec<Reg>>>,
+
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: interpret::AllocMap<'tcx>,
 
@@ -1607,6 +1613,9 @@ impl<'tcx> TyCtxt<'tcx> {
             new_solver_evaluation_cache: Default::default(),
             canonical_param_env_cache: Default::default(),
             data_layout,
+            pointer_maps: Default::default(),
+            managed_cache: Default::default(),
+            register_maps: Default::default(),
             alloc_map: interpret::AllocMap::new(),
             current_gcx,
         });
@@ -3148,15 +3157,12 @@ impl<'tcx> TyCtxt<'tcx> {
                     }
 
                     let generics = self.generics_of(new_parent);
-                    return ty::Region::new_early_param(
-                        self,
-                        ty::EarlyParamRegion {
-                            index: generics
-                                .param_def_id_to_index(self, ebv.to_def_id())
-                                .expect("early-bound var should be present in fn generics"),
-                            name: self.item_name(ebv.to_def_id()),
-                        },
-                    );
+                    return ty::Region::new_early_param(self, ty::EarlyParamRegion {
+                        index: generics
+                            .param_def_id_to_index(self, ebv.to_def_id())
+                            .expect("early-bound var should be present in fn generics"),
+                        name: self.item_name(ebv.to_def_id()),
+                    });
                 }
                 resolve_bound_vars::ResolvedArg::LateBound(_, _, lbv) => {
                     let new_parent = self.local_parent(lbv);

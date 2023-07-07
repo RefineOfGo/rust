@@ -264,6 +264,10 @@ pub struct Builder {
     stack_size: Option<usize>,
     // Skip running and inheriting the thread spawn hooks
     no_hooks: bool,
+    // The base address of the stack for the spawned thread, not all
+    // operating systems support this.
+    #[cfg(all(unix, not(target_os = "espidf")))]
+    stack_base: Option<usize>,
 }
 
 impl Builder {
@@ -287,7 +291,7 @@ impl Builder {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn new() -> Builder {
-        Builder { name: None, stack_size: None, no_hooks: false }
+        Builder { name: None, stack_size: None, no_hooks: false, stack_base: None }
     }
 
     /// Names the thread-to-be. Currently the name is used for identification
@@ -350,6 +354,37 @@ impl Builder {
     #[unstable(feature = "thread_spawn_hook", issue = "132951")]
     pub fn no_hooks(mut self) -> Builder {
         self.no_hooks = true;
+        self
+    }
+
+    /// Sets the base of the stack for the new thread. The stack base must
+    /// align to 16-byte boundary.
+    ///
+    /// This is VERY UNSAFE, since setting arbitrary values as stack base can
+    /// easily crash the program.
+    ///
+    /// Advanced users only.
+    #[cfg(all(unix, not(target_os = "espidf")))]
+    #[stable(feature = "rog", since = "1.0.0")]
+    pub unsafe fn stack_base(self, base: usize) -> io::Result<Builder> {
+        if base & 0x0f == 0 {
+            Ok(unsafe { self.stack_base_unchecked(base) })
+        } else {
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "stack must be 16-byte aligned"))
+        }
+    }
+
+    /// Sets the base of the stack for the new thread, without any alignment
+    /// checking.
+    ///
+    /// This is VERY UNSAFE, since setting arbitrary values as stack base can
+    /// easily crash the program.
+    ///
+    /// Advanced users only.
+    #[cfg(all(unix, not(target_os = "espidf")))]
+    #[stable(feature = "rog", since = "1.0.0")]
+    pub unsafe fn stack_base_unchecked(mut self, base: usize) -> Builder {
+        self.stack_base = Some(base);
         self
     }
 
@@ -478,7 +513,13 @@ impl Builder {
         F: Send,
         T: Send,
     {
-        let Builder { name, stack_size, no_hooks } = self;
+        let Builder {
+            name,
+            stack_size,
+            no_hooks,
+            #[cfg(all(unix, not(target_os = "espidf")))]
+            stack_base,
+        } = self;
 
         let stack_size = stack_size.unwrap_or_else(|| {
             static MIN: AtomicUsize = AtomicUsize::new(0);
@@ -595,7 +636,14 @@ impl Builder {
             // Similarly, the `sys` implementation must guarantee that no references to the closure
             // exist after the thread has terminated, which is signaled by `Thread::join`
             // returning.
-            native: unsafe { imp::Thread::new(stack_size, main)? },
+            native: unsafe {
+                imp::Thread::new(
+                    stack_size,
+                    #[cfg(all(unix, not(target_os = "espidf")))]
+                    stack_base,
+                    main,
+                )?
+            },
             thread: my_thread,
             packet: my_packet,
         })

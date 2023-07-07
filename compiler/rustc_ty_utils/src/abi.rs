@@ -270,6 +270,8 @@ fn conv_from_spec_abi(tcx: TyCtxt<'_>, abi: ExternAbi, c_variadic: bool) -> Conv
     use rustc_abi::ExternAbi::*;
     match tcx.sess.target.adjust_abi(abi, c_variadic) {
         RustIntrinsic | Rust | RustCall => Conv::Rust,
+        Rog => Conv::Rog,
+        RogCold => Conv::RogCold,
 
         // This is intentionally not using `Conv::Cold`, as that has to preserve
         // even SIMD registers, which is generally not a good trade-off.
@@ -685,7 +687,12 @@ fn fn_abi_adjust_for_abi<'tcx>(
 
     let tcx = cx.tcx();
 
-    if abi == ExternAbi::Rust || abi == ExternAbi::RustCall || abi == ExternAbi::RustIntrinsic {
+    if abi == ExternAbi::Rog
+        || abi == ExternAbi::RogCold
+        || abi == ExternAbi::Rust
+        || abi == ExternAbi::RustCall
+        || abi == ExternAbi::RustIntrinsic
+    {
         fn_abi.adjust_for_rust_abi(cx, abi);
 
         // Look up the deduced parameter attributes for this function, if we have its def ID and
