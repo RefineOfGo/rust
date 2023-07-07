@@ -178,6 +178,9 @@ pub struct Mutex<T: ?Sized> {
     data: UnsafeCell<T>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for Mutex<T> {}
+
 /// `T` must be `Send` for a [`Mutex`] to be `Send` because it is possible to acquire
 /// the owned `T` from the `Mutex` via [`into_inner`].
 ///
@@ -226,6 +229,9 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
     lock: &'a Mutex<T>,
     poison: poison::Guard,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MutexGuard<'_, T> {}
 
 /// A [`MutexGuard`] is not `Send` to maximize platform portablity.
 ///
@@ -276,6 +282,9 @@ pub struct MappedMutexGuard<'a, T: ?Sized + 'a> {
     poison: poison::Guard,
     _variance: PhantomData<&'a mut T>,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MappedMutexGuard<'_, T> {}
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedMutexGuard<'_, T> {}

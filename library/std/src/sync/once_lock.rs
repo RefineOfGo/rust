@@ -128,6 +128,9 @@ pub struct OnceLock<T> {
     _marker: PhantomData<T>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for OnceLock<T> {}
+
 impl<T> OnceLock<T> {
     /// Creates a new uninitialized cell.
     #[inline]

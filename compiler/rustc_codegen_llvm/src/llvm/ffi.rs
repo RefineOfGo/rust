@@ -108,6 +108,8 @@ pub(crate) enum CallConv {
     PreserveMost = 14,
     PreserveAll = 15,
     Tail = 18,
+    ROGCallConv = 50,
+    ROGColdCallConv = 51,
     X86StdcallCallConv = 64,
     X86FastcallCallConv = 65,
     ArmAapcsCallConv = 67,
@@ -423,6 +425,20 @@ pub(crate) enum AtomicOrdering {
     Release = 5,
     AcquireRelease = 6,
     SequentiallyConsistent = 7,
+}
+
+impl AtomicOrdering {
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            AtomicOrdering::NotAtomic => "not_atomic",
+            AtomicOrdering::Unordered => "unordered",
+            AtomicOrdering::Monotonic => "monotonic",
+            AtomicOrdering::Acquire => "acquire",
+            AtomicOrdering::Release => "release",
+            AtomicOrdering::AcquireRelease => "acq_rel",
+            AtomicOrdering::SequentiallyConsistent => "seq_cst",
+        }
+    }
 }
 
 impl AtomicOrdering {
@@ -1194,6 +1210,8 @@ unsafe extern "C" {
 
     // Operations on functions
     pub(crate) fn LLVMSetFunctionCallConv(Fn: &Value, CC: c_uint);
+    pub(crate) fn LLVMSetGC(Fn: &Value, Name: *const c_char);
+    pub(crate) fn LLVMGetGC(Fn: &Value) -> *const c_char;
 
     // Operations on parameters
     pub(crate) fn LLVMIsAArgument(Val: &Value) -> Option<&Value>;
@@ -1822,6 +1840,7 @@ unsafe extern "C" {
 
     /// See llvm::LLVMTypeKind::getTypeID.
     pub(crate) fn LLVMRustGetTypeKind(Ty: &Type) -> TypeKind;
+    pub(crate) fn LLVMRustGetTypeSize(M: &Module, Ty: &Type) -> usize;
 
     // Operations on all values
     pub(crate) fn LLVMRustGlobalAddMetadata<'a>(
@@ -1830,6 +1849,7 @@ unsafe extern "C" {
         Metadata: &'a Metadata,
     );
     pub(crate) fn LLVMRustIsNonGVFunctionPointerTy(Val: &Value) -> bool;
+    pub(crate) fn LLVMRustIsLocalFrame(Val: &Value) -> bool;
 
     // Operations on scalar constants
     pub(crate) fn LLVMRustConstIntGetZExtValue(ConstantVal: &ConstantInt, Value: &mut u64) -> bool;
@@ -1914,6 +1934,7 @@ unsafe extern "C" {
         SrcAlign: c_uint,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
     pub(crate) fn LLVMRustBuildMemMove<'a>(
         B: &Builder<'a>,
@@ -1923,6 +1944,7 @@ unsafe extern "C" {
         SrcAlign: c_uint,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
     pub(crate) fn LLVMRustBuildMemSet<'a>(
         B: &Builder<'a>,
@@ -1931,6 +1953,7 @@ unsafe extern "C" {
         Val: &'a Value,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
 
     pub(crate) fn LLVMRustBuildVectorReduceFAdd<'a>(

@@ -27,6 +27,8 @@ pub enum CanonAbi {
     C,
     Rust,
     RustCold,
+    Rog,
+    RogCold,
 
     /// ABIs relevant to 32-bit Arm targets
     Arm(ArmCall),
@@ -65,6 +67,8 @@ impl CanonAbi {
             CanonAbi::C => ExternAbi::C { unwind: false },
             CanonAbi::Rust => ExternAbi::Rust,
             CanonAbi::RustCold => ExternAbi::RustCold,
+            CanonAbi::Rog => ExternAbi::Rog,
+            CanonAbi::RogCold => ExternAbi::RogCold,
             CanonAbi::Arm(arm_call) => match arm_call {
                 ArmCall::Aapcs => ExternAbi::Aapcs { unwind: false },
                 ArmCall::CCmseNonSecureCall => ExternAbi::CCmseNonSecureCall,

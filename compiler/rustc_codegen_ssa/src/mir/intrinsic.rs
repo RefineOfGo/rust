@@ -1,6 +1,7 @@
 use rustc_abi::WrappingRange;
 use rustc_middle::bug;
 use rustc_middle::mir::SourceInfo;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_session::config::OptLevel;
 use rustc_span::sym;
@@ -26,10 +27,12 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+    let has_pointers = bx.has_pointers(layout);
+
     if allow_overlap {
-        bx.memmove(dst, align, src, align, size, flags);
+        bx.memmove(dst, align, src, align, size, flags, has_pointers);
     } else {
-        bx.memcpy(dst, align, src, align, size, flags);
+        bx.memcpy(dst, align, src, align, size, flags, has_pointers);
     }
 }
 
@@ -46,7 +49,8 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    bx.memset(dst, val, size, align, flags);
+    let has_pointers = bx.has_pointers(layout);
+    bx.memset(dst, val, size, align, flags, has_pointers);
 }
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -92,9 +96,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         let ret_llval = |bx: &mut Bx, llval| {
             if result.layout.ty.is_bool() {
                 let val = bx.from_immediate(llval);
-                bx.store_to_place(val, result.val);
+                bx.store_to_place(val, result.val, result.layout);
             } else if !result.layout.ty.is_unit() {
-                bx.store_to_place(llval, result.val);
+                bx.store_to_place(llval, result.val, result.layout);
             }
             Ok(())
         };
@@ -152,6 +156,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 value
             }
             sym::pref_align_of
+            | sym::pointer_map_of
             | sym::needs_drop
             | sym::type_id
             | sym::type_name
@@ -417,9 +422,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             let success = bx.from_immediate(success);
 
                             let dest = result.project_field(bx, 0);
-                            bx.store_to_place(val, dest.val);
+                            bx.store_to_place(val, dest.val, dest.layout);
                             let dest = result.project_field(bx, 1);
-                            bx.store_to_place(success, dest.val);
+                            bx.store_to_place_noptr(success, dest.val);
                         } else {
                             invalid_monomorphization(ty);
                         }
@@ -429,10 +434,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     "store" => {
                         let ty = fn_args.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_raw_ptr() {
-                            let size = bx.layout_of(ty).size;
+                            let layout = bx.layout_of(ty);
                             let val = args[1].immediate();
                             let ptr = args[0].immediate();
-                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), size);
+                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), layout);
                         } else {
                             invalid_monomorphization(ty);
                         }

@@ -512,6 +512,9 @@ pub unsafe fn catch_unwind<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any +
         p: ManuallyDrop<Box<dyn Any + Send>>,
     }
 
+    #[stable(feature = "rog", since = "1.0.0")]
+    impl<F, R> Managed for Data<F, R> where (F, R): Managed {}
+
     // We do some sketchy operations with ownership here for the sake of
     // performance. We can only pass pointers down to `do_call` (can't pass
     // objects by value), so we do all the ownership tracking here manually
