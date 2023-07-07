@@ -5,7 +5,7 @@
 
 use std::fmt;
 use std::num::{NonZeroUsize, ParseIntError};
-use std::ops::{Add, AddAssign, Mul, RangeInclusive, Sub};
+use std::ops::{Add, AddAssign, Mul, RangeInclusive, Sub, SubAssign};
 use std::str::FromStr;
 
 use bitflags::bitflags;
@@ -603,6 +603,13 @@ impl AddAssign for Size {
     }
 }
 
+impl SubAssign for Size {
+    #[inline]
+    fn sub_assign(&mut self, other: Size) {
+        *self = *self - other;
+    }
+}
+
 #[cfg(feature = "nightly")]
 impl Step for Size {
     #[inline]
@@ -732,6 +739,11 @@ impl Align {
 
     #[inline]
     pub fn bytes(self) -> u64 {
+        1 << self.pow2
+    }
+
+    #[inline]
+    pub fn bytes_usize(self) -> usize {
         1 << self.pow2
     }
 

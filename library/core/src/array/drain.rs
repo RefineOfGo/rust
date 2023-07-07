@@ -31,6 +31,9 @@ pub(crate) fn drain_array_with<T, R, const N: usize>(
 // INVARIANT: It's ok to drop the remainder of the inner iterator.
 pub(crate) struct Drain<'a, T>(slice::IterMut<'a, T>);
 
+#[cfg(not(bootstrap))]
+impl<T: Managed> Managed for Drain<'_, T> {}
+
 impl<T> Drop for Drain<'_, T> {
     fn drop(&mut self) {
         // SAFETY: By the type invariant, we're allowed to drop all these.

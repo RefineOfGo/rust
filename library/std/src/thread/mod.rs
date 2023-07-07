@@ -265,6 +265,10 @@ pub struct Builder {
     name: Option<String>,
     // The size of the stack for the spawned thread in bytes
     stack_size: Option<usize>,
+    // The base address of the stack for the spawned thread, not all
+    // operating systems support this.
+    #[cfg(all(unix, not(target_os = "espidf")))]
+    stack_base: Option<usize>,
 }
 
 impl Builder {
@@ -288,7 +292,7 @@ impl Builder {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn new() -> Builder {
-        Builder { name: None, stack_size: None }
+        Builder { name: None, stack_size: None, stack_base: None }
     }
 
     /// Names the thread-to-be. Currently the name is used for identification
@@ -341,6 +345,37 @@ impl Builder {
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn stack_size(mut self, size: usize) -> Builder {
         self.stack_size = Some(size);
+        self
+    }
+
+    /// Sets the base of the stack for the new thread. The stack base must
+    /// align to 16-byte boundary.
+    ///
+    /// This is VERY UNSAFE, since setting arbitrary values as stack base can
+    /// easily crash the program.
+    ///
+    /// Advanced users only.
+    #[cfg(all(unix, not(target_os = "espidf")))]
+    #[stable(feature = "rog", since = "1.0.0")]
+    pub unsafe fn stack_base(self, base: usize) -> io::Result<Builder> {
+        if base & 0x0f == 0 {
+            Ok(unsafe { self.stack_base_unchecked(base) })
+        } else {
+            Err(io::Error::new(io::ErrorKind::InvalidInput, "stack must be 16-byte aligned"))
+        }
+    }
+
+    /// Sets the base of the stack for the new thread, without any alignment
+    /// checking.
+    ///
+    /// This is VERY UNSAFE, since setting arbitrary values as stack base can
+    /// easily crash the program.
+    ///
+    /// Advanced users only.
+    #[cfg(all(unix, not(target_os = "espidf")))]
+    #[stable(feature = "rog", since = "1.0.0")]
+    pub unsafe fn stack_base_unchecked(mut self, base: usize) -> Builder {
+        self.stack_base = Some(base);
         self
     }
 
@@ -468,7 +503,12 @@ impl Builder {
         T: Send + 'a,
         'scope: 'a,
     {
-        let Builder { name, stack_size } = self;
+        let Builder {
+            name,
+            stack_size,
+            #[cfg(all(unix, not(target_os = "espidf")))]
+            stack_base,
+        } = self;
 
         let stack_size = stack_size.unwrap_or_else(thread::min_stack);
 
@@ -564,7 +604,14 @@ impl Builder {
             // Similarly, the `sys` implementation must guarantee that no references to the closure
             // exist after the thread has terminated, which is signaled by `Thread::join`
             // returning.
-            native: unsafe { imp::Thread::new(stack_size, main)? },
+            native: unsafe {
+                imp::Thread::new(
+                    stack_size,
+                    #[cfg(all(unix, not(target_os = "espidf")))]
+                    stack_base,
+                    main,
+                )?
+            },
             thread: my_thread,
             packet: my_packet,
         })

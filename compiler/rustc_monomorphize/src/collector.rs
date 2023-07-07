@@ -179,8 +179,8 @@ use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::print::with_no_trimmed_paths;
 use rustc_middle::ty::{
-    self, AssocKind, GenericParamDefKind, Instance, InstanceDef, Ty, TyCtxt, TypeFoldable,
-    TypeVisitableExt, VtblEntry,
+    self, AssocKind, GenericParamDefKind, Instance, InstanceDef, ParamEnv, Ty, TyCtxt, TypeAndMut,
+    TypeFoldable, TypeVisitableExt, VtblEntry,
 };
 use rustc_middle::ty::{GenericArgKind, GenericArgs};
 use rustc_middle::{middle::codegen_fn_attrs::CodegenFnAttrFlags, mir::visit::TyContext};
@@ -194,7 +194,8 @@ use rustc_target::abi::Size;
 use std::path::PathBuf;
 
 use crate::errors::{
-    self, EncounteredErrorWhileInstantiating, LargeAssignmentsLint, NoOptimizedMir, RecursionLimit,
+    DynTraitPointsToManagedValue, EncounteredErrorWhileInstantiating, LargeAssignmentsLint,
+    ManagedFieldInUnmanagedAdt, ManagedUnionField, NoOptimizedMir, RecursionLimit, StartNotFound,
     TypeLengthLimit,
 };
 
@@ -380,7 +381,7 @@ fn collect_items_rec<'tcx>(
             // Sanity check whether this ended up being collected accidentally
             debug_assert!(should_codegen_locally(tcx, &instance));
 
-            let ty = instance.ty(tcx, ty::ParamEnv::reveal_all());
+            let ty = instance.ty(tcx, ParamEnv::reveal_all());
             visit_drop_use(tcx, ty, true, starting_item.span, &mut used_items);
 
             recursion_depth_reset = None;
@@ -588,6 +589,13 @@ fn check_type_length_limit<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum ManagedSelf {
+    No,
+    Yes,
+    Unsure,
+}
+
 struct MirUsedCollector<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     body: &'a mir::Body<'tcx>,
@@ -598,6 +606,8 @@ struct MirUsedCollector<'a, 'tcx> {
     visiting_call_terminator: bool,
     /// Set of functions for which it is OK to move large data into.
     skip_move_check_fns: Option<Vec<DefId>>,
+    managed_seen: FxHashSet<Ty<'tcx>>,
+    managed_cache: FxHashMap<Ty<'tcx>, bool>,
 }
 
 impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
@@ -608,7 +618,7 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
         debug!("monomorphize: self.instance={:?}", self.instance);
         self.instance.instantiate_mir_and_normalize_erasing_regions(
             self.tcx,
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             ty::EarlyBinder::bind(value),
         )
     }
@@ -724,7 +734,161 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
     }
 }
 
+impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
+    fn is_managed(&mut self, ty: Ty<'tcx>) -> bool {
+        assert!(self.managed_seen.is_empty());
+        self.is_managed_impl(ty)
+    }
+
+    fn is_managed_impl(&mut self, ty: Ty<'tcx>) -> bool {
+        if let Some(is_managed) = self.managed_cache.get(&ty) {
+            return *is_managed;
+        }
+        let is_managed = match self.is_managed_self(ty) {
+            ManagedSelf::No => false,
+            ManagedSelf::Yes => true,
+            ManagedSelf::Unsure => {
+                if !self.managed_seen.insert(ty) {
+                    return false;
+                }
+                let result = match *ty.kind() {
+                    ty::Adt(adt, args) => self.find_managed_field_impl(adt, args).is_some(),
+                    ty::Array(elem_ty, _) | ty::Slice(elem_ty) => self.is_managed_impl(elem_ty),
+                    ty::RawPtr(ty::TypeAndMut { ty, .. }) | ty::Ref(_, ty, _) => {
+                        self.is_managed_impl(ty)
+                    }
+                    ty::Closure(_, args) => args
+                        .as_closure()
+                        .upvar_tys()
+                        .iter()
+                        .any(|upvar_ty| self.is_managed_impl(upvar_ty)),
+                    ty::Coroutine(_, args, _) => args
+                        .as_coroutine()
+                        .upvar_tys()
+                        .iter()
+                        .chain([args.as_coroutine().witness()])
+                        .any(|upvar_ty| self.is_managed_impl(upvar_ty)),
+                    ty::CoroutineWitness(def_id, args) => {
+                        let mut seen_tys = FxHashSet::default();
+                        self.tcx
+                            .coroutine_hidden_types(def_id)
+                            .filter(|bty| seen_tys.insert(*bty))
+                            .map(|bty| bty.instantiate(self.tcx, args))
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .any(|bty| self.is_managed_impl(bty))
+                    }
+                    ty::Tuple(fields) => {
+                        fields.iter().any(|field_ty| self.is_managed_impl(field_ty))
+                    }
+                    _ => unreachable!("checking trivially unmanaged type in slow path"),
+                };
+                self.managed_seen.remove(&ty);
+                result
+            }
+        };
+        self.managed_cache.insert(ty, is_managed);
+        is_managed
+    }
+
+    fn is_managed_self(&mut self, ty: Ty<'tcx>) -> ManagedSelf {
+        fn is_unmanaged_fast(ty: Ty<'_>) -> bool {
+            match ty.kind() {
+                ty::Bool
+                | ty::Char
+                | ty::Int(_)
+                | ty::Uint(_)
+                | ty::Float(_)
+                | ty::Foreign(_)
+                | ty::Str
+                | ty::FnDef(..)
+                | ty::FnPtr(_)
+                | ty::Dynamic(..)
+                | ty::Never
+                | ty::Error(_) => true,
+                ty::Adt(adt, _) => adt.is_union(),
+                ty::Array(elem_ty, _) | ty::Slice(elem_ty) => is_unmanaged_fast(*elem_ty),
+                ty::RawPtr(TypeAndMut { ty, .. }) | ty::Ref(_, ty, _) => is_unmanaged_fast(*ty),
+                ty::Closure(..) | ty::Coroutine(..) | ty::CoroutineWitness(..) => false,
+                ty::Tuple(fields) => fields.iter().all(is_unmanaged_fast),
+                ty::Alias(..)
+                | ty::Param(_)
+                | ty::Bound(..)
+                | ty::Placeholder(_)
+                | ty::Infer(_) => {
+                    debug!("suspicious type, assuming unmanaged {:#?}", ty);
+                    true
+                }
+            }
+        }
+
+        if is_unmanaged_fast(ty) {
+            ManagedSelf::No
+        } else if self.tcx.is_managed_raw(ParamEnv::reveal_all().and(ty)) {
+            ManagedSelf::Yes
+        } else {
+            ManagedSelf::Unsure
+        }
+    }
+
+    fn find_managed_field(
+        &mut self,
+        adt: ty::AdtDef<'tcx>,
+        args: &'tcx ty::List<ty::GenericArg<'tcx>>,
+    ) -> Option<&'tcx ty::FieldDef> {
+        assert!(self.managed_seen.is_empty());
+        self.find_managed_field_impl(adt, args)
+    }
+
+    fn find_managed_field_impl(
+        &mut self,
+        adt: ty::AdtDef<'tcx>,
+        args: &'tcx ty::List<ty::GenericArg<'tcx>>,
+    ) -> Option<&'tcx ty::FieldDef> {
+        if adt.is_union() {
+            None
+        } else {
+            assert!(adt.is_enum() || adt.is_struct());
+            adt.variants().iter().map(|def| def.fields.iter()).flatten().find(|field| {
+                self.is_managed_impl(
+                    self.tcx.normalize_erasing_regions(
+                        ParamEnv::reveal_all(),
+                        field.ty(self.tcx, args),
+                    ),
+                )
+            })
+        }
+    }
+}
+
 impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
+    fn visit_ty(&mut self, ty: Ty<'tcx>, _: TyContext) {
+        let ty = self.monomorphize(ty);
+        self.super_ty(ty);
+
+        if let ty::Adt(adt, args) = *ty.kind() {
+            if self.is_managed_self(ty) != ManagedSelf::Yes {
+                if let Some(field) = self.find_managed_field(adt, args) {
+                    let field_ty = field.ty(self.tcx, args).to_string();
+                    let field_span = self.tcx.def_span(field.did);
+                    if adt.is_union() {
+                        self.tcx.dcx().emit_err(ManagedUnionField {
+                            field_span,
+                            field_ty,
+                            note: (),
+                        });
+                    } else {
+                        self.tcx.dcx().emit_err(ManagedFieldInUnmanagedAdt {
+                            field_span,
+                            field_ty,
+                            note: (),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     fn visit_rvalue(&mut self, rvalue: &mir::Rvalue<'tcx>, location: Location) {
         debug!("visiting rvalue {:?}", *rvalue);
 
@@ -751,6 +915,14 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                 if (target_ty.is_trait() && !source_ty.is_trait())
                     || (target_ty.is_dyn_star() && !source_ty.is_dyn_star())
                 {
+                    if self.is_managed(source_ty) {
+                        self.tcx.dcx().emit_err(DynTraitPointsToManagedValue {
+                            span,
+                            value_ty: source_ty.to_string(),
+                            target_ty: target_ty.to_string(),
+                            note: (),
+                        });
+                    }
                     create_mono_items_for_vtable_methods(
                         self.tcx,
                         target_ty,
@@ -926,9 +1098,9 @@ fn visit_fn_use<'tcx>(
 ) {
     if let ty::FnDef(def_id, args) = *ty.kind() {
         let instance = if is_direct_call {
-            ty::Instance::expect_resolve(tcx, ty::ParamEnv::reveal_all(), def_id, args)
+            ty::Instance::expect_resolve(tcx, ParamEnv::reveal_all(), def_id, args)
         } else {
-            match ty::Instance::resolve_for_fn_ptr(tcx, ty::ParamEnv::reveal_all(), def_id, args) {
+            match ty::Instance::resolve_for_fn_ptr(tcx, ParamEnv::reveal_all(), def_id, args) {
                 Some(instance) => instance,
                 _ => bug!("failed to resolve instance for {ty}"),
             }
@@ -1021,14 +1193,18 @@ fn should_codegen_locally<'tcx>(tcx: TyCtxt<'tcx>, instance: &Instance<'tcx>) ->
         return false;
     }
 
-    if !tcx.is_mir_available(def_id) {
-        tcx.dcx().emit_fatal(NoOptimizedMir {
-            span: tcx.def_span(def_id),
-            crate_name: tcx.crate_name(def_id.krate),
-        });
+    if tcx.is_mir_available(def_id) {
+        return true;
     }
 
-    true
+    if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
+        return false;
+    }
+
+    tcx.dcx().emit_fatal(NoOptimizedMir {
+        span: tcx.def_span(def_id),
+        crate_name: tcx.crate_name(def_id.krate),
+    });
 }
 
 /// For a given pair of source and target type that occur in an unsizing coercion,
@@ -1078,7 +1254,7 @@ fn find_vtable_types_for_unsizing<'tcx>(
     target_ty: Ty<'tcx>,
 ) -> (Ty<'tcx>, Ty<'tcx>) {
     let ptr_vtable = |inner_source: Ty<'tcx>, inner_target: Ty<'tcx>| {
-        let param_env = ty::ParamEnv::reveal_all();
+        let param_env = ParamEnv::reveal_all();
         let type_has_metadata = |ty: Ty<'tcx>| -> bool {
             if ty.is_sized(tcx.tcx, param_env) {
                 return false;
@@ -1098,8 +1274,8 @@ fn find_vtable_types_for_unsizing<'tcx>(
     };
 
     match (&source_ty.kind(), &target_ty.kind()) {
-        (&ty::Ref(_, a, _), &ty::Ref(_, b, _) | &ty::RawPtr(ty::TypeAndMut { ty: b, .. }))
-        | (&ty::RawPtr(ty::TypeAndMut { ty: a, .. }), &ty::RawPtr(ty::TypeAndMut { ty: b, .. })) => {
+        (&ty::Ref(_, a, _), &ty::Ref(_, b, _) | &ty::RawPtr(TypeAndMut { ty: b, .. }))
+        | (&ty::RawPtr(TypeAndMut { ty: a, .. }), &ty::RawPtr(TypeAndMut { ty: b, .. })) => {
             ptr_vtable(*a, *b)
         }
         (&ty::Adt(def_a, _), &ty::Adt(def_b, _)) if def_a.is_box() && def_b.is_box() => {
@@ -1304,7 +1480,7 @@ impl<'v> RootCollector<'_, 'v> {
         };
 
         let Some(start_def_id) = self.tcx.lang_items().start_fn() else {
-            self.tcx.dcx().emit_fatal(errors::StartNotFound);
+            self.tcx.dcx().emit_fatal(StartNotFound);
         };
         let main_ret_ty = self.tcx.fn_sig(main_def_id).no_bound_vars().unwrap().output();
 
@@ -1314,13 +1490,13 @@ impl<'v> RootCollector<'_, 'v> {
         // regions must appear in the argument
         // listing.
         let main_ret_ty = self.tcx.normalize_erasing_regions(
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             main_ret_ty.no_bound_vars().unwrap(),
         );
 
         let start_instance = Instance::resolve(
             self.tcx,
-            ty::ParamEnv::reveal_all(),
+            ParamEnv::reveal_all(),
             start_def_id,
             self.tcx.mk_args(&[main_ret_ty.into()]),
         )
@@ -1381,7 +1557,7 @@ fn create_mono_items_for_default_impls<'tcx>(
         return;
     }
 
-    let param_env = ty::ParamEnv::reveal_all();
+    let param_env = ParamEnv::reveal_all();
     let trait_ref = tcx.normalize_erasing_regions(param_env, trait_ref);
     let overridden_methods = tcx.impl_item_implementor_ids(item.owner_id);
     for method in tcx.provided_trait_methods(trait_ref.def_id) {
@@ -1483,6 +1659,8 @@ fn collect_used_items<'tcx>(
         move_size_spans: vec![],
         visiting_call_terminator: false,
         skip_move_check_fns: None,
+        managed_seen: Default::default(),
+        managed_cache: Default::default(),
     }
     .visit_body(body);
 }

@@ -2447,7 +2447,8 @@ impl Target {
             | PlatformIntrinsic
             | Unadjusted
             | Cdecl { .. }
-            | RustCold => true,
+            | RustCold
+            | RogCold => true,
             EfiApi => {
                 ["arm", "aarch64", "riscv32", "riscv64", "x86", "x86_64"].contains(&&self.arch[..])
             }

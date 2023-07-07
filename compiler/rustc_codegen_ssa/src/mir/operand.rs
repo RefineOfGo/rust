@@ -2,6 +2,7 @@ use super::place::PlaceRef;
 use super::{FunctionCx, LocalRef};
 
 use crate::base;
+use crate::ptrinfo;
 use crate::size_of_val;
 use crate::traits::*;
 use crate::MemFlags;
@@ -324,7 +325,8 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
 
                 // Can't bitcast an aggregate, so round trip through memory.
                 let llptr = bx.alloca(llfield_ty, field.align.abi);
-                bx.store(*llval, llptr, field.align.abi);
+                // Storing to stack, treat as noptr, since stack access doesn't need write barriers anyway.
+                bx.store_noptr(*llval, llptr, field.align.abi);
                 *llval = bx.load(llfield_ty, llptr, field.align.abi);
             }
             (OperandValue::Immediate(_), Abi::Uninhabited | Abi::Aggregate { sized: false }) => {
@@ -401,7 +403,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
         self,
         bx: &mut Bx,
         dest: PlaceRef<'tcx, V>,
-        flags: MemFlags,
+        mut flags: MemFlags,
     ) {
         debug!("OperandRef::store: operand={:?}, dest={:?}", self, dest);
         match self {
@@ -411,21 +413,25 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
             }
             OperandValue::Ref(r, None, source_align) => {
                 assert!(dest.layout.is_sized(), "cannot directly store unsized values");
-                if flags.contains(MemFlags::NONTEMPORAL) {
+                if flags.contains(MemFlags::NONTEMPORAL)
+                    && !ptrinfo::may_contain_heap_ptr(bx.cx(), dest.layout)
+                {
                     // HACK(nox): This is inefficient but there is no nontemporal memcpy.
                     let ty = bx.backend_type(dest.layout);
                     let val = bx.load(ty, r, source_align);
-                    bx.store_with_flags(val, dest.llval, dest.align, flags);
+                    bx.store_noptr_with_flags(val, dest.llval, dest.align, flags);
                     return;
                 }
-                base::memcpy_ty(bx, dest.llval, dest.align, r, source_align, dest.layout, flags)
+                // memcpy for pointers are always temporal
+                flags.remove(MemFlags::NONTEMPORAL);
+                base::memcpy_ty(bx, dest.llval, dest.align, r, source_align, dest.layout, flags);
             }
             OperandValue::Ref(_, Some(_), _) => {
                 bug!("cannot directly store unsized values");
             }
             OperandValue::Immediate(s) => {
                 let val = bx.from_immediate(s);
-                bx.store_with_flags(val, dest.llval, dest.align, flags);
+                bx.store_with_flags(val, dest.llval, dest.align, flags, dest.layout);
             }
             OperandValue::Pair(a, b) => {
                 let Abi::ScalarPair(a_scalar, b_scalar) = dest.layout.abi else {
@@ -435,13 +441,21 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
 
                 let val = bx.from_immediate(a);
                 let align = dest.align;
-                bx.store_with_flags(val, dest.llval, align, flags);
+                if matches!(a_scalar, abi::Scalar::Initialized { value: abi::Pointer(_), .. }) {
+                    bx.store_ptr_with_flags(val, dest.llval, flags);
+                } else {
+                    bx.store_noptr_with_flags(val, dest.llval, align, flags);
+                }
 
                 let llptr =
                     bx.inbounds_gep(bx.type_i8(), dest.llval, &[bx.const_usize(b_offset.bytes())]);
                 let val = bx.from_immediate(b);
                 let align = dest.align.restrict_for_offset(b_offset);
-                bx.store_with_flags(val, llptr, align, flags);
+                if matches!(b_scalar, abi::Scalar::Initialized { value: abi::Pointer(_), .. }) {
+                    bx.store_ptr_with_flags(val, llptr, flags);
+                } else {
+                    bx.store_noptr_with_flags(val, llptr, align, flags);
+                }
             }
         }
     }
@@ -477,7 +491,9 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
         let neg_address = bx.neg(address);
         let offset = bx.and(neg_address, align_minus_1);
         let dst = bx.inbounds_gep(bx.type_i8(), alloca, &[offset]);
-        bx.memcpy(dst, min_align, llptr, min_align, size, MemFlags::empty());
+        // This is stack access, so we may assume it's pointer-free,
+        // since stack store doesn't need barriers anyway.
+        bx.memcpy(dst, min_align, llptr, min_align, size, MemFlags::empty(), false);
 
         // Store the allocated region and the extra to the indirect place.
         let indirect_operand = OperandValue::Pair(dst, llextra);

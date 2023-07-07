@@ -143,7 +143,7 @@ pub(super) trait GoalKind<'tcx>:
         goal: Goal<'tcx, Self>,
     ) -> QueryResult<'tcx>;
 
-    /// A type is `Copy` or `Clone` if its components are `Sized`.
+    /// A type is `Sized` if its components are `Sized`.
     ///
     /// These components are given by built-in rules from
     /// [`structural_traits::instantiate_constituent_tys_for_sized_trait`].
@@ -157,6 +157,15 @@ pub(super) trait GoalKind<'tcx>:
     /// These components are given by built-in rules from
     /// [`structural_traits::instantiate_constituent_tys_for_copy_clone_trait`].
     fn consider_builtin_copy_clone_candidate(
+        ecx: &mut EvalCtxt<'_, 'tcx>,
+        goal: Goal<'tcx, Self>,
+    ) -> QueryResult<'tcx>;
+
+    /// A tuple is `Managed` if any of its components are `Managed`.
+    ///
+    /// These components are given by built-in rules from
+    /// [`structural_traits::instantiate_constituent_tys_for_managed_trait`].
+    fn consider_builtin_managed_candidate(
         ecx: &mut EvalCtxt<'_, 'tcx>,
         goal: Goal<'tcx, Self>,
     ) -> QueryResult<'tcx>;
@@ -454,6 +463,8 @@ impl<'tcx> EvalCtxt<'_, 'tcx> {
             || lang_items.clone_trait() == Some(trait_def_id)
         {
             G::consider_builtin_copy_clone_candidate(self, goal)
+        } else if lang_items.managed_trait() == Some(trait_def_id) {
+            G::consider_builtin_managed_candidate(self, goal)
         } else if lang_items.pointer_like() == Some(trait_def_id) {
             G::consider_builtin_pointer_like_candidate(self, goal)
         } else if lang_items.fn_ptr_trait() == Some(trait_def_id) {

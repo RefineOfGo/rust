@@ -218,6 +218,17 @@ pub(in crate::solve) fn instantiate_constituent_tys_for_copy_clone_trait<'tcx>(
     }
 }
 
+pub(in crate::solve) fn instantiate_constituent_tys_for_managed_trait<'tcx>(
+    _ecx: &EvalCtxt<'_, 'tcx>,
+    ty: Ty<'tcx>,
+) -> Result<Vec<Ty<'tcx>>, NoSolution> {
+    todo!(
+        "`Managed` trait solver is not implemented for `-Z trait-solver=next`, \
+        please fallback to classic solver. ty = {:?}",
+        ty,
+    )
+}
+
 // Returns a binder of the tupled inputs types and output type from a builtin callable type.
 pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<'tcx>(
     tcx: TyCtxt<'tcx>,

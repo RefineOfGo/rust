@@ -27,6 +27,10 @@ pub struct StepBy<I> {
     first_take: bool,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for StepBy<I> {}
+
 impl<I> StepBy<I> {
     #[inline]
     pub(in crate::iter) fn new(iter: I, step: usize) -> StepBy<I> {

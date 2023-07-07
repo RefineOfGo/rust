@@ -146,7 +146,9 @@ fn check_union_fields(tcx: TyCtxt<'_>, span: Span, item_def_id: LocalDefId) -> b
                     note: (),
                 });
                 return false;
-            } else if field_ty.needs_drop(tcx, param_env) {
+            }
+
+            if field_ty.needs_drop(tcx, param_env) {
                 // This should never happen. But we can get here e.g. in case of name resolution errors.
                 tcx.dcx()
                     .span_delayed_bug(span, "we should never accept maybe-dropping union fields");

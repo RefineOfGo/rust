@@ -236,6 +236,7 @@ impl<'tcx> Stable<'tcx> for ty::FnSig<'tcx> {
                 abi::Abi::RustCold => Abi::RustCold,
                 abi::Abi::RiscvInterruptM => Abi::RiscvInterruptM,
                 abi::Abi::RiscvInterruptS => Abi::RiscvInterruptS,
+                abi::Abi::RogCold => Abi::RogCold,
             },
         }
     }

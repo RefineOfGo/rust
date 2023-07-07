@@ -109,6 +109,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     self.assemble_builtin_bound_candidates(clone_conditions, &mut candidates);
                 }
 
+                if lang_items.managed_trait() == Some(def_id) {
+                    let sized_conditions = self.managed_conditions(obligation);
+                    self.assemble_builtin_bound_candidates(sized_conditions, &mut candidates);
+                }
+
                 if lang_items.coroutine_trait() == Some(def_id) {
                     self.assemble_coroutine_candidates(obligation, &mut candidates);
                 } else if lang_items.future_trait() == Some(def_id) {
@@ -929,7 +934,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     }
 
     /// Assembles the trait which are built-in to the language itself:
-    /// `Copy`, `Clone` and `Sized`.
+    /// `Copy`, `Clone`, `Sized` and `Managed`.
     #[instrument(level = "debug", skip(self, candidates))]
     fn assemble_builtin_bound_candidates(
         &mut self,
@@ -941,6 +946,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 candidates
                     .vec
                     .push(BuiltinCandidate { has_nested: !nested.skip_binder().is_empty() });
+            }
+            BuiltinImplConditions::Disjunction(nested) => {
+                if !nested.skip_binder().is_empty() {
+                    candidates.vec.push(BuiltinCandidate { has_nested: true });
+                }
             }
             BuiltinImplConditions::None => {}
             BuiltinImplConditions::Ambiguous => {

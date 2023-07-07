@@ -4,6 +4,12 @@
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
+// Re-exported ROG supporting traits
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+#[doc(no_inline)]
+pub use crate::marker::Managed;
+
 // Re-exported core operators
 #[stable(feature = "rust1", since = "1.0.0")]
 #[doc(no_inline)]

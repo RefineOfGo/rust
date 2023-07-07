@@ -1347,6 +1347,10 @@ rustc_queries! {
     query is_unpin_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` is `Unpin`", env.value }
     }
+    /// Query backing `Ty::is_managed`.
+    query is_managed_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
+        desc { "computing whether `{}` is `Managed`", env.value }
+    }
     /// Query backing `Ty::needs_drop`.
     query needs_drop_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` needs drop", env.value }
@@ -1881,6 +1885,11 @@ rustc_queries! {
         desc { "collecting exported symbols for crate `{}`", cnum}
         cache_on_disk_if { *cnum == LOCAL_CRATE }
         separate_provide_extern
+    }
+
+    query check_mono_items(_: ()) -> () {
+        eval_always
+        desc { "check_mono_items" }
     }
 
     query collect_and_partition_mono_items(_: ()) -> (&'tcx DefIdSet, &'tcx [CodegenUnit<'tcx>]) {

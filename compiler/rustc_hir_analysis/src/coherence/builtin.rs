@@ -30,6 +30,7 @@ pub fn check_trait(tcx: TyCtxt<'_>, trait_def_id: DefId) -> Result<(), ErrorGuar
     let checker = Checker { tcx, trait_def_id };
     let mut res = checker.check(lang_items.drop_trait(), visit_implementation_of_drop);
     res = res.and(checker.check(lang_items.copy_trait(), visit_implementation_of_copy));
+    res = res.and(checker.check(lang_items.managed_trait(), visit_implementation_of_managed));
     res = res.and(
         checker.check(lang_items.const_param_ty_trait(), visit_implementation_of_const_param_ty),
     );
@@ -112,21 +113,25 @@ fn visit_implementation_of_copy(
     }
 }
 
+fn visit_implementation_of_managed(
+    tcx: TyCtxt<'_>,
+    impl_did: LocalDefId,
+) -> Result<(), ErrorGuaranteed> {
+    // Managed types only work on local non-union ADT types.
+    match tcx.type_of(impl_did).instantiate_identity().kind() {
+        ty::Adt(def, ..) if def.did().is_local() && !def.is_union() => Ok(()),
+        ty::Ref(..) | ty::RawPtr(..) | ty::Slice(..) | ty::Array(..) | ty::Error(..) => Ok(()),
+        _ => {
+            let impl_ = tcx.hir().expect_item(impl_did).expect_impl();
+            Err(tcx.dcx().emit_err(errors::ManagedImplOnWrongType { span: impl_.self_ty.span }))
+        }
+    }
+}
+
 fn visit_implementation_of_const_param_ty(
     tcx: TyCtxt<'_>,
     impl_did: LocalDefId,
 ) -> Result<(), ErrorGuaranteed> {
-    let self_type = tcx.type_of(impl_did).instantiate_identity();
-    assert!(!self_type.has_escaping_bound_vars());
-
-    let param_env = tcx.param_env(impl_did);
-
-    let span = match tcx.hir().expect_item(impl_did).expect_impl() {
-        hir::Impl { polarity: hir::ImplPolarity::Negative(_), .. } => return Ok(()),
-        impl_ => impl_.self_ty.span,
-    };
-
-    let cause = traits::ObligationCause::misc(span, impl_did);
     match type_allowed_to_implement_const_param_ty(tcx, param_env, self_type, cause) {
         Ok(()) => Ok(()),
         Err(ConstParamTyImplementationError::InfrigingFields(fields)) => {

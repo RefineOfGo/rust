@@ -422,8 +422,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             let alloca = PlaceRef::alloca(bx, ptr_layout);
             bx.set_var_name(alloca.llval, &(var.name.to_string() + ".dbg.spill"));
 
-            // Write the pointer to the variable
-            bx.store(place.llval, alloca.llval, alloca.align);
+            // Write the pointer to the variable. This is stack access, treat as noptr,
+            // since stack access doesn't need write barriers anyway.
+            bx.store_noptr(place.llval, alloca.llval, alloca.align);
 
             // Point the debug info to `*alloca` for the current variable
             bx.dbg_var_addr(

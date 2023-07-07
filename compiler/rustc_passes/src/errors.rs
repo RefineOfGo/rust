@@ -552,6 +552,42 @@ pub struct NoMangle {
 }
 
 #[derive(Diagnostic)]
+#[diag(passes_no_gcwb)]
+pub struct NoGCWB {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(LintDiagnostic)]
+#[diag(passes_no_gcwb_foreign)]
+#[note]
+pub struct NoGCWBForeign {
+    #[label]
+    pub span: Span,
+    #[suggestion(code = "", applicability = "machine-applicable")]
+    pub attr_span: Span,
+    pub foreign_item_kind: &'static str,
+}
+
+#[derive(Diagnostic)]
+#[diag(passes_no_split)]
+pub struct NoSplit {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(LintDiagnostic)]
+#[diag(passes_no_split_foreign)]
+#[note]
+pub struct NoSplitForeign {
+    #[label]
+    pub span: Span,
+    #[suggestion(code = "", applicability = "machine-applicable")]
+    pub attr_span: Span,
+    pub foreign_item_kind: &'static str,
+}
+
+#[derive(Diagnostic)]
 #[diag(passes_repr_ident, code = E0565)]
 pub struct ReprIdent {
     #[primary_span]

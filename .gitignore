@@ -58,6 +58,7 @@ build/
 \#*
 \#*\#
 .#*
+/rustc-ice-*
 
 ## Tags
 tags
@@ -77,5 +78,8 @@ package.json
 
 ## Rustdoc GUI tests
 tests/rustdoc-gui/src/**.lock
+
+# rustc ICE logs
+rustc-ice-*
 
 # Before adding new lines, see the comment at the top.

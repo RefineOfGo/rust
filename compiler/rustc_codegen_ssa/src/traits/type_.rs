@@ -99,6 +99,7 @@ pub trait LayoutTypeMethods<'tcx>: Backend<'tcx> {
     fn fn_decl_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type;
     fn fn_ptr_backend_type(&self, fn_abi: &FnAbi<'tcx, Ty<'tcx>>) -> Self::Type;
     fn reg_backend_type(&self, ty: &Reg) -> Self::Type;
+
     /// The backend type used for a rust type when it's in an SSA register.
     ///
     /// For nearly all types this is the same as the [`Self::backend_type`], however

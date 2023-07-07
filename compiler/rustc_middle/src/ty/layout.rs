@@ -1256,7 +1256,7 @@ pub fn fn_can_unwind(tcx: TyCtxt<'_>, fn_def_id: Option<DefId>, abi: SpecAbi) ->
         | Wasm
         | PlatformIntrinsic
         | Unadjusted => false,
-        Rust | RustCall | RustCold | RustIntrinsic => {
+        Rust | RustCall | RustCold | RustIntrinsic | RogCold => {
             tcx.sess.panic_strategy() == PanicStrategy::Unwind
         }
     }
