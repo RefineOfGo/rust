@@ -183,7 +183,9 @@ pub(crate) fn fill_inregs<'a, Ty, C>(
 
         free_regs -= size_in_regs;
 
-        if arg.layout.size.bits() <= 32 && unit.kind == RegKind::Integer {
+        if arg.layout.size.bits() <= 32
+            && (unit.kind == RegKind::Integer || unit.kind == RegKind::Pointer)
+        {
             attrs.set(ArgAttribute::InReg);
         }
 

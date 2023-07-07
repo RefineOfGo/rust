@@ -16,6 +16,10 @@ pub struct Rev<T> {
     iter: T,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Rev<T> {}
+
 impl<T> Rev<T> {
     pub(in crate::iter) fn new(iter: T) -> Rev<T> {
         Rev { iter }
