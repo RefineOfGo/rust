@@ -305,6 +305,21 @@ where
         )
     }
 
+    fn consider_builtin_managed_candidate(
+        ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution> {
+        if goal.predicate.polarity != ty::PredicatePolarity::Positive {
+            return Err(NoSolution);
+        }
+
+        ecx.probe_and_evaluate_goal_for_constituent_tys(
+            CandidateSource::BuiltinImpl(BuiltinImplSource::Misc),
+            goal,
+            structural_traits::instantiate_constituent_tys_for_managed_trait,
+        )
+    }
+
     fn consider_builtin_fn_ptr_trait_candidate(
         ecx: &mut EvalCtxt<'_, D>,
         goal: Goal<I, Self>,

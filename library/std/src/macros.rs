@@ -362,15 +362,20 @@ macro_rules! dbg {
         // of temporaries - https://stackoverflow.com/a/48732525/1063961
         match $val {
             tmp => {
-                $crate::eprintln!("[{}:{}:{}] {} = {:#?}",
-                    $crate::file!(),
-                    $crate::line!(),
-                    $crate::column!(),
-                    $crate::stringify!($val),
-                    // The `&T: Debug` check happens here (not in the format literal desugaring)
-                    // to avoid format literal related messages and suggestions.
-                    &&tmp as &dyn $crate::fmt::Debug,
-                );
+                #[track_caller]
+                #[inline(always)]
+                fn dbg_impl(tmp: &impl $crate::fmt::Debug) {
+                    $crate::eprintln!("[{}:{}:{}] {} = {:#?}",
+                        $crate::file!(),
+                        $crate::line!(),
+                        $crate::column!(),
+                        $crate::stringify!($val),
+                        tmp,
+                    );
+                }
+                // The `&T: Debug` check happens here (not in the format literal desugaring)
+                // to avoid format literal related messages and suggestions.
+                dbg_impl(&&tmp);
                 tmp
             }
         }

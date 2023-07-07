@@ -428,6 +428,13 @@ where
         panic!("`Copy`/`Clone` does not have an associated type: {:?}", goal);
     }
 
+    fn consider_builtin_managed_candidate(
+        _ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution> {
+        panic!("`Managed` does not have an associated type: {:?}", goal);
+    }
+
     fn consider_builtin_fn_ptr_trait_candidate(
         _ecx: &mut EvalCtxt<'_, D>,
         goal: Goal<I, Self>,

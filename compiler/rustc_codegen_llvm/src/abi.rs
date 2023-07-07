@@ -10,6 +10,7 @@ use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::{PlaceRef, PlaceValue};
 use rustc_codegen_ssa::traits::*;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::LayoutOf;
 use rustc_middle::{bug, ty};
@@ -122,6 +123,10 @@ impl LlvmType for Reg {
     fn llvm_type<'ll>(&self, cx: &CodegenCx<'ll, '_>) -> &'ll Type {
         match self.kind {
             RegKind::Integer => cx.type_ix(self.size.bits()),
+            RegKind::Pointer => {
+                assert_eq!(self.size, cx.data_layout().pointer_size(), "invalid pointer size");
+                cx.type_ptr()
+            }
             RegKind::Float => match self.size.bits() {
                 16 => cx.type_f16(),
                 32 => cx.type_f32(),
@@ -227,9 +232,11 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     cmp::min(cast.unaligned_size(bx).bytes(), self.layout.size.bytes());
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
+                let has_pointers = bx.has_pointers(dst.layout);
                 bx.lifetime_start(llscratch, scratch_size);
                 // ...store the value...
-                rustc_codegen_ssa::mir::store_cast(bx, cast, val, llscratch, scratch_align);
+                // the scratch buffer lives on stack, so we can treat it as noptr
+                rustc_codegen_ssa::mir::store_cast_noptr(bx, cast, val, llscratch, scratch_align);
                 // ... and then memcpy it to the intended destination.
                 bx.memcpy(
                     dst.val.llval,
@@ -238,6 +245,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     scratch_align,
                     bx.const_usize(copy_bytes),
                     MemFlags::empty(),
+                    has_pointers,
                 );
                 bx.lifetime_end(llscratch, scratch_size);
             }
@@ -325,9 +333,8 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             if self.c_variadic { &self.args[..self.fixed_count as usize] } else { &self.args };
 
         // This capacity calculation is approximate.
-        let mut llargument_tys = Vec::with_capacity(
-            self.args.len() + if let PassMode::Indirect { .. } = self.ret.mode { 1 } else { 0 },
-        );
+        let mut llargument_tys =
+            Vec::with_capacity(self.args.len() + (self.ret.is_indirect() as usize));
 
         let llreturn_ty = match &self.ret.mode {
             PassMode::Ignore => cx.type_void(),
@@ -647,7 +654,9 @@ impl AbiBuilderMethods for Builder<'_, '_, '_> {
 impl llvm::CallConv {
     pub(crate) fn from_conv(conv: CanonAbi, arch: &str) -> Self {
         match conv {
-            CanonAbi::C | CanonAbi::Rust => llvm::CCallConv,
+            CanonAbi::C => llvm::CCallConv,
+            CanonAbi::Rust | CanonAbi::Rog => llvm::ROGCallConv,
+            CanonAbi::RogCold => llvm::ROGColdCallConv,
             CanonAbi::RustCold => llvm::PreserveMost,
             // Functions with this calling convention can only be called from assembly, but it is
             // possible to declare an `extern "custom"` block, so the backend still needs a calling

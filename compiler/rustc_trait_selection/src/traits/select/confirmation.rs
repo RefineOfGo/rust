@@ -47,6 +47,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 ImplSource::Builtin(BuiltinImplSource::Misc, data)
             }
 
+            BuiltinAnyCandidate => {
+                let data = self.confirm_builtin_candidate(obligation);
+                ImplSource::BuiltinAny(data)
+            }
+
             TransmutabilityCandidate => {
                 let data = self.confirm_transmutability_candidate(obligation)?;
                 ImplSource::Builtin(BuiltinImplSource::Misc, data)
@@ -269,6 +274,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 bug!("`PointeeSized` is removing during lowering");
             }
             Some(LangItem::Copy | LangItem::Clone) => self.copy_clone_conditions(self_ty),
+            Some(LangItem::Managed) => self.managed_conditions(self_ty),
             Some(LangItem::FusedIterator) => {
                 if self.coroutine_is_gen(self_ty) {
                     ty::Binder::dummy(vec![])

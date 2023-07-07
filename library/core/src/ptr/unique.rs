@@ -44,6 +44,9 @@ pub struct Unique<T: PointeeSized> {
     _marker: PhantomData<T>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for Unique<T> {}
+
 /// `Unique` pointers are `Send` if `T` is `Send` because the data they
 /// reference is unaliased. Note that this aliasing invariant is
 /// unenforced by the type system; the abstraction using the

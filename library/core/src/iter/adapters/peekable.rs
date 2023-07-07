@@ -20,6 +20,9 @@ pub struct Peekable<I: Iterator> {
     peeked: Option<Option<I::Item>>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Iterator> Managed for Peekable<I> where (I, I::Item): Managed {}
+
 impl<I: Iterator> Peekable<I> {
     pub(in crate::iter) fn new(iter: I) -> Peekable<I> {
         Peekable { iter, peeked: None }

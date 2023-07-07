@@ -1542,7 +1542,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
                 bx.lifetime_start(llscratch, scratch_size);
-                // ...memcpy the value...
+                // ...memcpy the value (treat as no_ptr since the dst value is on stack)...
                 bx.memcpy(
                     llscratch,
                     scratch_align,
@@ -1550,6 +1550,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     align,
                     bx.const_usize(copy_bytes),
                     MemFlags::empty(),
+                    false,
                 );
                 // ...and then load it with the ABI type.
                 llval = load_cast(bx, cast, llscratch, scratch_align);
@@ -1926,7 +1927,7 @@ fn load_cast<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     }
 }
 
-pub fn store_cast<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
+pub fn store_cast_noptr<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     cast: &CastTarget,
     value: Bx::Value,
@@ -1939,10 +1940,10 @@ pub fn store_cast<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         assert!(cast.prefix[0].is_some());
         let first = bx.extract_value(value, 0);
         let second = bx.extract_value(value, 1);
-        bx.store(first, ptr, align);
+        bx.store_noptr(first, ptr, align);
         let second_ptr = bx.inbounds_ptradd(ptr, bx.const_usize(offset_from_start.bytes()));
-        bx.store(second, second_ptr, align.restrict_for_offset(offset_from_start));
+        bx.store_noptr(second, second_ptr, align.restrict_for_offset(offset_from_start));
     } else {
-        bx.store(value, ptr, align);
+        bx.store_noptr(value, ptr, align);
     };
 }

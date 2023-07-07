@@ -421,10 +421,13 @@ impl<'a> GccLinker<'a> {
         if let Some(path) = &self.sess.opts.unstable_opts.profile_sample_use {
             self.link_arg(&format!("-plugin-opt=sample-profile={}", path.display()));
         };
-        self.link_args(&[
-            &format!("-plugin-opt={opt_level}"),
-            &format!("-plugin-opt=mcpu={}", self.target_cpu),
-        ]);
+        if self.uses_lld {
+            self.link_arg(&format!("--lto-CG{opt_level}"));
+            self.link_args(&["-mcpu", self.target_cpu]);
+        } else {
+            self.link_arg(&format!("-plugin-opt={opt_level}"));
+            self.link_arg(&format!("-plugin-opt=mcpu={}", self.target_cpu));
+        }
     }
 
     fn build_dylib(&mut self, crate_type: CrateType, out_filename: &Path) {

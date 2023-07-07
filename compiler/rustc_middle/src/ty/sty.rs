@@ -833,6 +833,11 @@ impl<'tcx> Ty<'tcx> {
     }
 
     #[inline]
+    pub fn new_static_u64_slice(tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
+        Ty::new_imm_ref(tcx, tcx.lifetimes.re_static, Ty::new_slice(tcx, tcx.types.u64))
+    }
+
+    #[inline]
     pub fn new_diverging_default(tcx: TyCtxt<'tcx>) -> Ty<'tcx> {
         if tcx.features().never_type_fallback() { tcx.types.never } else { tcx.types.unit }
     }

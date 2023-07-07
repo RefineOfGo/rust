@@ -1,8 +1,8 @@
 use std::{fmt, iter};
 
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, CanonAbi, ExternAbi, HasDataLayout, Primitive, Reg, RegKind,
-    Scalar, Size, TyAbiInterface, TyAndLayout,
+    Align, BackendRepr, CanonAbi, ExternAbi, HasDataLayout, HasRegisterMap, Primitive, Reg,
+    RegKind, Scalar, Size, TyAbiInterface, TyAndLayout,
 };
 use rustc_macros::HashStable_Generic;
 
@@ -282,6 +282,14 @@ impl From<Uniform> for CastTarget {
 }
 
 impl CastTarget {
+    pub fn immediate(regs: &[Reg]) -> Self {
+        assert!(regs.len() <= 9);
+        let (tail, head) = regs.split_last().expect("cast into no registers");
+        let mut prefix = [None; 8];
+        head.iter().copied().enumerate().for_each(|(i, r)| prefix[i] = Some(r));
+        Self::prefixed(prefix, Uniform::from(*tail))
+    }
+
     pub fn prefixed(prefix: [Option<Reg>; 8], rest: Uniform) -> Self {
         Self { prefix, rest_offset: None, rest, attrs: ArgAttributes::new() }
     }
@@ -369,8 +377,7 @@ pub struct ArgAbi<'a, Ty> {
 // Needs to be a custom impl because of the bounds on the `TyAndLayout` debug impl.
 impl<'a, Ty: fmt::Display> fmt::Debug for ArgAbi<'a, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ArgAbi { layout, mode } = self;
-        f.debug_struct("ArgAbi").field("layout", layout).field("mode", mode).finish()
+        f.debug_struct("ArgAbi").field("layout", &self.layout).field("mode", &self.mode).finish()
     }
 }
 
@@ -708,7 +715,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
     pub fn adjust_for_rust_abi<C>(&mut self, cx: &C)
     where
         Ty: TyAbiInterface<'a, C> + Copy,
-        C: HasDataLayout + HasTargetSpec,
+        C: HasDataLayout + HasTargetSpec + HasRegisterMap<'a, Ty>,
     {
         let spec = cx.target_spec();
         match &*spec.arch {
@@ -719,66 +726,10 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             _ => {}
         };
 
-        for (arg_idx, arg) in self
-            .args
-            .iter_mut()
-            .enumerate()
-            .map(|(idx, arg)| (Some(idx), arg))
-            .chain(iter::once((None, &mut self.ret)))
-        {
+        for arg in self.args.iter_mut().chain(iter::once(&mut self.ret)) {
             // If the logic above already picked a specific type to cast the argument to, leave that
             // in place.
             if matches!(arg.mode, PassMode::Ignore | PassMode::Cast { .. }) {
-                continue;
-            }
-
-            if arg_idx.is_none()
-                && arg.layout.size > Primitive::Pointer(AddressSpace::ZERO).size(cx) * 2
-                && !matches!(arg.layout.backend_repr, BackendRepr::SimdVector { .. })
-            {
-                // Return values larger than 2 registers using a return area
-                // pointer. LLVM and Cranelift disagree about how to return
-                // values that don't fit in the registers designated for return
-                // values. LLVM will force the entire return value to be passed
-                // by return area pointer, while Cranelift will look at each IR level
-                // return value independently and decide to pass it in a
-                // register or not, which would result in the return value
-                // being passed partially in registers and partially through a
-                // return area pointer. For large IR-level values such as `i128`,
-                // cranelift will even split up the value into smaller chunks.
-                //
-                // While Cranelift may need to be fixed as the LLVM behavior is
-                // generally more correct with respect to the surface language,
-                // forcing this behavior in rustc itself makes it easier for
-                // other backends to conform to the Rust ABI and for the C ABI
-                // rustc already handles this behavior anyway.
-                //
-                // In addition LLVM's decision to pass the return value in
-                // registers or using a return area pointer depends on how
-                // exactly the return type is lowered to an LLVM IR type. For
-                // example `Option<u128>` can be lowered as `{ i128, i128 }`
-                // in which case the x86_64 backend would use a return area
-                // pointer, or it could be passed as `{ i32, i128 }` in which
-                // case the x86_64 backend would pass it in registers by taking
-                // advantage of an LLVM ABI extension that allows using 3
-                // registers for the x86_64 sysv call conv rather than the
-                // officially specified 2 registers.
-                //
-                // FIXME: Technically we should look at the amount of available
-                // return registers rather than guessing that there are 2
-                // registers for return values. In practice only a couple of
-                // architectures have less than 2 return registers. None of
-                // which supported by Cranelift.
-                //
-                // NOTE: This adjustment is only necessary for the Rust ABI as
-                // for other ABI's the calling convention implementations in
-                // rustc_target already ensure any return value which doesn't
-                // fit in the available amount of return registers is passed in
-                // the right way for the current target.
-                //
-                // The adjustment is not necessary nor desired for types with a vector
-                // representation; those are handled below.
-                arg.make_indirect();
                 continue;
             }
 
@@ -791,13 +742,26 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                     assert!(is_indirect_not_on_stack);
 
                     let size = arg.layout.size;
-                    if arg.layout.is_sized()
-                        && size <= Primitive::Pointer(AddressSpace::ZERO).size(cx)
-                    {
-                        // We want to pass small aggregates as immediates, but using
-                        // an LLVM aggregate type for this leads to bad optimizations,
-                        // so we pick an appropriately sized integer type instead.
-                        arg.cast_to(Reg { kind: RegKind::Integer, size });
+                    let ptr_size = cx.data_layout().pointer_size();
+
+                    if !arg.layout.is_unsized() && size <= ptr_size * 8 {
+                        if size <= ptr_size {
+                            // We want to pass small aggregates as immediates, but using
+                            // an LLVM aggregate type for this leads to bad optimizations,
+                            // so we pick an appropriately sized integer type instead.
+                            arg.cast_to(Reg { kind: RegKind::Integer, size });
+                        } else {
+                            let regs = cx.register_map(arg.layout);
+                            let ireg = regs
+                                .iter()
+                                .filter(|r| matches!(r.kind, RegKind::Integer | RegKind::Pointer))
+                                .count();
+
+                            // Don't fit more than 8 integer or pointer values into register.
+                            if ireg <= 8 && regs.len() <= 9 {
+                                arg.cast_to(CastTarget::immediate(&regs));
+                            }
+                        }
                     }
                 }
 

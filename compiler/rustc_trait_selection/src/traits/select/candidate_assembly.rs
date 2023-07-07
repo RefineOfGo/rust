@@ -80,6 +80,15 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         &mut candidates,
                     );
                 }
+                Some(LangItem::Managed) => {
+                    // User-defined managed impls are permitted.
+                    self.assemble_candidates_from_impls(obligation, &mut candidates);
+                    // For other types, we'll use the builtin rules.
+                    self.assemble_builtin_managed_candidate(
+                        obligation.predicate.self_ty().skip_binder(),
+                        &mut candidates,
+                    );
+                }
                 Some(LangItem::DiscriminantKind) => {
                     // `DiscriminantKind` is automatically implemented for every type.
                     candidates.vec.push(BuiltinCandidate);
@@ -1283,6 +1292,27 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             ty::Infer(ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
                 bug!("asked to assemble builtin bounds of unexpected type: {:?}", self_ty);
             }
+        }
+    }
+
+    #[instrument(level = "debug", skip(self, candidates))]
+    fn assemble_builtin_managed_candidate(
+        &mut self,
+        self_ty: Ty<'tcx>,
+        candidates: &mut SelectionCandidateSet<'tcx>,
+    ) {
+        match *self_ty.kind() {
+            ty::Pat(..) => candidates.vec.push(BuiltinCandidate),
+            ty::Closure(_, args) => {
+                let ty = self.infcx.shallow_resolve(args.as_closure().tupled_upvars_ty());
+                if let ty::Infer(ty::TyVar(_)) = ty.kind() {
+                    candidates.ambiguous = true;
+                } else {
+                    candidates.vec.push(BuiltinAnyCandidate);
+                }
+            }
+            ty::Tuple(..) => candidates.vec.push(BuiltinAnyCandidate),
+            _ => {}
         }
     }
 

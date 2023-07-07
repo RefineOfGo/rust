@@ -486,6 +486,24 @@ pub const fn align_of<T>() -> usize {
     intrinsics::align_of::<T>()
 }
 
+/// Returns a static slice containing the encoded pointer map of a type.
+#[inline(always)]
+#[must_use]
+#[stable(feature = "rog", since = "1.0.0")]
+#[rustc_const_stable(feature = "rog", since = "1.0.0")]
+pub const fn pointer_map_of<T>() -> &'static [u64] {
+    const { intrinsics::pointer_map_of::<T>() }
+}
+
+/// Check if the pointer map of type T is exact or not.
+#[inline(always)]
+#[must_use]
+#[stable(feature = "rog", since = "1.0.0")]
+#[rustc_const_stable(feature = "rog", since = "1.0.0")]
+pub const fn is_pointer_map_exact<T>() -> bool {
+    const { intrinsics::is_pointer_map_exact::<T>() }
+}
+
 /// Returns the [ABI]-required minimum alignment of the type of the value that `val` points to in
 /// bytes.
 ///

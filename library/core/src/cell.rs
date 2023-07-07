@@ -313,6 +313,9 @@ pub struct Cell<T: ?Sized> {
     value: UnsafeCell<T>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for Cell<T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T: ?Sized> Send for Cell<T> where T: Send {}
 
@@ -727,6 +730,9 @@ pub struct RefCell<T: ?Sized> {
     borrowed_at: Cell<Option<&'static crate::panic::Location<'static>>>,
     value: UnsafeCell<T>,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for RefCell<T> {}
 
 /// An error returned by [`RefCell::try_borrow`].
 #[stable(feature = "try_borrow", since = "1.13.0")]
@@ -1482,6 +1488,9 @@ pub struct Ref<'b, T: ?Sized + 'b> {
     borrow: BorrowRef<'b>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for Ref<'_, T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_deref", issue = "88955")]
 impl<T: ?Sized> const Deref for Ref<'_, T> {
@@ -1873,6 +1882,9 @@ pub struct RefMut<'b, T: ?Sized + 'b> {
     marker: PhantomData<&'b mut T>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for RefMut<'_, T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_deref", issue = "88955")]
 impl<T: ?Sized> const Deref for RefMut<'_, T> {
@@ -2096,6 +2108,9 @@ pub struct UnsafeCell<T: ?Sized> {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !Sync for UnsafeCell<T> {}
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for UnsafeCell<T> {}
 
 impl<T> UnsafeCell<T> {
     /// Constructs a new instance of `UnsafeCell` which will wrap the specified
@@ -2380,6 +2395,9 @@ impl<T: DispatchFromDyn<U>, U> DispatchFromDyn<UnsafeCell<U>> for UnsafeCell<T> 
 pub struct SyncUnsafeCell<T: ?Sized> {
     value: UnsafeCell<T>,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for SyncUnsafeCell<T> {}
 
 #[unstable(feature = "sync_unsafe_cell", issue = "95439")]
 unsafe impl<T: ?Sized + Sync> Sync for SyncUnsafeCell<T> {}

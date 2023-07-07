@@ -520,6 +520,41 @@ impl<T: PointeeSized> Copy for &T {}
 #[doc(hidden)]
 pub trait BikeshedGuaranteedNoDrop {}
 
+/// Types that should be managed by ROG GC.
+#[stable(feature = "rog", since = "1.0.0")]
+#[lang = "managed"]
+#[rustc_unsafe_specialization_marker]
+#[rustc_diagnostic_item = "Managed"]
+pub trait Managed {
+    // Empty.
+}
+
+/// Derive macro generating an impl of the trait `Managed`.
+#[rustc_builtin_macro]
+#[stable(feature = "rog", since = "1.0.0")]
+pub macro Managed($item:item) {
+    /* compiler built-in */
+}
+
+// There is a special case implemented directly in the compiler:
+//
+// impl<A, B, C, ...> Managed for (A, B, C, ...)
+//     where (A | B | C | ...): Managed {}
+//
+// Which says: if any of the tuple element is `Managed`, then the
+// entire tuple becomes `Managed`. This is also true for closures.
+
+marker_impls! {
+    #[stable(feature = "rog", since = "1.0.0")]
+    Managed for
+        {T: Managed, const N: usize} [T; N],
+        {T: Managed} [T],
+        {T: Managed} &T,
+        {T: Managed} &mut T,
+        {T: Managed} *const T,
+        {T: Managed} *mut T,
+}
+
 /// Types for which it is safe to share references between threads.
 ///
 /// This trait is automatically implemented when the compiler determines

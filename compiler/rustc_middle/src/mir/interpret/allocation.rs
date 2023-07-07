@@ -554,6 +554,10 @@ impl<Prov: Provenance, Extra, Bytes: AllocBytes> Allocation<Prov, Extra, Bytes> 
         Size::from_bytes(self.len())
     }
 
+    pub fn is_zero_initializer(&self) -> bool {
+        self.bytes.iter().all(|v| *v == 0)
+    }
+
     /// Looks at a slice which may contain uninitialized bytes or provenance. This differs
     /// from `get_bytes_with_uninit_and_ptr` in that it does no provenance checks (even on the
     /// edges) at all.

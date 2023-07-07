@@ -224,6 +224,15 @@ where
         goal: Goal<I, Self>,
     ) -> Result<Candidate<I>, NoSolution>;
 
+    /// A tuple is `Managed` if any of its components are `Managed`.
+    ///
+    /// These components are given by built-in rules from
+    /// [`structural_traits::instantiate_constituent_tys_for_managed_trait`].
+    fn consider_builtin_managed_candidate(
+        ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution>;
+
     /// A type is a `FnPtr` if it is of `FnPtr` type.
     fn consider_builtin_fn_ptr_trait_candidate(
         ecx: &mut EvalCtxt<'_, D>,
@@ -543,6 +552,9 @@ where
                 }
                 Some(TraitSolverLangItem::BikeshedGuaranteedNoDrop) => {
                     G::consider_builtin_bikeshed_guaranteed_no_drop_candidate(self, goal)
+                }
+                Some(TraitSolverLangItem::Managed) => {
+                    G::consider_builtin_managed_candidate(self, goal)
                 }
                 _ => Err(NoSolution),
             }

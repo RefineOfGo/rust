@@ -3859,6 +3859,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                     trait_pred.skip_binder().self_ty() == rhs_ty
                 }
                 sym::Eq | sym::Ord | sym::Clone | sym::Copy | sym::Hash | sym::Debug => true,
+                sym::Managed => !adt.is_union(),
                 _ => false,
             };
             is_derivable_trait &&

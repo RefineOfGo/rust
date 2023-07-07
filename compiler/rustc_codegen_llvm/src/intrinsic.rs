@@ -295,7 +295,7 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                     llvm::LLVMSetAlignment(load, align);
                 }
                 if !result.layout.is_zst() {
-                    self.store_to_place(load, result.val);
+                    self.store_to_place(load, result.val, result.layout);
                 }
                 return Ok(());
             }
@@ -598,9 +598,9 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
 
         if result.layout.ty.is_bool() {
             let val = self.from_immediate(llval);
-            self.store_to_place(val, result.val);
+            self.store_to_place(val, result.val, result.layout);
         } else if !result.layout.ty.is_unit() {
-            self.store_to_place(llval, result.val);
+            self.store_to_place(llval, result.val, result.layout);
         }
         Ok(())
     }
@@ -1037,9 +1037,9 @@ fn codegen_emcc_try<'ll, 'tcx>(
         // Required in order for there to be no padding between the fields.
         assert!(i8_align <= ptr_align);
         let catch_data = bx.alloca(2 * ptr_size, ptr_align);
-        bx.store(ptr, catch_data, ptr_align);
+        bx.store_ptr(ptr, catch_data);
         let catch_data_1 = bx.inbounds_ptradd(catch_data, bx.const_usize(ptr_size.bytes()));
-        bx.store(is_rust_panic, catch_data_1, i8_align);
+        bx.store_noptr(is_rust_panic, catch_data_1, i8_align);
 
         let catch_ty = bx.type_func(&[bx.type_ptr(), bx.type_ptr()], bx.type_void());
         bx.call(catch_ty, None, None, catch_func, &[data, catch_data], None, None);
@@ -1488,7 +1488,7 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
 
                 // Convert the integer to a byte array
                 let ptr = bx.alloca(Size::from_bytes(expected_bytes), Align::ONE);
-                bx.store(ze, ptr, Align::ONE);
+                bx.store_noptr(ze, ptr, Align::ONE);
                 let array_ty = bx.type_array(bx.type_i8(), expected_bytes);
                 return Ok(bx.load(array_ty, ptr, Align::ONE));
             }

@@ -601,6 +601,9 @@ pub enum Option<T> {
     Some(#[stable(feature = "rust1", since = "1.0.0")] T),
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Option<T> {}
+
 /////////////////////////////////////////////////////////////////////////////
 // Type implementation
 /////////////////////////////////////////////////////////////////////////////
@@ -2353,6 +2356,8 @@ struct Item<A> {
     opt: Option<A>,
 }
 
+impl<A: Managed> Managed for Item<A> {}
+
 impl<A> Iterator for Item<A> {
     type Item = A;
 
@@ -2394,6 +2399,9 @@ unsafe impl<A> TrustedLen for Item<A> {}
 pub struct Iter<'a, A: 'a> {
     inner: Item<&'a A>,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A: Managed> Managed for Iter<'_, A> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<'a, A> Iterator for Iter<'a, A> {
@@ -2445,6 +2453,9 @@ pub struct IterMut<'a, A: 'a> {
     inner: Item<&'a mut A>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A: Managed> Managed for IterMut<'_, A> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<'a, A> Iterator for IterMut<'a, A> {
     type Item = &'a mut A;
@@ -2485,6 +2496,9 @@ unsafe impl<A> TrustedLen for IterMut<'_, A> {}
 pub struct IntoIter<A> {
     inner: Item<A>,
 }
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A: Managed> Managed for IntoIter<A> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<A> Iterator for IntoIter<A> {

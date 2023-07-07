@@ -379,8 +379,8 @@ passes_inline_ignored_constants =
     .note = {-passes_see_issue(issue: "65833")}
 
 passes_inline_ignored_for_exported =
-    `#[inline]` is ignored on externally exported functions
-    .help = externally exported functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]`
+    `#[inline]` is ignored on externally exported non-lto-aware functions
+    .help = externally exported non-lto-aware functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]` attributes that uses ABI other than "C" or "rog"
 
 passes_inline_ignored_function_prototype =
     `#[inline]` is ignored on function prototypes
@@ -539,6 +539,36 @@ passes_no_mangle_foreign =
     .warn = {-passes_previously_accepted}
     .label = foreign {$foreign_item_kind}
     .note = symbol names in extern blocks are not mangled
+    .suggestion = remove this attribute
+
+passes_no_gcwb =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_gcwb_foreign =
+    `#[no_gcwb]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = GC is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
+
+passes_no_split =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_split_foreign =
+    `#[no_split]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = stack checking is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
+
+passes_no_checkpoint =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_checkpoint_foreign =
+    `#[no_checkpoint]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = runtime check-point is not applicable to symbol names in extern blocks
     .suggestion = remove this attribute
 
 passes_no_sanitize =

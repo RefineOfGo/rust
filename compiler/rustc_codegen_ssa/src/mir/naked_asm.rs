@@ -394,6 +394,7 @@ fn wasm_type<'tcx>(signature: &mut String, arg_abi: &ArgAbi<'_, Ty<'tcx>>, ptr_t
                     ..=8 => "i64",
                     _ => ptr_type,
                 },
+                RegKind::Pointer => ptr_type,
                 RegKind::Float => match cast.rest.unit.size.bytes() {
                     ..=4 => "f32",
                     ..=8 => "f64",

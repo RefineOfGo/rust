@@ -288,6 +288,14 @@ pub(crate) struct CopyImplOnNonAdt {
 }
 
 #[derive(Diagnostic)]
+#[diag(hir_analysis_managed_impl_on_wrong_type)]
+pub(crate) struct ManagedImplOnWrongType {
+    #[primary_span]
+    #[label]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
 #[diag(hir_analysis_const_param_ty_impl_on_unsized)]
 pub(crate) struct ConstParamTyImplOnUnsized {
     #[primary_span]

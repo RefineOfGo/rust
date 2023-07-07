@@ -2688,6 +2688,30 @@ pub const fn size_of<T>() -> usize;
 #[rustc_intrinsic]
 pub const fn align_of<T>() -> usize;
 
+/// Get a static slice containing encoded pointer map of a type.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+#[rustc_nounwind]
+#[stable(feature = "rog", since = "1.0.0")]
+#[rustc_const_stable(feature = "rog", since = "1.0.0")]
+#[rustc_intrinsic]
+pub const fn pointer_map_of<T>() -> &'static [u64];
+
+/// Check if the pointer map of type T is exact or not.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+#[rustc_nounwind]
+#[stable(feature = "rog", since = "1.0.0")]
+#[rustc_const_stable(feature = "rog", since = "1.0.0")]
+#[rustc_intrinsic]
+pub const fn is_pointer_map_exact<T>() -> bool;
+
 /// Returns the number of variants of the type `T` cast to a `usize`;
 /// if `T` has no variants, returns `0`. Uninhabited variants will be counted.
 ///

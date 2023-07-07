@@ -8,6 +8,7 @@ use rustc_abi::{FieldIdx, HasDataLayout, Size};
 use rustc_apfloat::ieee::{Double, Half, Quad, Single};
 use rustc_middle::mir::interpret::{read_target_uint, write_target_uint};
 use rustc_middle::mir::{self, BinOp, ConstValue, NonDivergingIntrinsic};
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_middle::ty::{Ty, TyCtxt};
 use rustc_middle::{bug, ty};
@@ -22,6 +23,30 @@ use super::{
     interp_ok, throw_inval, throw_ub_custom, throw_ub_format,
 };
 use crate::fluent_generated as fluent;
+
+#[derive(Clone, Copy)]
+struct PointerMapCx<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    typing_env: ty::TypingEnv<'tcx>,
+}
+
+impl rustc_abi::HasDataLayout for PointerMapCx<'_> {
+    fn data_layout(&self) -> &rustc_abi::TargetDataLayout {
+        &self.tcx.data_layout
+    }
+}
+
+impl<'tcx> ty::layout::HasTyCtxt<'tcx> for PointerMapCx<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+}
+
+impl<'tcx> ty::layout::HasTypingEnv<'tcx> for PointerMapCx<'tcx> {
+    fn typing_env(&self) -> ty::TypingEnv<'tcx> {
+        self.typing_env
+    }
+}
 
 /// Directly returns an `Allocation` containing an absolute path representation of the given type.
 pub(crate) fn alloc_type_name<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> ConstAllocation<'tcx> {
@@ -123,6 +148,34 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
         let tcx = self.tcx.tcx;
 
         match intrinsic_name {
+            sym::pointer_map_of => {
+                let tp_ty = instance.args.type_at(0);
+                ensure_monomorphic_enough(tcx, tp_ty)?;
+                let layout = self.layout_of(tp_ty)?;
+                let pcx = PointerMapCx { tcx, typing_env: self.typing_env };
+                let ptrmap = pcx.pointer_map(layout).encode();
+                let val = ConstValue::Slice {
+                    meta: ptrmap.len() as u64,
+                    data: tcx.mk_const_alloc(Allocation::from_bytes(
+                        ptrmap,
+                        tcx.data_layout.pointer_align().abi,
+                        ty::Mutability::Not,
+                        (),
+                    )),
+                };
+                let val = self.const_val_to_op(val, dest.layout.ty, Some(dest.layout))?;
+                self.copy_op(&val, dest)?;
+            }
+            sym::is_pointer_map_exact => {
+                let tp_ty = instance.args.type_at(0);
+                ensure_monomorphic_enough(tcx, tp_ty)?;
+                let layout = self.layout_of(tp_ty)?;
+                let pcx = PointerMapCx { tcx, typing_env: self.typing_env };
+                let ptrmap = pcx.pointer_map(layout);
+                let val = ConstValue::from_bool(ptrmap.is_exact());
+                let val = self.const_val_to_op(val, tcx.types.bool, Some(dest.layout))?;
+                self.copy_op(&val, dest)?;
+            }
             sym::type_name => {
                 let tp_ty = instance.args.type_at(0);
                 ensure_monomorphic_enough(tcx, tp_ty)?;

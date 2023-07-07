@@ -50,6 +50,10 @@ use crate::value::Value;
 *
 */
 
+/// The minimum safe memory address that is aligned and won't cause problems
+/// with ROG GC.
+const ROG_MIN_PTR_ADDR: u64 = 1 << 18;
+
 /// A structure representing an active landing pad for the duration of a basic
 /// block.
 ///
@@ -276,7 +280,8 @@ impl<'ll, 'tcx> ConstCodegenMethods for CodegenCx<'ll, 'tcx> {
                         // real address at runtime.
                         if alloc.inner().len() == 0 {
                             assert_eq!(offset.bytes(), 0);
-                            let llval = self.const_usize(alloc.inner().align.bytes());
+                            let llval =
+                                self.const_usize(alloc.inner().align.bytes().max(ROG_MIN_PTR_ADDR));
                             return if matches!(layout.primitive(), Pointer(_)) {
                                 unsafe { llvm::LLVMConstIntToPtr(llval, llty) }
                             } else {

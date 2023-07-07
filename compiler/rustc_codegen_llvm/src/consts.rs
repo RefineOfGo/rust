@@ -44,6 +44,19 @@ pub(crate) fn const_alloc_to_llvm<'ll>(
     let pointer_size = dl.pointer_size();
     let pointer_size_bytes = pointer_size.bytes() as usize;
 
+    if alloc.init_mask().is_all_initialized().is_ok()
+        && alloc.provenance().ptrs().is_empty()
+        && alloc.is_zero_initializer()
+    {
+        match alloc.len() {
+            1 => return cx.const_i8(0),
+            2 => return cx.const_i16(0),
+            4 => return cx.const_i32(0),
+            8 => return cx.const_int(cx.type_i64(), 0),
+            _ => {}
+        }
+    }
+
     // Note: this function may call `inspect_with_uninit_and_ptr_outside_interpreter`, so `range`
     // must be within the bounds of `alloc` and not contain or overlap a pointer provenance.
     fn append_chunks_of_init_and_uninit_bytes<'ll, 'a, 'b>(

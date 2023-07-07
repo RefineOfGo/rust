@@ -157,6 +157,12 @@ bitflags::bitflags! {
         const ALLOCATOR_ZEROED          = 1 << 14;
         /// `#[no_builtins]`: indicates that disable implicit builtin knowledge of functions for the function.
         const NO_BUILTINS               = 1 << 15;
+        /// `#[no_split]`: indicates that LLVM should not insert stack-check prologue for this function.
+        const NO_SPLIT                  = 1 << 16;
+        /// `#[no_gcwb]`: indicates that any form of GC write barrier must not exist in this function.
+        const NO_GCWB                   = 1 << 17;
+        /// `#[no_checkpoint]`: a hint to LLVM that we should not insert check-point for this function.
+        const NO_CHECKPOINT             = 1 << 18;
     }
 }
 rustc_data_structures::external_bitflags_debug! { CodegenFnAttrFlags }

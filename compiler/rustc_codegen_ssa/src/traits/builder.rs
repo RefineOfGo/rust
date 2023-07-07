@@ -3,6 +3,7 @@ use std::ops::Deref;
 
 use rustc_abi::{Align, Scalar, Size, WrappingRange};
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::layout::{FnAbiOf, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{AtomicOrdering, Instance, Ty};
 use rustc_session::config::OptLevel;
@@ -143,7 +144,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         // Other backends may override if they have a better way.
         let const_true = self.cx().const_bool(true);
         let poison_ptr = self.const_poison(self.cx().type_ptr());
-        self.store(const_true, poison_ptr, Align::ONE);
+        self.store_noptr(const_true, poison_ptr, Align::ONE);
     }
 
     fn add(&mut self, lhs: Self::Value, rhs: Self::Value) -> Self::Value;
@@ -295,35 +296,108 @@ pub trait BuilderMethods<'a, 'tcx>:
 
     fn range_metadata(&mut self, load: Self::Value, range: WrappingRange);
     fn nonnull_metadata(&mut self, load: Self::Value);
+    fn can_omit_barriers(&mut self, val: Self::Value) -> bool;
 
-    fn store(&mut self, val: Self::Value, ptr: Self::Value, align: Align) -> Self::Value;
-    fn store_to_place(&mut self, val: Self::Value, place: PlaceValue<Self::Value>) -> Self::Value {
-        assert_eq!(place.llextra, None);
-        self.store(val, place.llval, place.align)
+    fn store_ptr(&mut self, val: Self::Value, ptr: Self::Value);
+    fn store_ptr_with_flags(&mut self, val: Self::Value, ptr: Self::Value, flags: MemFlags);
+
+    fn store_noptr(&mut self, val: Self::Value, ptr: Self::Value, align: Align);
+    fn store_noptr_with_flags(
+        &mut self,
+        val: Self::Value,
+        ptr: Self::Value,
+        align: Align,
+        flags: MemFlags,
+    );
+
+    fn store(
+        &mut self,
+        val: Self::Value,
+        ptr: Self::Value,
+        align: Align,
+        layout: TyAndLayout<'tcx>,
+    ) {
+        self.store_with_flags(val, ptr, align, MemFlags::empty(), layout);
     }
+
+    fn store_to_place(
+        &mut self,
+        val: Self::Value,
+        place: PlaceValue<Self::Value>,
+        layout: TyAndLayout<'tcx>,
+    ) {
+        debug_assert_eq!(place.llextra, None);
+        self.store(val, place.llval, place.align, layout);
+    }
+
+    fn store_to_place_noptr(&mut self, val: Self::Value, place: PlaceValue<Self::Value>) {
+        debug_assert_eq!(place.llextra, None);
+        self.store_noptr(val, place.llval, place.align);
+    }
+
     fn store_with_flags(
         &mut self,
         val: Self::Value,
         ptr: Self::Value,
         align: Align,
         flags: MemFlags,
-    ) -> Self::Value;
+        layout: TyAndLayout<'tcx>,
+    ) {
+        if self.has_pointers(layout) && !self.can_omit_barriers(ptr) {
+            assert!(
+                align >= self.data_layout().pointer_align().abi,
+                "invalid pointer alignment: {:?}",
+                align
+            );
+            if layout.size == self.data_layout().pointer_size() {
+                self.store_ptr_with_flags(val, ptr, flags);
+            } else {
+                let temp = self.alloca(layout.size, align);
+                let size = self.const_usize(layout.size.bytes());
+                self.lifetime_start(temp, layout.size);
+                self.store_noptr(val, temp, align);
+                self.memcpy(ptr, align, temp, align, size, flags, true);
+                self.lifetime_end(temp, layout.size);
+            }
+        } else {
+            self.store_noptr_with_flags(val, ptr, align, flags);
+        }
+    }
+
     fn store_to_place_with_flags(
         &mut self,
         val: Self::Value,
         place: PlaceValue<Self::Value>,
         flags: MemFlags,
-    ) -> Self::Value {
+        layout: TyAndLayout<'tcx>,
+    ) {
         assert_eq!(place.llextra, None);
-        self.store_with_flags(val, place.llval, place.align, flags)
+        self.store_with_flags(val, place.llval, place.align, flags, layout);
     }
-    fn atomic_store(
+
+    fn atomic_store_ptr(&mut self, val: Self::Value, ptr: Self::Value, order: AtomicOrdering);
+    fn atomic_store_noptr(
         &mut self,
         val: Self::Value,
         ptr: Self::Value,
         order: AtomicOrdering,
         size: Size,
     );
+
+    fn atomic_store(
+        &mut self,
+        val: Self::Value,
+        ptr: Self::Value,
+        order: AtomicOrdering,
+        layout: TyAndLayout<'tcx>,
+    ) {
+        if self.has_pointers(layout) {
+            assert_eq!(layout.size, self.data_layout().pointer_size());
+            self.atomic_store_ptr(val, ptr, order);
+        } else {
+            self.atomic_store_noptr(val, ptr, order, layout.size);
+        }
+    }
 
     fn gep(&mut self, ty: Self::Type, ptr: Self::Value, indices: &[Self::Value]) -> Self::Value;
     fn inbounds_gep(
@@ -424,6 +498,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         src_align: Align,
         size: Self::Value,
         flags: MemFlags,
+        has_pointers: bool,
     );
     fn memmove(
         &mut self,
@@ -433,6 +508,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         src_align: Align,
         size: Self::Value,
         flags: MemFlags,
+        has_pointers: bool,
     );
     fn memset(
         &mut self,
@@ -441,6 +517,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         size: Self::Value,
         align: Align,
         flags: MemFlags,
+        has_pointers: bool,
     );
 
     /// *Typed* copy for non-overlapping places.
@@ -472,7 +549,7 @@ pub trait BuilderMethods<'a, 'tcx>:
             // HACK(nox): This is inefficient but there is no nontemporal memcpy.
             let ty = self.backend_type(layout);
             let val = self.load_from_place(ty, src);
-            self.store_to_place_with_flags(val, dst, flags);
+            self.store_to_place_with_flags(val, dst, flags, layout);
         } else if self.sess().opts.optimize == OptLevel::No && self.is_backend_immediate(layout) {
             // If we're not optimizing, the aliasing information from `memcpy`
             // isn't useful, so just load-store the value for smaller code.
@@ -480,7 +557,8 @@ pub trait BuilderMethods<'a, 'tcx>:
             temp.val.store_with_flags(self, dst.with_type(layout), flags);
         } else if !layout.is_zst() {
             let bytes = self.const_usize(layout.size.bytes());
-            self.memcpy(dst.llval, dst.align, src.llval, src.align, bytes, flags);
+            let has_pointers = self.has_pointers(layout);
+            self.memcpy(dst.llval, dst.align, src.llval, src.align, bytes, flags, has_pointers);
         }
     }
 

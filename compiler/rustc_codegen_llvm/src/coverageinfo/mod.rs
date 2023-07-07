@@ -115,7 +115,7 @@ impl<'tcx> CoverageInfoBuilderMethods<'tcx> for Builder<'_, '_, 'tcx> {
             let align = self.tcx.data_layout.i32_align.abi;
             let cond_bitmap = self.alloca(Size::from_bytes(4), align);
             llvm::set_value_name(cond_bitmap, format!("mcdc.addr.{i}").as_bytes());
-            self.store(self.const_i32(0), cond_bitmap, align);
+            self.store_noptr(self.const_i32(0), cond_bitmap, align);
             cond_bitmaps.push(cond_bitmap);
         }
 

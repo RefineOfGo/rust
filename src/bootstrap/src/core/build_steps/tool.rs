@@ -318,6 +318,7 @@ pub fn prepare_tool_cargo(
     // and `x test $tool` executions.
     // See https://github.com/rust-lang/rust/issues/116538
     cargo.rustflag("-Zunstable-options");
+    cargo.rustflag("-Ctarget-cpu=native");
 
     // NOTE: The root cause of needing `-Zon-broken-pipe=kill` in the first place is because `rustc`
     // and `rustdoc` doesn't gracefully handle I/O errors due to usages of raw std `println!` macros

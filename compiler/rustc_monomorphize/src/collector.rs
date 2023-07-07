@@ -216,11 +216,12 @@ use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, DefIdMap, LocalDefId};
 use rustc_hir::lang_items::LangItem;
+use rustc_middle::managed::ManagedChecker;
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::mir::interpret::{AllocId, ErrorHandled, GlobalAlloc, Scalar};
 use rustc_middle::mir::mono::{CollectionMode, InstantiationMode, MonoItem};
-use rustc_middle::mir::visit::Visitor as MirVisitor;
-use rustc_middle::mir::{self, Location, MentionedItem, traversal};
+use rustc_middle::mir::visit::{TyContext, Visitor as MirVisitor};
+use rustc_middle::mir::{self, HasLocalDecls, Location, MentionedItem, traversal};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
@@ -635,6 +636,20 @@ fn check_recursion_limit<'tcx>(
     (def_id, recursion_depth)
 }
 
+fn check_managed_fields<'tcx>(tcx: TyCtxt<'tcx>, mc: ManagedChecker<'tcx>, ty: Ty<'tcx>) {
+    if let ty::Adt(adt, args) = *ty.kind() {
+        if !mc.is_managed(ty) {
+            if let Some(field) = mc.find_managed_field(adt, args) {
+                tcx.dcx().emit_err(errors::ManagedFieldInUnmanagedAdt {
+                    field_span: tcx.def_span(field.did),
+                    field_ty: field.ty(tcx, args).to_string(),
+                    note: (),
+                });
+            }
+        }
+    }
+}
+
 struct MirUsedCollector<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     body: &'a mir::Body<'tcx>,
@@ -643,6 +658,7 @@ struct MirUsedCollector<'a, 'tcx> {
     /// Note that this contains *not-monomorphized* items!
     used_mentioned_items: &'a mut UnordSet<MentionedItem<'tcx>>,
     instance: Instance<'tcx>,
+    mc: ManagedChecker<'tcx>,
 }
 
 impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
@@ -684,6 +700,22 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
+    fn visit_ty(&mut self, ty: Ty<'tcx>, _: TyContext) {
+        let ty = self.monomorphize(ty);
+        check_managed_fields(self.tcx, self.mc, ty);
+        self.super_ty(ty);
+    }
+
+    fn visit_local(
+        &mut self,
+        local: mir::Local,
+        _context: mir::visit::PlaceContext,
+        location: Location,
+    ) {
+        let local_ty = self.body.local_decls()[local].ty;
+        self.visit_ty(local_ty, TyContext::Location(location));
+    }
+
     fn visit_rvalue(&mut self, rvalue: &mir::Rvalue<'tcx>, location: Location) {
         debug!("visiting rvalue {:?}", *rvalue);
 
@@ -710,6 +742,14 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                 // from a fixed sized array to a slice. But we are only
                 // interested in things that produce a vtable.
                 if target_ty.is_trait() && !source_ty.is_trait() {
+                    if self.mc.is_managed(source_ty) {
+                        self.tcx.dcx().emit_err(errors::DynTraitPointsToManagedValue {
+                            span,
+                            value_ty: source_ty.to_string(),
+                            target_ty: target_ty.to_string(),
+                            note: (),
+                        });
+                    }
                     create_mono_items_for_vtable_methods(
                         self.tcx,
                         target_ty,
@@ -757,19 +797,21 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                     self.used_items.push(respan(span, MonoItem::Static(def_id)));
                 }
             }
+            mir::Rvalue::ShallowInitBox(_, ty) => {
+                self.visit_ty(Ty::new_box(self.tcx, ty), TyContext::Location(location));
+            }
             _ => { /* not interesting */ }
         }
 
         self.super_rvalue(rvalue, location);
     }
 
-    /// This does not walk the MIR of the constant as that is not needed for codegen, all we need is
-    /// to ensure that the constant evaluates successfully and walk the result.
     #[instrument(skip(self), level = "debug")]
-    fn visit_const_operand(&mut self, constant: &mir::ConstOperand<'tcx>, _location: Location) {
+    fn visit_const_operand(&mut self, constant: &mir::ConstOperand<'tcx>, location: Location) {
         // No `super_constant` as we don't care about `visit_ty`/`visit_ty_const`.
         let Some(val) = self.eval_constant(constant) else { return };
         collect_const_value(self.tcx, val, self.used_items);
+        self.super_const_operand(constant, location);
     }
 
     fn visit_terminator(&mut self, terminator: &mir::Terminator<'tcx>, location: Location) {
@@ -868,6 +910,7 @@ fn visit_drop_use<'tcx>(
     output: &mut MonoItems<'tcx>,
 ) {
     let instance = Instance::resolve_drop_in_place(tcx, ty);
+    check_managed_fields(tcx, ManagedChecker::new(tcx), ty);
     visit_instance_use(tcx, instance, is_direct_call, source, output);
 }
 
@@ -1008,15 +1051,19 @@ fn should_codegen_locally<'tcx>(tcx: TyCtxt<'tcx>, instance: Instance<'tcx>) -> 
         return false;
     }
 
-    if !tcx.is_mir_available(def_id) {
-        tcx.dcx().emit_fatal(NoOptimizedMir {
-            span: tcx.def_span(def_id),
-            crate_name: tcx.crate_name(def_id.krate),
-            instance: instance.to_string(),
-        });
+    if tcx.is_mir_available(def_id) {
+        return true;
     }
 
-    true
+    if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
+        return false;
+    }
+
+    tcx.dcx().emit_fatal(NoOptimizedMir {
+        span: tcx.def_span(def_id),
+        crate_name: tcx.crate_name(def_id.krate),
+        instance: instance.to_string(),
+    });
 }
 
 /// For a given pair of source and target type that occur in an unsizing coercion,
@@ -1255,6 +1302,7 @@ fn collect_items_of_instance<'tcx>(
         used_items: &mut used_items,
         used_mentioned_items: &mut used_mentioned_items,
         instance,
+        mc: ManagedChecker::new(tcx),
     };
 
     if mode == CollectionMode::UsedItems {

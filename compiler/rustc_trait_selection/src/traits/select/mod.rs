@@ -23,6 +23,7 @@ use rustc_infer::traits::{PredicateObligations, TraitObligation};
 use rustc_macros::{TypeFoldable, TypeVisitable};
 use rustc_middle::bug;
 use rustc_middle::dep_graph::{DepNodeIndex, dep_kinds};
+use rustc_middle::traits::ImplSource;
 pub use rustc_middle::traits::select::*;
 use rustc_middle::ty::abstract_const::NotConstEvaluatable;
 use rustc_middle::ty::error::TypeErrorToStringExt;
@@ -557,19 +558,25 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         stack: TraitObligationStackList<'o, 'tcx>,
         predicates: I,
+        disjunction_logic: bool,
     ) -> Result<EvaluationResult, OverflowError>
     where
         I: IntoIterator<Item = PredicateObligation<'tcx>> + std::fmt::Debug,
     {
-        let mut result = EvaluatedToOk;
+        let mut result = if disjunction_logic { EvaluatedToErr } else { EvaluatedToOk };
         for mut obligation in predicates {
             obligation.set_depth_from_parent(stack.depth());
             let eval = self.evaluate_predicate_recursively(stack, obligation.clone())?;
-            if let EvaluatedToErr = eval {
-                // fast-path - EvaluatedToErr is the top of the lattice,
-                // so we don't need to look on the other predicates.
-                return Ok(EvaluatedToErr);
+            // fast-path - short circuit for obvious success or errors.
+            if disjunction_logic {
+                if let EvaluatedToOk = eval {
+                    return Ok(EvaluatedToOk);
+                }
+                result = cmp::min(result, eval);
             } else {
+                if let EvaluatedToErr = eval {
+                    return Ok(EvaluatedToErr);
+                }
                 result = cmp::max(result, eval);
             }
         }
@@ -618,7 +625,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                             &obligation.with(self.tcx(), data),
                         ) {
                             Ok(nested) => {
-                                self.evaluate_predicates_recursively(previous_stack, nested)
+                                self.evaluate_predicates_recursively(previous_stack, nested, false)
                             }
                             Err(effects::EvaluationFailure::Ambiguous) => Ok(EvaluatedToAmbig),
                             Err(effects::EvaluationFailure::NoSolution) => Ok(EvaluatedToErr),
@@ -631,7 +638,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     // Does this code ever run?
                     match self.infcx.subtype_predicate(&obligation.cause, obligation.param_env, p) {
                         Ok(Ok(InferOk { obligations, .. })) => {
-                            self.evaluate_predicates_recursively(previous_stack, obligations)
+                            self.evaluate_predicates_recursively(previous_stack, obligations, false)
                         }
                         Ok(Err(_)) => Ok(EvaluatedToErr),
                         Err(..) => Ok(EvaluatedToAmbig),
@@ -643,7 +650,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     // Does this code ever run?
                     match self.infcx.coerce_predicate(&obligation.cause, obligation.param_env, p) {
                         Ok(Ok(InferOk { obligations, .. })) => {
-                            self.evaluate_predicates_recursively(previous_stack, obligations)
+                            self.evaluate_predicates_recursively(previous_stack, obligations, false)
                         }
                         Ok(Err(_)) => Ok(EvaluatedToErr),
                         Err(..) => Ok(EvaluatedToAmbig),
@@ -721,8 +728,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     ) {
                         Some(obligations) => {
                             cache.wf_args.borrow_mut().push((term, previous_stack.depth()));
-                            let result =
-                                self.evaluate_predicates_recursively(previous_stack, obligations);
+                            let result = self.evaluate_predicates_recursively(
+                                previous_stack,
+                                obligations,
+                                false,
+                            );
                             cache.wf_args.borrow_mut().pop();
 
                             let result = result?;
@@ -804,6 +814,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                                 let res = self.evaluate_predicates_recursively(
                                     previous_stack,
                                     subobligations,
+                                    false,
                                 );
                                 if let Ok(eval_rslt) = res
                                     && (eval_rslt == EvaluatedToOk
@@ -889,6 +900,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                                     return self.evaluate_predicates_recursively(
                                         previous_stack,
                                         obligations,
+                                        false,
                                     );
                                 }
                             }
@@ -905,6 +917,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                                     return self.evaluate_predicates_recursively(
                                         previous_stack,
                                         obligations,
+                                        false,
                                     );
                                 }
                             }
@@ -938,6 +951,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                                 Ok(inf_ok) => self.evaluate_predicates_recursively(
                                     previous_stack,
                                     inf_ok.into_obligations(),
+                                    false,
                                 ),
                                 Err(_) => Ok(EvaluatedToErr),
                             }
@@ -995,6 +1009,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                         Ok(inf_ok) => self.evaluate_predicates_recursively(
                             previous_stack,
                             inf_ok.into_obligations(),
+                            false,
                         ),
                         Err(_) => Ok(EvaluatedToErr),
                     }
@@ -1276,10 +1291,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             match this.confirm_candidate(stack.obligation, candidate.clone()) {
                 Ok(selection) => {
                     debug!(?selection);
-                    this.evaluate_predicates_recursively(
-                        stack.list(),
-                        selection.nested_obligations().into_iter(),
-                    )
+                    let is_builtin_any = matches!(&selection, ImplSource::BuiltinAny(..));
+                    let predicates = selection.nested_obligations().into_iter();
+                    this.evaluate_predicates_recursively(stack.list(), predicates, is_builtin_any)
                 }
                 Err(..) => Ok(EvaluatedToErr),
             }
@@ -1724,7 +1738,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     ) -> Result<EvaluationResult, OverflowError> {
         self.evaluation_probe(|this| {
             match this.match_where_clause_trait_ref(stack.obligation, where_clause_trait_ref) {
-                Ok(obligations) => this.evaluate_predicates_recursively(stack.list(), obligations),
+                Ok(obligations) => {
+                    this.evaluate_predicates_recursively(stack.list(), obligations, false)
+                }
                 Err(()) => Ok(EvaluatedToErr),
             }
         })
@@ -1773,6 +1789,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 self.evaluate_predicates_recursively(
                     TraitObligationStackList::empty(&ProvisionalEvaluationCache::default()),
                     nested_obligations.into_iter().chain(obligations),
+                    false,
                 )
                 .is_ok_and(|res| res.may_apply())
             });
@@ -1986,6 +2003,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             if candidates.iter().all(|c| match c.candidate {
                 SizedCandidate
                 | BuiltinCandidate
+                | BuiltinAnyCandidate
                 | TransmutabilityCandidate
                 | AutoImplCandidate
                 | ClosureCandidate { .. }
@@ -2237,6 +2255,15 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             | ty::Infer(ty::TyVar(_) | ty::FreshTy(_) | ty::FreshIntTy(_) | ty::FreshFloatTy(_)) => {
                 bug!("asked to assemble builtin bounds of unexpected type: {:?}", self_ty);
             }
+        }
+    }
+
+    fn managed_conditions(&mut self, self_ty: Ty<'tcx>) -> ty::Binder<'tcx, Vec<Ty<'tcx>>> {
+        match *self_ty.kind() {
+            ty::Pat(ty, _) => ty::Binder::dummy(vec![ty]),
+            ty::Closure(_, args) => ty::Binder::dummy(args.as_closure().upvar_tys().to_vec()),
+            ty::Tuple(tys) => ty::Binder::dummy(tys.iter().collect()),
+            _ => ty::Binder::dummy(vec![]),
         }
     }
 

@@ -1006,6 +1006,8 @@ impl<'tcx> Stable<'tcx> for rustc_abi::ExternAbi {
         use crate::ty::Abi;
         match *self {
             ExternAbi::Rust => Abi::Rust,
+            ExternAbi::Rog => Abi::Rog,
+            ExternAbi::RogCold => Abi::RogCold,
             ExternAbi::C { unwind } => Abi::C { unwind },
             ExternAbi::Cdecl { unwind } => Abi::Cdecl { unwind },
             ExternAbi::Stdcall { unwind } => Abi::Stdcall { unwind },

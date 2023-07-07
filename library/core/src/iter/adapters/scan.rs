@@ -20,6 +20,9 @@ pub struct Scan<I, St, F> {
     state: St,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I, St, F> Managed for Scan<I, St, F> where (I, St): Managed {}
+
 impl<I, St, F> Scan<I, St, F> {
     pub(in crate::iter) fn new(iter: I, state: St, f: F) -> Scan<I, St, F> {
         Scan { iter, state, f }

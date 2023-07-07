@@ -1,4 +1,5 @@
 use rustc_abi::{self as abi, FIRST_VARIANT};
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
@@ -93,12 +94,22 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     let val = self.eval_mir_constant(const_op);
                     if val.all_bytes_uninit(self.cx.tcx()) {
                         let size = bx.const_usize(dest.layout.size.bytes());
+                        let has_pointers = bx.has_pointers(dest.layout);
+                        let fill_value = {
+                            if has_pointers && !bx.can_omit_barriers(dest.val.llval) {
+                                // Force a zero initialization for values that may require write barriers
+                                bx.const_i8(0)
+                            } else {
+                                bx.const_undef(bx.type_i8())
+                            }
+                        };
                         bx.memset(
                             dest.val.llval,
-                            bx.const_undef(bx.type_i8()),
+                            fill_value,
                             size,
                             dest.val.align,
                             MemFlags::empty(),
+                            has_pointers,
                         );
                         return;
                     }
@@ -109,14 +120,26 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let try_init_all_same = |bx: &mut Bx, v| {
                     let start = dest.val.llval;
                     let size = bx.const_usize(dest.layout.size.bytes());
+                    let has_pointers = bx.has_pointers(dest.layout);
 
                     // Use llvm.memset.p0i8.* to initialize all same byte arrays
                     if let Some(int) = bx.cx().const_to_opt_u128(v, false) {
                         let bytes = &int.to_le_bytes()[..cg_elem.layout.size.bytes_usize()];
                         let first = bytes[0];
                         if bytes[1..].iter().all(|&b| b == first) {
+                            assert!(
+                                first == 0 || !has_pointers,
+                                "cannot fill managed memory with non-zero bytes"
+                            );
                             let fill = bx.cx().const_u8(first);
-                            bx.memset(start, fill, size, dest.val.align, MemFlags::empty());
+                            bx.memset(
+                                start,
+                                fill,
+                                size,
+                                dest.val.align,
+                                MemFlags::empty(),
+                                has_pointers,
+                            );
                             return true;
                         }
                     }
@@ -124,7 +147,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     // Use llvm.memset.p0i8.* to initialize byte arrays
                     let v = bx.from_immediate(v);
                     if bx.cx().val_ty(v) == bx.cx().type_i8() {
-                        bx.memset(start, v, size, dest.val.align, MemFlags::empty());
+                        assert!(!has_pointers, "cannot fill managed memory with arbitrary value");
+                        bx.memset(start, v, size, dest.val.align, MemFlags::empty(), false);
                         return true;
                     }
                     false
