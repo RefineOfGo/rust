@@ -81,7 +81,7 @@ where
 {
     let dl = cx.data_layout();
     let size = arg.layout.size;
-    let mut prefix = [None; 8];
+    let mut prefix = [None; 15];
     let mut prefix_index = 0;
 
     // Detect need for padding

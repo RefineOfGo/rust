@@ -87,6 +87,7 @@ pub(crate) fn get_fn<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>, instance: Instance<'t
         //
         // So because this is a foreign value we blanket apply an external
         // linkage directive because it's coming from a different object file.
+        //
         // The visibility here is where it gets tricky. This symbol could be
         // referencing some foreign crate or foreign library (an `extern`
         // block) in which case we want to leave the default visibility. We may

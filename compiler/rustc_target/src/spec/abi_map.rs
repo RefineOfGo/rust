@@ -90,6 +90,9 @@ impl AbiMap {
             (ExternAbi::RustCold, _) => CanonAbi::RustCold,
             (ExternAbi::RustPreserveNone, _) => CanonAbi::RustPreserveNone,
 
+            (ExternAbi::Rog, _) => CanonAbi::Rog,
+            (ExternAbi::RogCold, _) => CanonAbi::RogCold,
+
             (ExternAbi::Custom, _) => CanonAbi::Custom,
 
             (ExternAbi::System { .. }, ArchKind::X86)

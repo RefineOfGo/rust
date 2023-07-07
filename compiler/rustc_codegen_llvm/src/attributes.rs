@@ -516,6 +516,12 @@ pub(crate) fn llfn_attrs_from_instance<'ll, 'tcx>(
     if let Some(align) = codegen_fn_attrs.alignment {
         llvm::set_alignment(llfn, align);
     }
+    if !codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NO_SPLIT) {
+        to_add.push(llvm::CreateAttrString(cx.llcx, "rog-stack-check"));
+    }
+    if !codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NO_CHECKPOINT) {
+        to_add.push(llvm::CreateAttrString(cx.llcx, "rog-checkpoint"));
+    }
     to_add.extend(patchable_function_entry_attrs(
         cx,
         sess,

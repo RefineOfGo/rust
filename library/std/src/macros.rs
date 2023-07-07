@@ -385,9 +385,14 @@ pub macro dbg_internal {
             $crate::concat!($($piece),+),
             $(
                 $crate::stringify!($processed),
-                // The `&T: Debug` check happens here (not in the format literal desugaring)
-                // to avoid format literal related messages and suggestions.
-                &&$bound as &dyn $crate::fmt::Debug
+                {
+                    // The `&T: Debug` check happens here (not in the format literal desugaring)
+                    // to avoid format literal related messages and suggestions.
+                    #[inline(always)]
+                    fn ensure_impl_debug(_: &impl $crate::fmt::Debug) {}
+                    ensure_impl_debug(&&$bound);
+                    &$bound
+                }
             ),+,
             // The location returned here is that of the macro invocation, so
             // it will be the same for all expressions. Thus, label these

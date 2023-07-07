@@ -67,6 +67,7 @@ impl BuiltinDeriveExpander {
 register_builtin! {
     Copy => copy_expand,
     Clone => clone_expand,
+    Managed => managed_expand,
     Default => default_expand,
     Debug => debug_expand,
     Hash => hash_expand,
@@ -587,6 +588,22 @@ fn clone_expand(
             }
         }
     })
+}
+
+fn managed_expand(
+    db: &dyn ExpandDatabase,
+    span: Span,
+    tt: &tt::TopSubtree,
+) -> ExpandResult<tt::TopSubtree> {
+    let krate = dollar_crate(span);
+    expand_simple_derive(
+        db,
+        span,
+        tt,
+        quote! { span => #krate::marker::Managed },
+        true,
+        |_| quote! { span => },
+    )
 }
 
 /// This function exists since `quote! {span => => }` doesn't work.

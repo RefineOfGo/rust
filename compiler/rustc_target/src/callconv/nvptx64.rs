@@ -42,7 +42,7 @@ fn classify_aggregate<Ty>(arg: &mut ArgAbi<'_, Ty>) {
 
     if align_bytes == size.bytes() {
         arg.cast_to(CastTarget::prefixed(
-            [Some(reg), None, None, None, None, None, None, None],
+            CastTarget::prefix(reg),
             Uniform::new(Reg::i8(), Size::ZERO),
         ));
     } else {
@@ -79,10 +79,7 @@ where
     };
     if arg.layout.size.bytes() / align_bytes == 1 {
         // Make sure we pass the struct as array at the LLVM IR level and not as a single integer.
-        arg.cast_to(CastTarget::prefixed(
-            [Some(unit), None, None, None, None, None, None, None],
-            Uniform::new(unit, Size::ZERO),
-        ));
+        arg.cast_to(CastTarget::prefixed(CastTarget::prefix(unit), Uniform::new(unit, Size::ZERO)));
     } else {
         arg.cast_to(Uniform::new(unit, arg.layout.size));
     }

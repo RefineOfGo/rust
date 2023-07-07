@@ -3468,7 +3468,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             | sym::Clone
             | sym::Copy
             | sym::Hash
-            | sym::Debug => true,
+            | sym::Debug
+            | sym::Managed => true,
             _ => false,
         };
 

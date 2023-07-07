@@ -20,6 +20,9 @@ pub struct TakeWhile<I, P> {
     predicate: P,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed, P> Managed for TakeWhile<I, P> {}
+
 impl<I, P> TakeWhile<I, P> {
     pub(in crate::iter) fn new(iter: I, predicate: P) -> TakeWhile<I, P> {
         TakeWhile { iter, flag: false, predicate }

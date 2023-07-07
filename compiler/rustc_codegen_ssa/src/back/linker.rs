@@ -426,6 +426,10 @@ impl<'a> GccLinker<'a> {
         if let Some(path) = &self.sess.opts.unstable_opts.profile_sample_use {
             self.link_arg(&format!("-plugin-opt=sample-profile={}", path.display()));
         };
+        if self.uses_lld {
+            self.link_arg(&format!("--lto-CG{opt_level}"));
+            self.link_arg(&format!("--lto-{opt_level}"));
+        }
         let prefix = if self.codegen_backend == "gcc" {
             // The GCC linker plugin requires a leading dash.
             "-"

@@ -27,7 +27,7 @@ fn classify<'a, Ty, C>(
     cx: &C,
     arg_layout: &TyAndLayout<'a, Ty>,
     offset: Size,
-    double_words: &mut [DoubleWord; 4],
+    double_words: &mut [DoubleWord; 7],
 ) where
     Ty: TyAbiInterface<'a, C> + Copy,
     C: HasDataLayout,
@@ -142,7 +142,7 @@ fn classify_arg<'a, Ty, C>(
 
     *total_double_word_count = start_double_word_count + double_word_count;
 
-    const ARGUMENT_REGISTERS: usize = 8;
+    const ARGUMENT_REGISTERS: usize = 15;
 
     let mut double_words = [DoubleWord::Words([Word::Integer; 2]); ARGUMENT_REGISTERS / 2];
     classify(cx, &arg.layout, Size::ZERO, &mut double_words);

@@ -801,6 +801,7 @@ bidirectional_lang_item_map! {
     FusedIterator,
     Future,
     Iterator,
+    Managed,
     MetaSized,
     PointeeSized,
     PointeeTrait,

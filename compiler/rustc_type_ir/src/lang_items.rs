@@ -46,6 +46,7 @@ pub enum SolverTraitLangItem {
     FusedIterator,
     Future,
     Iterator,
+    Managed,
     MetaSized,
     PointeeSized,
     PointeeTrait,

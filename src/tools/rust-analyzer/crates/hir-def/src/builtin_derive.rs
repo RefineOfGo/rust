@@ -76,6 +76,7 @@ macro_rules! declare_enum {
 declare_enum!(
     Copy => [],
     Clone => [clone],
+    Managed => [],
     Default => [default],
     Debug => [fmt],
     Hash => [hash],
@@ -92,6 +93,7 @@ impl BuiltinDeriveImplTrait {
         match self {
             BuiltinDeriveImplTrait::Copy => lang_items.CopyDerive,
             BuiltinDeriveImplTrait::Clone => lang_items.CloneDerive,
+            BuiltinDeriveImplTrait::Managed => lang_items.ManagedDerive,
             BuiltinDeriveImplTrait::Default => lang_items.DefaultDerive,
             BuiltinDeriveImplTrait::Debug => lang_items.DebugDerive,
             BuiltinDeriveImplTrait::Hash => lang_items.HashDerive,
@@ -126,6 +128,7 @@ pub(crate) fn with_derive_traits(
     let trait_ = match derive {
         BuiltinDeriveExpander::Copy => BuiltinDeriveImplTrait::Copy,
         BuiltinDeriveExpander::Clone => BuiltinDeriveImplTrait::Clone,
+        BuiltinDeriveExpander::Managed => BuiltinDeriveImplTrait::Managed,
         BuiltinDeriveExpander::Default => BuiltinDeriveImplTrait::Default,
         BuiltinDeriveExpander::Debug => BuiltinDeriveImplTrait::Debug,
         BuiltinDeriveExpander::Hash => BuiltinDeriveImplTrait::Hash,

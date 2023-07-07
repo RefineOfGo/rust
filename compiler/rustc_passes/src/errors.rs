@@ -799,9 +799,9 @@ pub(crate) struct UselessAssignment<'a> {
 }
 
 #[derive(Diagnostic)]
-#[diag("`#[inline]` is ignored on externally exported functions")]
+#[diag("`#[inline]` is ignored on externally exported non-lto-aware functions")]
 #[help(
-    "externally exported functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]`"
+    "externally exported non-lto-aware functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]`"
 )]
 pub(crate) struct InlineIgnoredForExported;
 
