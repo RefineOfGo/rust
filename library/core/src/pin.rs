@@ -1099,6 +1099,10 @@ pub struct Pin<Ptr> {
     pointer: Ptr,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<P: Managed> Managed for Pin<P> {}
+
 // The following implementations aren't derived in order to avoid soundness
 // issues. `&self.pointer` should not be accessible to untrusted trait
 // implementations.

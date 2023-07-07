@@ -2865,7 +2865,7 @@ impl Default for TargetOptions {
             emit_debug_gdb_scripts: true,
             requires_uwtable: false,
             default_uwtable: false,
-            simd_types_indirect: true,
+            simd_types_indirect: false,
             limit_rdylib_exports: true,
             override_export_symbols: None,
             merge_functions: MergeFunctions::Aliases,
@@ -2965,9 +2965,15 @@ impl Target {
     pub fn is_abi_supported(&self, abi: ExternAbi) -> bool {
         use ExternAbi::*;
         match abi {
-            Rust | C { .. } | System { .. } | RustCall | Unadjusted | Cdecl { .. } | RustCold => {
-                true
-            }
+            Rust
+            | C { .. }
+            | System { .. }
+            | RustCall
+            | Unadjusted
+            | Cdecl { .. }
+            | RustCold
+            | Rog
+            | RogCold => true,
             EfiApi => {
                 ["arm", "aarch64", "riscv32", "riscv64", "x86", "x86_64"].contains(&&self.arch[..])
             }

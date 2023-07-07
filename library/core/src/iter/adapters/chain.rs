@@ -32,6 +32,11 @@ pub struct Chain<A, B> {
     a: Option<A>,
     b: Option<B>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A, B> Managed for Chain<A, B> where (A, B): Managed {}
+
 impl<A, B> Chain<A, B> {
     pub(in super::super) fn new(a: A, b: B) -> Chain<A, B> {
         Chain { a: Some(a), b: Some(b) }

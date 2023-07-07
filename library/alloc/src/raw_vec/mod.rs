@@ -76,6 +76,12 @@ pub(crate) struct RawVec<T, A: Allocator = Global> {
     _marker: PhantomData<T>,
 }
 
+/// This is not meant to make `RawVec<T, A>: Managed`, but rather trigger a compilation error when
+/// user accidentally created `Vec<T> where T: Managed`.
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, A: Allocator> Managed for RawVec<T, A> {}
+
 /// Like a `RawVec`, but only generic over the allocator, not the type.
 ///
 /// As such, all the methods need the layout passed-in as a parameter.

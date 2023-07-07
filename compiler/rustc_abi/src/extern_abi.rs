@@ -70,6 +70,13 @@ pub enum ExternAbi {
     RustCold,
     RiscvInterruptM,
     RiscvInterruptS,
+    /// ROG-specific ABI for bridging ROG Go user-code & Rust runtime.
+    /// This ABI is guaranteed to be mapped into LLVM's "rogcc".
+    Rog,
+    /// ROG-specific ABI that is very unlikely to be called, like `rog_write_barrier`,
+    /// `rog_bulk_write_barrier` or `rog_morestack_abi`.
+    /// This ABI is guaranteed to be mapped into LLVM's "coldcc".
+    RogCold,
 }
 
 macro_rules! abi_impls {
@@ -141,6 +148,8 @@ abi_impls! {
             Win64 { unwind: false } =><= "win64",
             Win64 { unwind: true } =><= "win64-unwind",
             X86Interrupt =><= "x86-interrupt",
+            Rog =><= "rog",
+            RogCold =><= "rog-cold",
     }
 }
 
@@ -197,7 +206,7 @@ impl ExternAbi {
     /// - are subject to change between compiler versions
     pub fn is_rustic_abi(self) -> bool {
         use ExternAbi::*;
-        matches!(self, Rust | RustCall | RustCold)
+        matches!(self, Rust | RustCall | RustCold | Rog | RogCold)
     }
 
     pub fn supports_varargs(self) -> bool {
