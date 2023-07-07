@@ -3466,7 +3466,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             | sym::Ord
             | sym::PartialOrd
             | sym::Hash
-            | sym::Debug => true,
+            | sym::Debug
+            | sym::Managed => true,
             _ => false,
         };
 

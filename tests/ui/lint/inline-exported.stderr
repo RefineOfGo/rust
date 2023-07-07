@@ -1,4 +1,4 @@
-error: `#[inline]` is ignored on externally exported functions
+error: `#[inline]` is ignored on externally exported non-lto-aware functions
   --> $DIR/inline-exported.rs:8:1
    |
 LL | #[inline]
@@ -11,7 +11,7 @@ note: the lint level is defined here
 LL | #![deny(unused_attributes)]
    |         ^^^^^^^^^^^^^^^^^
 
-error: `#[inline]` is ignored on externally exported functions
+error: `#[inline]` is ignored on externally exported non-lto-aware functions
   --> $DIR/inline-exported.rs:13:1
    |
 LL | #[inline]
@@ -19,7 +19,7 @@ LL | #[inline]
    |
    = help: externally exported functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]`
 
-error: `#[inline]` is ignored on externally exported functions
+error: `#[inline]` is ignored on externally exported non-lto-aware functions
   --> $DIR/inline-exported.rs:18:1
    |
 LL | #[inline]

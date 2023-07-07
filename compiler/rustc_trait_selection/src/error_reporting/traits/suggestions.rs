@@ -4042,7 +4042,7 @@ impl<'a, 'tcx> TypeErrCtxt<'a, 'tcx> {
                 let rhs_ty = trait_pred.skip_binder().trait_ref.args.type_at(1);
                 trait_pred.skip_binder().self_ty() == rhs_ty
             }
-            sym::Eq | sym::Ord | sym::Hash | sym::Debug | sym::Default => true,
+            sym::Eq | sym::Ord | sym::Hash | sym::Debug | sym::Default | sym::Managed => true,
             _ => false,
         };
         is_derivable_trait &&

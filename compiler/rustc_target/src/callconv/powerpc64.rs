@@ -35,6 +35,7 @@ where
 
         let valid_unit = match unit.kind {
             RegKind::Integer => false,
+            RegKind::Pointer => false,
             RegKind::Float => true,
             RegKind::Vector => arg.layout.size.bits() == 128,
         };

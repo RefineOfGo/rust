@@ -360,6 +360,7 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
   if (UseWasmEH)
     Options.ExceptionModel = ExceptionHandling::Wasm;
 
+  Options.TLSSize = 12;
   Options.EmitStackSizeSection = EmitStackSizeSection;
 
   TargetMachine *TM = TheTarget->createTargetMachine(Trip, CPU, Feature,

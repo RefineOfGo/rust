@@ -1,4 +1,5 @@
 use rustc_middle::mir::{self, NonDivergingIntrinsic, StmtDebugInfo};
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::{bug, span_bug, ty};
 use tracing::instrument;
 
@@ -91,8 +92,18 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let align = pointee_layout.layout.align.abi;
                 let dst = dst_val.immediate();
                 let src = src_val.immediate();
+                let has_pointers = bx.has_pointers(pointee_layout);
 
-                bx.memcpy(dst, align, src, align, bytes, crate::MemFlags::empty(), None);
+                bx.memcpy(
+                    dst,
+                    align,
+                    src,
+                    align,
+                    bytes,
+                    crate::MemFlags::empty(),
+                    None,
+                    has_pointers,
+                );
             }
             mir::StatementKind::FakeRead(..)
             | mir::StatementKind::Retag { .. }

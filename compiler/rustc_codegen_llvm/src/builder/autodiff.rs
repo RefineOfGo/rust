@@ -349,6 +349,7 @@ pub(crate) fn generate_enzyme_call<'ll, 'tcx>(
         llvm::UnnamedAddr::No,
         llvm::Visibility::Default,
         enzyme_ty,
+        None,
     );
 
     let num_args = llvm::LLVMCountParams(&fn_to_diff);
@@ -386,6 +387,6 @@ pub(crate) fn generate_enzyme_call<'ll, 'tcx>(
         // does not expect a return value. As such, we have no pointer (or place) into which
         // we could store our value, and would store into an undef, which would cause UB.
         // As such, we just ignore the return value in those cases.
-        builder.store_to_place(call, dest.val);
+        builder.store_to_place(call, dest.val, dest.layout);
     }
 }

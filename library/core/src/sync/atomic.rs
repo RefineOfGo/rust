@@ -418,6 +418,10 @@ impl Default for AtomicBool {
 pub type AtomicPtr<T> = Atomic<*mut T>;
 
 #[cfg(target_has_atomic_load_store = "ptr")]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for AtomicPtr<T> {}
+
+#[cfg(target_has_atomic_load_store = "ptr")]
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> Default for AtomicPtr<T> {
     /// Creates a null `AtomicPtr<T>`.

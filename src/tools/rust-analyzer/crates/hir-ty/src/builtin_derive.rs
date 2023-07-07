@@ -39,6 +39,7 @@ fn trait_args(trait_: BuiltinDeriveImplTrait, self_ty: Ty<'_>) -> GenericArgs<'_
     match trait_ {
         BuiltinDeriveImplTrait::Copy
         | BuiltinDeriveImplTrait::Clone
+        | BuiltinDeriveImplTrait::Managed
         | BuiltinDeriveImplTrait::Default
         | BuiltinDeriveImplTrait::Debug
         | BuiltinDeriveImplTrait::Hash
@@ -59,6 +60,7 @@ pub(crate) fn generics_of<'db>(interner: DbInterner<'db>, id: BuiltinDeriveImplI
     match loc.trait_ {
         BuiltinDeriveImplTrait::Copy
         | BuiltinDeriveImplTrait::Clone
+        | BuiltinDeriveImplTrait::Managed
         | BuiltinDeriveImplTrait::Default
         | BuiltinDeriveImplTrait::Debug
         | BuiltinDeriveImplTrait::Hash
@@ -84,6 +86,7 @@ pub fn generic_params_count(db: &dyn HirDatabase, id: BuiltinDeriveImplId) -> us
     let extra_params_count = match loc.trait_ {
         BuiltinDeriveImplTrait::Copy
         | BuiltinDeriveImplTrait::Clone
+        | BuiltinDeriveImplTrait::Managed
         | BuiltinDeriveImplTrait::Default
         | BuiltinDeriveImplTrait::Debug
         | BuiltinDeriveImplTrait::Hash
@@ -109,6 +112,7 @@ pub fn impl_trait<'db>(
     match loc.trait_ {
         BuiltinDeriveImplTrait::Copy
         | BuiltinDeriveImplTrait::Clone
+        | BuiltinDeriveImplTrait::Managed
         | BuiltinDeriveImplTrait::Default
         | BuiltinDeriveImplTrait::Debug
         | BuiltinDeriveImplTrait::Hash
@@ -162,6 +166,7 @@ pub fn predicates<'db>(db: &'db dyn HirDatabase, impl_: BuiltinDeriveImplId) -> 
     match loc.trait_ {
         BuiltinDeriveImplTrait::Copy
         | BuiltinDeriveImplTrait::Clone
+        | BuiltinDeriveImplTrait::Managed
         | BuiltinDeriveImplTrait::Debug
         | BuiltinDeriveImplTrait::Hash
         | BuiltinDeriveImplTrait::Ord

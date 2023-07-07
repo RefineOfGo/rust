@@ -44,6 +44,13 @@ fn is_async_drop_raw<'tcx>(
     is_trait_raw(tcx, query, LangItem::AsyncDrop)
 }
 
+fn is_managed_raw<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    query: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>,
+) -> bool {
+    is_trait_raw(tcx, query, LangItem::Managed)
+}
+
 fn is_trait_raw<'tcx>(
     tcx: TyCtxt<'tcx>,
     query: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>,
@@ -63,6 +70,7 @@ pub(crate) fn provide(providers: &mut Providers) {
         is_unsafe_unpin_raw,
         is_unpin_raw,
         is_async_drop_raw,
+        is_managed_raw,
         ..*providers
     };
 }

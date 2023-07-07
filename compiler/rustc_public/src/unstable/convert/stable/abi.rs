@@ -124,6 +124,8 @@ impl<'tcx> Stable<'tcx> for CanonAbi {
             CanonAbi::Rust => CallConvention::Rust,
             CanonAbi::RustCold => CallConvention::Cold,
             CanonAbi::RustPreserveNone => CallConvention::PreserveNone,
+            CanonAbi::Rog => CallConvention::Rog,
+            CanonAbi::RogCold => CallConvention::RogCold,
             CanonAbi::Custom => CallConvention::Custom,
             CanonAbi::Arm(arm_call) => match arm_call {
                 ArmCall::Aapcs => CallConvention::ArmAapcs,

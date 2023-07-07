@@ -302,6 +302,14 @@ pub(crate) struct CopyImplOnNonAdt {
 }
 
 #[derive(Diagnostic)]
+#[diag("the trait `Managed` cannot be implemented for this type")]
+pub(crate) struct ManagedImplOnWrongType {
+    #[primary_span]
+    #[label("type is not a structure, enumeration or union")]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
 #[diag("the trait `ConstParamTy` may not be implemented for this type")]
 pub(crate) struct ConstParamTyImplOnUnsized {
     #[primary_span]

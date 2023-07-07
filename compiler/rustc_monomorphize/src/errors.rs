@@ -3,6 +3,25 @@ use rustc_middle::ty::{Instance, Ty};
 use rustc_span::{Span, Symbol};
 
 #[derive(Diagnostic)]
+#[diag("unmanaged structs/enums/unions cannot hold managed value of type `{$field_ty}`")]
+#[note("add `#[derive(Managed)]` to the containing struct/enum in order to hold this field")]
+pub(crate) struct ManagedFieldInUnmanagedAdt {
+    #[primary_span]
+    pub field_span: Span,
+    pub field_ty: String,
+}
+
+#[derive(Diagnostic)]
+#[diag("managed value of type `{$value_ty}` referenced by `{$target_ty}`")]
+#[note("dynamic values are always unmanaged, thus cannot hold any managed values")]
+pub(crate) struct DynTraitPointsToManagedValue {
+    #[primary_span]
+    pub span: Span,
+    pub value_ty: String,
+    pub target_ty: String,
+}
+
+#[derive(Diagnostic)]
 #[diag("reached the recursion limit while instantiating `{$instance}`")]
 pub(crate) struct RecursionLimit<'tcx> {
     #[primary_span]

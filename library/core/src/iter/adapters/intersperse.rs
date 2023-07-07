@@ -25,6 +25,16 @@ where
     }
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I> Managed for Intersperse<I>
+where
+    I: Iterator,
+    I::Item: Clone,
+    (I, I::Item): Managed,
+{
+    // Empty.
+}
+
 #[unstable(feature = "iter_intersperse", issue = "79524")]
 impl<I> Iterator for Intersperse<I>
 where
@@ -88,6 +98,14 @@ where
     separator: G,
     next_item: Option<I::Item>,
     iter: I,
+}
+
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I, G> Managed for IntersperseWith<I, G>
+where
+    I: Iterator,
+    (I, I::Item, G): Managed,
+{
 }
 
 #[unstable(feature = "iter_intersperse", issue = "79524")]

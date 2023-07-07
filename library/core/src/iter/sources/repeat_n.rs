@@ -83,6 +83,9 @@ pub struct RepeatN<A> {
     inner: Option<RepeatNInner<A>>,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A: Managed> Managed for RepeatN<A> {}
+
 impl<A> RepeatN<A> {
     /// If we haven't already dropped the element, return it in an option.
     #[inline]

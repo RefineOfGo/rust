@@ -28,6 +28,8 @@ pub enum CanonAbi {
     Rust,
     RustCold,
     RustPreserveNone,
+    Rog,
+    RogCold,
 
     /// An ABI that rustc does not know how to call or define.
     Custom,
@@ -55,7 +57,11 @@ pub enum CanonAbi {
 impl CanonAbi {
     pub fn is_rustic_abi(self) -> bool {
         match self {
-            CanonAbi::Rust | CanonAbi::RustCold | CanonAbi::RustPreserveNone => true,
+            CanonAbi::Rust
+            | CanonAbi::RustCold
+            | CanonAbi::RustPreserveNone
+            | CanonAbi::Rog
+            | CanonAbi::RogCold => true,
             CanonAbi::C
             | CanonAbi::Custom
             | CanonAbi::Arm(_)
@@ -76,6 +82,8 @@ impl fmt::Display for CanonAbi {
             CanonAbi::Rust => ExternAbi::Rust,
             CanonAbi::RustCold => ExternAbi::RustCold,
             CanonAbi::RustPreserveNone => ExternAbi::RustPreserveNone,
+            CanonAbi::Rog => ExternAbi::Rog,
+            CanonAbi::RogCold => ExternAbi::RogCold,
             CanonAbi::Custom => ExternAbi::Custom,
             CanonAbi::Arm(arm_call) => match arm_call {
                 ArmCall::Aapcs => ExternAbi::Aapcs { unwind: false },
