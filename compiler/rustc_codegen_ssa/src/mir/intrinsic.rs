@@ -1,5 +1,7 @@
 use rustc_abi::WrappingRange;
-use rustc_middle::mir::SourceInfo;
+use rustc_middle::mir::interpret::Allocation;
+use rustc_middle::mir::{ConstValue, SourceInfo};
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_middle::{bug, span_bug};
 use rustc_session::config::OptLevel;
@@ -26,10 +28,12 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
+    let has_pointers = bx.pointer_map(layout).has_pointers();
+
     if allow_overlap {
-        bx.memmove(dst, align, src, align, size, flags);
+        bx.memmove(dst, align, src, align, size, flags, has_pointers);
     } else {
-        bx.memcpy(dst, align, src, align, size, flags);
+        bx.memcpy(dst, align, src, align, size, flags, has_pointers);
     }
 }
 
@@ -46,7 +50,8 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    bx.memset(dst, val, size, align, flags);
+    let has_pointers = bx.pointer_map(layout).has_pointers();
+    bx.memset(dst, val, size, align, flags, has_pointers);
 }
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -124,6 +129,20 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let (_, meta) = args[0].val.pointer_parts();
                 let (_, llalign) = size_of_val::size_and_align_of_dst(bx, tp_ty, meta);
                 llalign
+            }
+            sym::pointer_map_of => {
+                let layout = bx.layout_of(fn_args.type_at(0));
+                let ptrmap = bx.pointer_map(layout).encode();
+                let val = ConstValue::Slice {
+                    meta: ptrmap.len() as u64,
+                    data: bx.tcx().mk_const_alloc(Allocation::from_bytes(
+                        ptrmap,
+                        bx.data_layout().pointer_align.abi,
+                        ty::Mutability::Not,
+                        (),
+                    )),
+                };
+                OperandRef::from_const(bx, val, ret_ty).immediate_or_packed_pair(bx)
             }
             sym::vtable_size | sym::vtable_align => {
                 let vtable = args[0].immediate();
@@ -381,9 +400,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             let success = bx.from_immediate(success);
 
                             let dest = result.project_field(bx, 0);
-                            bx.store_to_place(val, dest.val);
+                            bx.store_to_place(val, dest.val, dest.layout);
                             let dest = result.project_field(bx, 1);
-                            bx.store_to_place(success, dest.val);
+                            bx.store_to_place_noptr(success, dest.val);
                         } else {
                             invalid_monomorphization(ty);
                         }
@@ -411,10 +430,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     "store" => {
                         let ty = fn_args.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_raw_ptr() {
-                            let size = bx.layout_of(ty).size;
+                            let layout = bx.layout_of(ty);
                             let val = args[1].immediate();
                             let ptr = args[0].immediate();
-                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), size);
+                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), layout);
                         } else {
                             invalid_monomorphization(ty);
                         }
@@ -543,7 +562,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 .val
                 .store(bx, result);
         } else if !result.layout.ty.is_unit() {
-            bx.store_to_place(llval, result.val);
+            bx.store_to_place(llval, result.val, result.layout);
         }
         Ok(())
     }
