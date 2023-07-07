@@ -22,6 +22,10 @@ pub struct Copied<I> {
     it: I,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for Copied<I> {}
+
 impl<I> Copied<I> {
     pub(in crate::iter) fn new(it: I) -> Copied<I> {
         Copied { it }

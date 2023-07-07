@@ -149,6 +149,15 @@ where
         goal: Goal<I, Self>,
     ) -> Result<Candidate<I>, NoSolution>;
 
+    /// A tuple is `Managed` if any of its components are `Managed`.
+    ///
+    /// These components are given by built-in rules from
+    /// [`structural_traits::instantiate_constituent_tys_for_managed_trait`].
+    fn consider_builtin_managed_candidate(
+        ecx: &mut EvalCtxt<'_, InferCtxt<'tcx>>,
+        goal: Goal<'tcx, Self>,
+    ) -> Result<Candidate<'tcx>, NoSolution>;
+
     /// A type is `PointerLike` if we can compute its layout, and that layout
     /// matches the layout of `usize`.
     fn consider_builtin_pointer_like_candidate(
@@ -388,6 +397,8 @@ where
             || cx.is_lang_item(trait_def_id, TraitSolverLangItem::Clone)
         {
             G::consider_builtin_copy_clone_candidate(self, goal)
+        } else if cx.is_lang_item(trait_def_id, TraitSolverLangItem::Managed) {
+            G::consider_builtin_managed_candidate(self, goal)
         } else if cx.is_lang_item(trait_def_id, TraitSolverLangItem::PointerLike) {
             G::consider_builtin_pointer_like_candidate(self, goal)
         } else if cx.is_lang_item(trait_def_id, TraitSolverLangItem::FnPtrTrait) {

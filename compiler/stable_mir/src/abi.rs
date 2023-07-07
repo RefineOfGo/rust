@@ -424,6 +424,7 @@ impl Debug for WrappingRange {
 pub enum CallConvention {
     C,
     Rust,
+    Rog,
 
     Cold,
     PreserveMost,

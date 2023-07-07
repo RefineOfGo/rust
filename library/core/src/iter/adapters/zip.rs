@@ -19,6 +19,11 @@ pub struct Zip<A, B> {
     len: usize,
     a_len: usize,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<A, B> Managed for Zip<A, B> where (A, B): Managed {}
+
 impl<A: Iterator, B: Iterator> Zip<A, B> {
     pub(in crate::iter) fn new(a: A, b: B) -> Zip<A, B> {
         ZipImpl::new(a, b)

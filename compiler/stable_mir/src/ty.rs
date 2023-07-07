@@ -1053,6 +1053,8 @@ pub enum Abi {
     RustCold,
     RiscvInterruptM,
     RiscvInterruptS,
+    Rog,
+    RogCold,
 }
 
 /// A binder represents a possibly generic type and its bound vars.

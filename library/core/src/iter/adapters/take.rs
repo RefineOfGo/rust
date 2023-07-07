@@ -21,6 +21,10 @@ pub struct Take<I> {
     n: usize,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for Take<I> {}
+
 impl<I> Take<I> {
     pub(in crate::iter) fn new(iter: I, n: usize) -> Take<I> {
         Take { iter, n }
