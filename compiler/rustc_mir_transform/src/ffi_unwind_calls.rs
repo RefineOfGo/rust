@@ -52,7 +52,13 @@ fn has_ffi_unwind_calls(tcx: TyCtxt<'_>, local_def_id: LocalDefId) -> bool {
 
         // Rust calls cannot themselves create foreign unwinds.
         // We assume this is true for intrinsics as well.
-        if let Abi::RustIntrinsic | Abi::Rust | Abi::RustCall | Abi::RustCold = sig.abi() {
+        if let Abi::RustIntrinsic
+        | Abi::Rust
+        | Abi::RustCall
+        | Abi::RustCold
+        | Abi::Rog
+        | Abi::RogCold = sig.abi()
+        {
             continue;
         };
 

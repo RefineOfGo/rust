@@ -129,6 +129,9 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
                         .emit();
                 }
             }
+            sym::no_gcwb => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_GCWB,
+            sym::no_split => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_SPLIT,
+            sym::no_checkpoint => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_CHECKPOINT,
             sym::rustc_std_internal_symbol => {
                 codegen_fn_attrs.flags |= CodegenFnAttrFlags::RUSTC_STD_INTERNAL_SYMBOL
             }

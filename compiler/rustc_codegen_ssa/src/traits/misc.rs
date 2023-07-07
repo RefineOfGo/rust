@@ -2,12 +2,13 @@ use std::cell::RefCell;
 
 use rustc_data_structures::fx::FxHashMap;
 use rustc_middle::mir::mono::CodegenUnit;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::{self, Instance, Ty};
 use rustc_session::Session;
 
 use super::BackendTypes;
 
-pub trait MiscMethods<'tcx>: BackendTypes {
+pub trait MiscMethods<'tcx>: BackendTypes + HasPointerMap<'tcx> {
     fn vtables(
         &self,
     ) -> &RefCell<FxHashMap<(Ty<'tcx>, Option<ty::PolyExistentialTraitRef<'tcx>>), Self::Value>>;

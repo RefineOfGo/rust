@@ -8,6 +8,7 @@ use rustc_middle::ty::layout::{FnAbiOf, HasTyCtxt};
 use rustc_middle::ty::{self, Instance, TypeVisitableExt};
 use tracing::debug;
 
+use crate::base::linkage_to_llvm;
 use crate::context::CodegenCx;
 use crate::value::Value;
 use crate::{attributes, common, llvm};
@@ -79,6 +80,11 @@ pub fn get_fn<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>, instance: Instance<'tcx>) ->
 
         attributes::from_fn_attrs(cx, llfn, instance);
 
+        let def_id = instance.def_id();
+        let fn_attrs = cx.tcx.codegen_fn_attrs(def_id);
+        let linkage =
+            if cx.tcx.is_foreign_item(def_id) { fn_attrs.import_linkage } else { fn_attrs.linkage };
+
         // Apply an appropriate linkage/visibility value to our item that we
         // just declared.
         //
@@ -92,7 +98,9 @@ pub fn get_fn<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>, instance: Instance<'tcx>) ->
         // codegen unit or even another crate.
         //
         // So because this is a foreign value we blanket apply an external
-        // linkage directive because it's coming from a different object file.
+        // linkage directive (or user specified one, if any) because it's
+        // coming from a different object file.
+        //
         // The visibility here is where it gets tricky. This symbol could be
         // referencing some foreign crate or foreign library (an `extern`
         // block) in which case we want to leave the default visibility. We may
@@ -102,7 +110,10 @@ pub fn get_fn<'ll, 'tcx>(cx: &CodegenCx<'ll, 'tcx>, instance: Instance<'tcx>) ->
         // that the visibility we apply to the declaration is the same one that
         // has been applied to the definition (wherever that definition may be).
         unsafe {
-            llvm::LLVMRustSetLinkage(llfn, llvm::Linkage::ExternalLinkage);
+            llvm::LLVMRustSetLinkage(
+                llfn,
+                linkage.map(linkage_to_llvm).unwrap_or(llvm::Linkage::ExternalLinkage),
+            );
 
             let is_generic =
                 instance.args.non_erasable_generics(tcx, instance.def_id()).next().is_some();

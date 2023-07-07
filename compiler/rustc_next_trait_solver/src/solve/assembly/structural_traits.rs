@@ -249,6 +249,21 @@ where
     }
 }
 
+pub(in crate::solve) fn instantiate_constituent_tys_for_managed_trait<D, I>(
+    _ecx: &EvalCtxt<'_, D>,
+    ty: I::Ty,
+) -> Result<Vec<ty::Binder<I, I::Ty>>, NoSolution>
+where
+    D: SolverDelegate<Interner = I>,
+    I: Interner,
+{
+    unimplemented!(
+        "`Managed` trait solver is not implemented for `-Z trait-solver=next`, \
+        please fallback to classic solver. ty = {:?}",
+        ty,
+    )
+}
+
 // Returns a binder of the tupled inputs types and output type from a builtin callable type.
 pub(in crate::solve) fn extract_tupled_inputs_and_output_from_callable<I: Interner>(
     cx: I,

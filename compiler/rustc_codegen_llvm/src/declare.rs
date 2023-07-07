@@ -12,8 +12,10 @@
 //! * When in doubt, define.
 
 use itertools::Itertools;
+use llvm::ROG_GC_NAME;
 use rustc_codegen_ssa::traits::TypeMembershipMethods;
 use rustc_data_structures::fx::FxIndexSet;
+use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::ty::{Instance, Ty};
 use rustc_sanitizers::{cfi, kcfi};
 use smallvec::SmallVec;
@@ -37,8 +39,9 @@ fn declare_raw_fn<'ll>(
     unnamed: llvm::UnnamedAddr,
     visibility: llvm::Visibility,
     ty: &'ll Type,
+    gc: Option<&str>,
 ) -> &'ll Value {
-    debug!("declare_raw_fn(name={:?}, ty={:?})", name, ty);
+    debug!("declare_raw_fn(name={:?}, ty={:?}, gc={:?})", name, ty, gc);
     let llfn = unsafe {
         llvm::LLVMRustGetOrInsertFunction(cx.llmod, name.as_ptr().cast(), name.len(), ty)
     };
@@ -46,6 +49,10 @@ fn declare_raw_fn<'ll>(
     llvm::SetFunctionCallConv(llfn, callconv);
     llvm::SetUnnamedAddress(llfn, unnamed);
     llvm::set_visibility(llfn, visibility);
+
+    if let Some(gc_name) = gc {
+        llvm::SetGC(llfn, gc_name);
+    }
 
     let mut attrs = SmallVec::<[_; 4]>::new();
 
@@ -83,14 +90,30 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
         unnamed: llvm::UnnamedAddr,
         fn_type: &'ll Type,
     ) -> &'ll Value {
-        // Declare C ABI functions with the visibility used by C by default.
+        self.declare_foreign_fn(name, unnamed, fn_type, llvm::CCallConv)
+    }
+
+    /// Declare a foreign function with specified calling convention.
+    ///
+    /// Only use this for foreign function ABIs and glue. For Rust functions use
+    /// `declare_fn` instead.
+    ///
+    /// If there’s a value with the same name already declared, the function will
+    /// update the declaration and return existing Value instead.
+    pub fn declare_foreign_fn(
+        &self,
+        name: &str,
+        unnamed: llvm::UnnamedAddr,
+        fn_type: &'ll Type,
+        callconv: llvm::CallConv,
+    ) -> &'ll Value {
         let visibility = if self.tcx.sess.default_hidden_visibility() {
             llvm::Visibility::Hidden
         } else {
             llvm::Visibility::Default
         };
 
-        declare_raw_fn(self, name, llvm::CCallConv, unnamed, visibility, fn_type)
+        declare_raw_fn(self, name, callconv, unnamed, visibility, fn_type, None)
     }
 
     /// Declare an entry Function
@@ -107,12 +130,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
         unnamed: llvm::UnnamedAddr,
         fn_type: &'ll Type,
     ) -> &'ll Value {
-        let visibility = if self.tcx.sess.default_hidden_visibility() {
-            llvm::Visibility::Hidden
-        } else {
-            llvm::Visibility::Default
-        };
-        declare_raw_fn(self, name, callconv, unnamed, visibility, fn_type)
+        self.declare_foreign_fn(name, unnamed, fn_type, callconv)
     }
 
     /// Declare a Rust function.
@@ -127,6 +145,13 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
     ) -> &'ll Value {
         debug!("declare_rust_fn(name={:?}, fn_abi={:?})", name, fn_abi);
 
+        let gc_name = if let Some(ref inst) = instance {
+            let flags = self.tcx.codegen_fn_attrs(inst.def_id()).flags;
+            if flags.contains(CodegenFnAttrFlags::NO_GCWB) { None } else { Some(ROG_GC_NAME) }
+        } else {
+            None
+        };
+
         // Function addresses in Rust are never significant, allowing functions to
         // be merged.
         let llfn = declare_raw_fn(
@@ -136,6 +161,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             llvm::UnnamedAddr::Global,
             llvm::Visibility::Default,
             fn_abi.llvm_type(self),
+            gc_name,
         );
         fn_abi.apply_attrs_llfn(self, llfn);
 

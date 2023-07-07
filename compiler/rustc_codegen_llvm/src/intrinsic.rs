@@ -299,7 +299,7 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                     llvm::LLVMSetAlignment(load, align);
                 }
                 if !result.layout.is_zst() {
-                    self.store_to_place(load, result.val);
+                    self.store_to_place(load, result.val, result.layout);
                 }
                 return Ok(());
             }
@@ -580,7 +580,7 @@ impl<'ll, 'tcx> IntrinsicCallMethods<'tcx> for Builder<'_, 'll, 'tcx> {
 
         if !fn_abi.ret.is_ignore() {
             if let PassMode::Cast { .. } = &fn_abi.ret.mode {
-                self.store(llval, result.val.llval, result.val.align);
+                self.store(llval, result.val.llval, result.val.align, result.layout);
             } else {
                 OperandRef::from_immediate_or_packed_pair(self, llval, result.layout)
                     .val
@@ -642,7 +642,7 @@ fn catch_unwind_intrinsic<'ll>(
         // Return 0 unconditionally from the intrinsic call;
         // we can never unwind.
         let ret_align = bx.tcx().data_layout.i32_align.abi;
-        bx.store(bx.const_i32(0), dest, ret_align);
+        bx.store_noptr(bx.const_i32(0), dest, ret_align);
     } else if wants_msvc_seh(bx.sess()) {
         codegen_msvc_try(bx, try_func, data, catch_func, dest);
     } else if wants_wasm_eh(bx.sess()) {
@@ -803,7 +803,7 @@ fn codegen_msvc_try<'ll>(
     // can't panic (that's what it's catching).
     let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
     let i32_align = bx.tcx().data_layout.i32_align.abi;
-    bx.store(ret, dest, i32_align);
+    bx.store_noptr(ret, dest, i32_align);
 }
 
 // WASM's definition of the `rust_try` function.
@@ -877,7 +877,7 @@ fn codegen_wasm_try<'ll>(
     // can't panic (that's what it's catching).
     let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
     let i32_align = bx.tcx().data_layout.i32_align.abi;
-    bx.store(ret, dest, i32_align);
+    bx.store_noptr(ret, dest, i32_align);
 }
 
 // Definition of the standard `try` function for Rust using the GNU-like model
@@ -944,7 +944,7 @@ fn codegen_gnu_try<'ll>(
     // can't panic (that's what it's catching).
     let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
     let i32_align = bx.tcx().data_layout.i32_align.abi;
-    bx.store(ret, dest, i32_align);
+    bx.store_noptr(ret, dest, i32_align);
 }
 
 // Variant of codegen_gnu_try used for emscripten where Rust panics are
@@ -1014,9 +1014,9 @@ fn codegen_emcc_try<'ll>(
         // Required in order for there to be no padding between the fields.
         assert!(i8_align <= ptr_align);
         let catch_data = bx.alloca(2 * ptr_size, ptr_align);
-        bx.store(ptr, catch_data, ptr_align);
+        bx.store_ptr(ptr, catch_data);
         let catch_data_1 = bx.inbounds_ptradd(catch_data, bx.const_usize(ptr_size.bytes()));
-        bx.store(is_rust_panic, catch_data_1, i8_align);
+        bx.store_noptr(is_rust_panic, catch_data_1, i8_align);
 
         let catch_ty = bx.type_func(&[bx.type_ptr(), bx.type_ptr()], bx.type_void());
         bx.call(catch_ty, None, None, catch_func, &[data, catch_data], None, None);
@@ -1027,7 +1027,7 @@ fn codegen_emcc_try<'ll>(
     // can't panic (that's what it's catching).
     let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
     let i32_align = bx.tcx().data_layout.i32_align.abi;
-    bx.store(ret, dest, i32_align);
+    bx.store_noptr(ret, dest, i32_align);
 }
 
 // Helper function to give a Block to a closure to codegen a shim function.
@@ -1465,7 +1465,7 @@ fn generic_simd_intrinsic<'ll, 'tcx>(
 
                 // Convert the integer to a byte array
                 let ptr = bx.alloca(Size::from_bytes(expected_bytes), Align::ONE);
-                bx.store(ze, ptr, Align::ONE);
+                bx.store_noptr(ze, ptr, Align::ONE);
                 let array_ty = bx.type_array(bx.type_i8(), expected_bytes);
                 return Ok(bx.load(array_ty, ptr, Align::ONE));
             }
