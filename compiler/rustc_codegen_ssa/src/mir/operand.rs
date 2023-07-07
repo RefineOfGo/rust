@@ -510,7 +510,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
             }
             OperandValue::Immediate(s) => {
                 let val = bx.from_immediate(s);
-                bx.store_with_flags(val, dest.val.llval, dest.val.align, flags);
+                bx.store_with_flags(val, dest.val.llval, dest.val.align, flags, dest.layout);
             }
             OperandValue::Pair(a, b) => {
                 let BackendRepr::ScalarPair(a_scalar, b_scalar) = dest.layout.backend_repr else {
@@ -520,12 +520,26 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
 
                 let val = bx.from_immediate(a);
                 let align = dest.val.align;
-                bx.store_with_flags(val, dest.val.llval, align, flags);
+                if matches!(a_scalar, abi::Scalar::Initialized {
+                    value: abi::Primitive::Pointer(_),
+                    ..
+                }) {
+                    bx.store_ptr_with_flags(val, dest.val.llval, flags);
+                } else {
+                    bx.store_noptr_with_flags(val, dest.val.llval, align, flags);
+                }
 
                 let llptr = bx.inbounds_ptradd(dest.val.llval, bx.const_usize(b_offset.bytes()));
                 let val = bx.from_immediate(b);
                 let align = dest.val.align.restrict_for_offset(b_offset);
-                bx.store_with_flags(val, llptr, align, flags);
+                if matches!(b_scalar, abi::Scalar::Initialized {
+                    value: abi::Primitive::Pointer(_),
+                    ..
+                }) {
+                    bx.store_ptr_with_flags(val, llptr, flags);
+                } else {
+                    bx.store_noptr_with_flags(val, llptr, align, flags);
+                }
             }
         }
     }
@@ -561,7 +575,9 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
         let neg_address = bx.neg(address);
         let offset = bx.and(neg_address, align_minus_1);
         let dst = bx.inbounds_ptradd(alloca, offset);
-        bx.memcpy(dst, min_align, llptr, min_align, size, MemFlags::empty());
+        // This is stack access, so we may assume it's pointer-free,
+        // since stack store doesn't need barriers anyway.
+        bx.memcpy(dst, min_align, llptr, min_align, size, MemFlags::empty(), false);
 
         // Store the allocated region and the extra to the indirect place.
         let indirect_operand = OperandValue::Pair(dst, llextra);

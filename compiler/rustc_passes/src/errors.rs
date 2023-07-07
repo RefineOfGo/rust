@@ -583,6 +583,60 @@ pub(crate) struct NoMangle {
 }
 
 #[derive(Diagnostic)]
+#[diag(passes_no_gcwb)]
+pub(crate) struct NoGCWB {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(LintDiagnostic)]
+#[diag(passes_no_gcwb_foreign)]
+#[note]
+pub(crate) struct NoGCWBForeign {
+    #[label]
+    pub span: Span,
+    #[suggestion(code = "", applicability = "machine-applicable")]
+    pub attr_span: Span,
+    pub foreign_item_kind: &'static str,
+}
+
+#[derive(Diagnostic)]
+#[diag(passes_no_split)]
+pub(crate) struct NoSplit {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(LintDiagnostic)]
+#[diag(passes_no_split_foreign)]
+#[note]
+pub(crate) struct NoSplitForeign {
+    #[label]
+    pub span: Span,
+    #[suggestion(code = "", applicability = "machine-applicable")]
+    pub attr_span: Span,
+    pub foreign_item_kind: &'static str,
+}
+
+#[derive(Diagnostic)]
+#[diag(passes_no_checkpoint)]
+pub(crate) struct NoCheckPoint {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(LintDiagnostic)]
+#[diag(passes_no_checkpoint_foreign)]
+#[note]
+pub(crate) struct NoCheckPointForeign {
+    #[label]
+    pub span: Span,
+    #[suggestion(code = "", applicability = "machine-applicable")]
+    pub attr_span: Span,
+    pub foreign_item_kind: &'static str,
+}
+
+#[derive(Diagnostic)]
 #[diag(passes_repr_ident, code = E0565)]
 pub(crate) struct ReprIdent {
     #[primary_span]
