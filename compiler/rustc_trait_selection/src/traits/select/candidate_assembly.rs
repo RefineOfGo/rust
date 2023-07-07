@@ -107,9 +107,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     // types have builtin support for `Clone`.
                     let clone_conditions = self.copy_clone_conditions(obligation);
                     self.assemble_builtin_bound_candidates(clone_conditions, &mut candidates);
-                }
-
-                if tcx.is_lang_item(def_id, LangItem::Coroutine) {
+                } else if tcx.is_lang_item(def_id, LangItem::Managed) {
+                    let managed_conditions = self.managed_conditions(obligation);
+                    self.assemble_builtin_bound_candidates(managed_conditions, &mut candidates);
+                } else if tcx.is_lang_item(def_id, LangItem::Coroutine) {
                     self.assemble_coroutine_candidates(obligation, &mut candidates);
                 } else if tcx.is_lang_item(def_id, LangItem::Future) {
                     self.assemble_future_candidates(obligation, &mut candidates);
@@ -1060,7 +1061,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     }
 
     /// Assembles the trait which are built-in to the language itself:
-    /// `Copy`, `Clone` and `Sized`.
+    /// `Copy`, `Clone`, `Sized` and `Managed`.
     #[instrument(level = "debug", skip(self, candidates))]
     fn assemble_builtin_sized_candidate(
         &mut self,
@@ -1073,6 +1074,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     .vec
                     .push(SizedCandidate { has_nested: !nested.skip_binder().is_empty() });
             }
+            BuiltinImplConditions::WhereAny(..) => bug!("WhereAny() does not apply to Sized"),
             BuiltinImplConditions::None => {}
             BuiltinImplConditions::Ambiguous => {
                 candidates.ambiguous = true;
@@ -1093,6 +1095,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 candidates
                     .vec
                     .push(BuiltinCandidate { has_nested: !nested.skip_binder().is_empty() });
+            }
+            BuiltinImplConditions::WhereAny(nested) => {
+                if !nested.skip_binder().is_empty() {
+                    candidates.vec.push(BuiltinCandidate { has_nested: true });
+                }
             }
             BuiltinImplConditions::None => {}
             BuiltinImplConditions::Ambiguous => {

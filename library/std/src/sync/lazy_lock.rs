@@ -16,6 +16,10 @@ union Data<T, F> {
     f: ManuallyDrop<F>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T, F> Managed for Data<T, F> where (T, F): Managed {}
+
 /// A value which is initialized on the first access.
 ///
 /// This type is a thread-safe [`LazyCell`], and can be used in statics.
@@ -67,6 +71,10 @@ pub struct LazyLock<T, F = fn() -> T> {
     once: Once,
     data: UnsafeCell<Data<T, F>>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T, F: FnOnce() -> T> Managed for LazyLock<T, F> where (T, F): Managed {}
 
 impl<T, F: FnOnce() -> T> LazyLock<T, F> {
     /// Creates a new lazy value with the given initializing function.
