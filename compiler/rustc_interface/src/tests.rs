@@ -727,6 +727,7 @@ fn test_unstable_options_tracking_hash() {
     untracked!(print_codegen_stats, true);
     untracked!(print_llvm_passes, true);
     untracked!(print_mono_items, true);
+    untracked!(print_opt_pipeline, true);
     untracked!(print_type_sizes, true);
     untracked!(proc_macro_backtrace, true);
     untracked!(proc_macro_execution_strategy, ProcMacroExecutionStrategy::CrossThread);

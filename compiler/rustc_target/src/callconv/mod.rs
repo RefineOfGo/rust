@@ -1,8 +1,8 @@
 use std::{fmt, iter};
 
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, CanonAbi, ExternAbi, HasDataLayout, Primitive, Reg, RegKind,
-    Scalar, Size, TyAbiInterface, TyAndLayout,
+    Align, BackendRepr, CanonAbi, ExternAbi, HasDataLayout, HasRegisterMap, Primitive, Reg,
+    RegKind, Scalar, Size, TyAbiInterface, TyAndLayout,
 };
 use rustc_macros::HashStable_Generic;
 
@@ -263,7 +263,7 @@ impl Uniform {
 /// (and all data in the padding between the registers is dropped).
 #[derive(Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]
 pub struct CastTarget {
-    pub prefix: [Option<Reg>; 8],
+    pub prefix: [Option<Reg>; 15],
     /// The offset of `rest` from the start of the value. Currently only implemented for a `Reg`
     /// pair created by the `offset_pair` method.
     pub rest_offset: Option<Size>,
@@ -279,18 +279,41 @@ impl From<Reg> for CastTarget {
 
 impl From<Uniform> for CastTarget {
     fn from(uniform: Uniform) -> CastTarget {
-        Self::prefixed([None; 8], uniform)
+        Self::prefixed([None; 15], uniform)
     }
 }
 
 impl CastTarget {
-    pub fn prefixed(prefix: [Option<Reg>; 8], rest: Uniform) -> Self {
+    #[inline]
+    pub fn prefix(reg: Reg) -> [Option<Reg>; 15] {
+        [
+            Some(reg),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+    }
+}
+
+impl CastTarget {
+    pub fn prefixed(prefix: [Option<Reg>; 15], rest: Uniform) -> Self {
         Self { prefix, rest_offset: None, rest, attrs: ArgAttributes::new() }
     }
 
     pub fn offset_pair(a: Reg, offset_from_start: Size, b: Reg) -> Self {
         Self {
-            prefix: [Some(a), None, None, None, None, None, None, None],
+            prefix: Self::prefix(a),
             rest_offset: Some(offset_from_start),
             rest: b.into(),
             attrs: ArgAttributes::new(),
@@ -303,26 +326,31 @@ impl CastTarget {
     }
 
     pub fn pair(a: Reg, b: Reg) -> CastTarget {
-        Self::prefixed([Some(a), None, None, None, None, None, None, None], Uniform::from(b))
+        Self::prefixed(Self::prefix(a), Uniform::from(b))
     }
 
     /// When you only access the range containing valid data, you can use this unaligned size;
     /// otherwise, use the safer `size` method.
-    pub fn unaligned_size<C: HasDataLayout>(&self, _cx: &C) -> Size {
+    pub fn unaligned_size<C: HasDataLayout>(&self, cx: &C) -> Size {
         // Prefix arguments are passed in specific designated registers
         let prefix_size = if let Some(offset_from_start) = self.rest_offset {
             offset_from_start
         } else {
             self.prefix
                 .iter()
-                .filter_map(|x| x.map(|reg| reg.size))
-                .fold(Size::ZERO, |acc, size| acc + size)
+                .filter_map(|x| *x)
+                .fold(Size::ZERO, |acc, reg| acc.align_to(reg.align(cx)) + reg.size)
         };
-        // Remaining arguments are passed in chunks of the unit size
-        let rest_size =
-            self.rest.unit.size * self.rest.total.bytes().div_ceil(self.rest.unit.size.bytes());
 
-        prefix_size + rest_size
+        // Remaining arguments are passed in chunks of the unit size
+        let unit_size = self.rest.unit.size;
+        let rest_size = unit_size * self.rest.total.bytes().div_ceil(unit_size.bytes());
+
+        if rest_size != Size::ZERO {
+            prefix_size.align_to(self.rest.align(cx)) + rest_size
+        } else {
+            prefix_size
+        }
     }
 
     pub fn size<C: HasDataLayout>(&self, cx: &C) -> Size {
@@ -371,8 +399,7 @@ pub struct ArgAbi<'a, Ty> {
 // Needs to be a custom impl because of the bounds on the `TyAndLayout` debug impl.
 impl<'a, Ty: fmt::Display> fmt::Debug for ArgAbi<'a, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ArgAbi { layout, mode } = self;
-        f.debug_struct("ArgAbi").field("layout", layout).field("mode", mode).finish()
+        f.debug_struct("ArgAbi").field("layout", &self.layout).field("mode", &self.mode).finish()
     }
 }
 
@@ -711,7 +738,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
     pub fn adjust_for_rust_abi<C>(&mut self, cx: &C)
     where
         Ty: TyAbiInterface<'a, C> + Copy,
-        C: HasDataLayout + HasTargetSpec,
+        C: HasDataLayout + HasTargetSpec + HasRegisterMap<'a, Ty>,
     {
         let spec = cx.target_spec();
         match &spec.arch {
@@ -723,66 +750,10 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             _ => {}
         };
 
-        for (arg_idx, arg) in self
-            .args
-            .iter_mut()
-            .enumerate()
-            .map(|(idx, arg)| (Some(idx), arg))
-            .chain(iter::once((None, &mut self.ret)))
-        {
+        for arg in self.args.iter_mut().chain(iter::once(&mut self.ret)) {
             // If the logic above already picked a specific type to cast the argument to, leave that
             // in place.
             if matches!(arg.mode, PassMode::Ignore | PassMode::Cast { .. }) {
-                continue;
-            }
-
-            if arg_idx.is_none()
-                && arg.layout.size > Primitive::Pointer(AddressSpace::ZERO).size(cx) * 2
-                && !matches!(arg.layout.backend_repr, BackendRepr::SimdVector { .. })
-            {
-                // Return values larger than 2 registers using a return area
-                // pointer. LLVM and Cranelift disagree about how to return
-                // values that don't fit in the registers designated for return
-                // values. LLVM will force the entire return value to be passed
-                // by return area pointer, while Cranelift will look at each IR level
-                // return value independently and decide to pass it in a
-                // register or not, which would result in the return value
-                // being passed partially in registers and partially through a
-                // return area pointer. For large IR-level values such as `i128`,
-                // cranelift will even split up the value into smaller chunks.
-                //
-                // While Cranelift may need to be fixed as the LLVM behavior is
-                // generally more correct with respect to the surface language,
-                // forcing this behavior in rustc itself makes it easier for
-                // other backends to conform to the Rust ABI and for the C ABI
-                // rustc already handles this behavior anyway.
-                //
-                // In addition LLVM's decision to pass the return value in
-                // registers or using a return area pointer depends on how
-                // exactly the return type is lowered to an LLVM IR type. For
-                // example `Option<u128>` can be lowered as `{ i128, i128 }`
-                // in which case the x86_64 backend would use a return area
-                // pointer, or it could be passed as `{ i32, i128 }` in which
-                // case the x86_64 backend would pass it in registers by taking
-                // advantage of an LLVM ABI extension that allows using 3
-                // registers for the x86_64 sysv call conv rather than the
-                // officially specified 2 registers.
-                //
-                // FIXME: Technically we should look at the amount of available
-                // return registers rather than guessing that there are 2
-                // registers for return values. In practice only a couple of
-                // architectures have less than 2 return registers. None of
-                // which supported by Cranelift.
-                //
-                // NOTE: This adjustment is only necessary for the Rust ABI as
-                // for other ABI's the calling convention implementations in
-                // rustc_target already ensure any return value which doesn't
-                // fit in the available amount of return registers is passed in
-                // the right way for the current target.
-                //
-                // The adjustment is not necessary nor desired for types with a vector
-                // representation; those are handled below.
-                arg.make_indirect();
                 continue;
             }
 
@@ -794,14 +765,22 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                         matches!(arg.mode, PassMode::Indirect { on_stack: false, .. });
                     assert!(is_indirect_not_on_stack);
 
-                    let size = arg.layout.size;
+                    let count_ireg = |regs: &[Reg]| {
+                        regs.iter()
+                            .copied()
+                            .filter(|r| matches!(r.kind, RegKind::Integer | RegKind::Pointer))
+                            .count()
+                    };
+
                     if arg.layout.is_sized()
-                        && size <= Primitive::Pointer(AddressSpace::ZERO).size(cx)
+                        && let Some(regs) = cx.register_map(arg.layout)
+                        && count_ireg(&regs) <= 8
+                        && regs.len() <= 16
                     {
-                        // We want to pass small aggregates as immediates, but using
-                        // an LLVM aggregate type for this leads to bad optimizations,
-                        // so we pick an appropriately sized integer type instead.
-                        arg.cast_to(Reg { kind: RegKind::Integer, size });
+                        let (tail, head) = regs.split_last().expect("cast into no registers");
+                        let mut prefix = [None; 15];
+                        head.iter().enumerate().for_each(|(i, r)| prefix[i] = Some(*r));
+                        arg.cast_to(CastTarget::prefixed(prefix, Uniform::from(*tail)));
                     }
                 }
 

@@ -269,11 +269,14 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::NeedsAllocator
                     | AttributeKind::NeedsPanicRuntime
                     | AttributeKind::NoBuiltins
+                    | AttributeKind::NoCheckpoint
                     | AttributeKind::NoCore { .. }
+                    | AttributeKind::NoGcwb
                     | AttributeKind::NoImplicitPrelude(..)
                     | AttributeKind::NoLink
                     | AttributeKind::NoMain
                     | AttributeKind::NoMangle(..)
+                    | AttributeKind::NoSplit
                     | AttributeKind::NoStd { .. }
                     | AttributeKind::Optimize(..)
                     | AttributeKind::PanicRuntime
@@ -672,9 +675,10 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     && self.tcx.def_kind(did).has_codegen_attrs()
                     && kind != &InlineAttr::Never
                 {
+                    let abi = self.tcx.fn_sig(did).skip_binder().abi();
                     let attrs = self.tcx.codegen_fn_attrs(did);
                     // Not checking naked as `#[inline]` is forbidden for naked functions anyways.
-                    if attrs.contains_extern_indicator() {
+                    if !abi.is_lto_aware() && attrs.contains_extern_indicator() {
                         self.tcx.emit_node_span_lint(
                             UNUSED_ATTRIBUTES,
                             hir_id,

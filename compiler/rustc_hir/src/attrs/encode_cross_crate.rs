@@ -68,11 +68,14 @@ impl AttributeKind {
             NeedsAllocator => No,
             NeedsPanicRuntime => No,
             NoBuiltins => Yes,
+            NoCheckpoint => No,
             NoCore(..) => No,
+            NoGcwb => No,
             NoImplicitPrelude(..) => No,
             NoLink => No,
             NoMain => No,
             NoMangle(..) => Yes, // Needed for rustdoc
+            NoSplit => No,
             NoStd(..) => No,
             NonExhaustive(..) => Yes, // Needed for rustdoc
             Optimize(..) => No,

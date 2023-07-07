@@ -488,6 +488,7 @@ fn declare_offload_fn<'ll>(
         llvm::UnnamedAddr::No,
         llvm::Visibility::Default,
         ty,
+        None,
     )
 }
 

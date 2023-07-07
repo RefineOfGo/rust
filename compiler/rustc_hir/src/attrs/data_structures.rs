@@ -950,6 +950,15 @@ pub enum AttributeKind {
     /// Represents `#[no_mangle]`
     NoMangle(Span),
 
+    /// Represents `#[no_gcwb]`
+    NoGcwb,
+
+    /// Represents `#[no_split]`
+    NoSplit,
+
+    /// Represents `#[no_checkpoint]`
+    NoCheckpoint,
+
     /// Represents `#[no_std]`
     NoStd(Span),
 

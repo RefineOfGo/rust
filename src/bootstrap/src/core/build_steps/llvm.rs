@@ -329,15 +329,12 @@ impl Step for Llvm {
         // defaults!
         let llvm_targets = match &builder.config.llvm_targets {
             Some(s) => s,
-            None => {
-                "AArch64;AMDGPU;ARM;BPF;Hexagon;LoongArch;MSP430;Mips;NVPTX;PowerPC;RISCV;\
-                     Sparc;SystemZ;WebAssembly;X86"
-            }
+            None => "AArch64;LoongArch;RISCV;X86",
         };
 
         let llvm_exp_targets = match builder.config.llvm_experimental_targets {
             Some(ref s) => s,
-            None => "AVR;M68k;CSKY;Xtensa",
+            None => "",
         };
 
         let assertions = if builder.config.llvm_assertions { "ON" } else { "OFF" };
@@ -452,11 +449,8 @@ impl Step for Llvm {
             cfg.define("LLVM_TOOL_LLVM_RTDYLD_BUILD", "OFF");
         }
 
-        let mut enabled_llvm_projects = Vec::new();
-
-        if helpers::forcing_clang_based_tests() {
-            enabled_llvm_projects.push("clang");
-        }
+        // Enable lld, bolt and clang by default, ROG needs this.
+        let mut enabled_llvm_projects = vec!["lld", "bolt", "clang"];
 
         if builder.config.llvm_polly {
             enabled_llvm_projects.push("polly");
@@ -472,9 +466,8 @@ impl Step for Llvm {
 
         let mut enabled_llvm_runtimes = Vec::new();
 
-        if helpers::forcing_clang_based_tests() {
-            enabled_llvm_runtimes.push("compiler-rt");
-        }
+        // build compiler-rt for rog pgo
+        enabled_llvm_runtimes.push("compiler-rt");
 
         if !enabled_llvm_projects.is_empty() {
             enabled_llvm_projects.sort();
@@ -897,6 +890,10 @@ fn configure_llvm(builder: &Builder<'_>, target: TargetSelection, cfg: &mut cmak
 
     if builder.config.llvm_allow_old_toolchain {
         cfg.define("LLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN", "YES");
+    }
+
+    if let Some(binutils_incdir) = &builder.config.llvm_binutils_incdir {
+        cfg.define("LLVM_BINUTILS_INCDIR", binutils_incdir);
     }
 }
 

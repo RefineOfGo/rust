@@ -51,6 +51,10 @@ pub(super) struct Drain<'l, 'f, T, const N: usize, F> {
 
 #[rustc_const_unstable(feature = "array_try_map", issue = "79711")]
 #[unstable(feature = "array_try_map", issue = "79711")]
+impl<T, const N: usize, F> Managed for Drain<'_, '_, T, N, F> where (T, F): Managed {}
+
+#[rustc_const_unstable(feature = "array_try_map", issue = "79711")]
+#[unstable(feature = "array_try_map", issue = "79711")]
 impl<T, U, const N: usize, F> const FnOnce<(usize,)> for &mut Drain<'_, '_, T, N, F>
 where
     F: [const] FnMut(T) -> U,

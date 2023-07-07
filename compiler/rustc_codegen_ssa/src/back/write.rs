@@ -111,6 +111,7 @@ pub struct ModuleConfig {
     pub vectorize_slp: bool,
     pub merge_functions: bool,
     pub emit_lifetime_markers: bool,
+    pub print_opt_pipeline: bool,
     pub llvm_plugins: Vec<String>,
     pub autodiff: Vec<config::AutoDiff>,
     pub offload: Vec<config::Offload>,
@@ -130,6 +131,7 @@ impl ModuleConfig {
         let opt_level_and_size = if_regular!(Some(sess.opts.optimize), None);
 
         let save_temps = sess.opts.cg.save_temps;
+        let print_opt_pipeline = sess.opts.unstable_opts.print_opt_pipeline;
 
         let should_emit_obj = sess.opts.output_types.contains_key(&OutputType::Exe)
             || match kind {
@@ -256,6 +258,7 @@ impl ModuleConfig {
             },
 
             emit_lifetime_markers: sess.emit_lifetime_markers(),
+            print_opt_pipeline,
             llvm_plugins: if_regular!(sess.opts.unstable_opts.llvm_plugins.clone(), vec![]),
             autodiff: if_regular!(sess.opts.unstable_opts.autodiff.clone(), vec![]),
             offload: if_regular!(sess.opts.unstable_opts.offload.clone(), vec![]),

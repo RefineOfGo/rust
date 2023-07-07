@@ -582,7 +582,8 @@ pub(crate) unsafe fn llvm_optimize(
     let run_enzyme = autodiff_stage == AutodiffStage::DuringAD;
     let print_before_enzyme = config.autodiff.contains(&config::AutoDiff::PrintModBefore);
     let print_after_enzyme = config.autodiff.contains(&config::AutoDiff::PrintModAfter);
-    let print_passes = config.autodiff.contains(&config::AutoDiff::PrintPasses);
+    let print_passes =
+        config.autodiff.contains(&config::AutoDiff::PrintPasses) || config.print_opt_pipeline;
     let merge_functions;
     let unroll_loops;
     let vectorize_slp;

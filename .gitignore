@@ -71,6 +71,7 @@ rustc-ice-*.txt
 \#*
 \#*\#
 .#*
+/rustc-ice-*
 
 ## Tags
 tags
@@ -102,5 +103,8 @@ test-dashboard/
 /flake.nix
 flake.lock
 /default.nix
+
+# rustc ICE logs
+rustc-ice-*
 
 # Before adding new lines, see the comment at the top.

@@ -10,7 +10,7 @@ use crate::spec::{Env, HasTargetSpec, Os};
 
 #[derive(Clone, Debug)]
 struct Sdata {
-    pub prefix: [Option<Reg>; 8],
+    pub prefix: [Option<Reg>; 15],
     pub prefix_index: usize,
     pub last_offset: Size,
     pub has_float: bool,
@@ -172,7 +172,7 @@ where
                 cx,
                 arg.layout,
                 Sdata {
-                    prefix: [None; 8],
+                    prefix: [None; 15],
                     prefix_index: 0,
                     last_offset: Size::ZERO,
                     has_float: false,

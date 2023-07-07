@@ -6,6 +6,7 @@
 
 use core::marker::{Destruct, PhantomData};
 use core::mem::{ManuallyDrop, MaybeUninit, SizedTypeProperties};
+use core::num::NonZero;
 use core::ptr::{self, Alignment, NonNull, Unique};
 use core::{cmp, hint};
 
@@ -552,9 +553,22 @@ const impl<A: [const] Allocator + [const] Destruct> RawVecInner<A> {
 }
 
 impl<A: Allocator> RawVecInner<A> {
+    /// The minimum safe memory address that is aligned and won't cause problems
+    /// with ROG GC.
+    ///
+    /// Must sync with the compiler at `compiler/rustc_codegen_llvm/src/common.rs`.
+    const ROG_MIN_PTR_ADDR: NonZero<usize> = unsafe { NonZero::new_unchecked(1 << 18) };
+
     #[inline]
     const fn new_in(alloc: A, align: Alignment) -> Self {
-        let ptr = Unique::from_non_null(NonNull::without_provenance(align.as_nonzero()));
+        let addr = {
+            if align.as_usize() < Self::ROG_MIN_PTR_ADDR.get() {
+                Self::ROG_MIN_PTR_ADDR
+            } else {
+                align.as_nonzero()
+            }
+        };
+        let ptr = Unique::from_non_null(NonNull::without_provenance(addr));
         // `cap: 0` means "unallocated". zero-sized types are ignored.
         Self { ptr, cap: ZERO_CAP, alloc }
     }

@@ -19,6 +19,9 @@ pub struct Cloned<I> {
     it: I,
 }
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for Cloned<I> {}
+
 impl<I> Cloned<I> {
     pub(in crate::iter) fn new(it: I) -> Cloned<I> {
         Cloned { it }

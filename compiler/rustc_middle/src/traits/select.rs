@@ -107,6 +107,7 @@ pub enum SelectionCandidate<'tcx> {
     /// used for the `DiscriminantKind` and `Pointee` trait, both of which have
     /// an associated type.
     BuiltinCandidate,
+    BuiltinAnyCandidate,
 
     /// Implementation of transmutability trait.
     TransmutabilityCandidate,

@@ -75,6 +75,9 @@ use crate::{mem, ptr};
 #[derive(Debug, Copy, Clone, Default)]
 pub struct MaybeDangling<P: ?Sized>(P);
 
+#[stable(feature = "rog", since = "1.0.0")]
+impl<P: ?Sized + Managed> Managed for MaybeDangling<P> {}
+
 impl<P: ?Sized> MaybeDangling<P> {
     /// Wraps a value in a `MaybeDangling`, allowing it to dangle.
     pub const fn new(x: P) -> Self

@@ -48,6 +48,10 @@ use crate::llvm::{self, BasicBlock, ConstantInt, FALSE, Metadata, TRUE, ToLlvmBo
 *
 */
 
+/// The minimum safe memory address that is aligned and won't cause problems
+/// with ROG GC.
+const ROG_MIN_PTR_ADDR: u64 = 1 << 18;
+
 /// A structure representing an active landing pad for the duration of a basic
 /// block.
 ///
@@ -285,7 +289,12 @@ impl<'ll, 'tcx> ConstCodegenMethods for CodegenCx<'ll, 'tcx> {
                         // This avoids generating a zero-sized constant value and actually needing a
                         // real address at runtime.
                         if alloc.inner().len() == 0 {
-                            let val = alloc.inner().align.bytes().wrapping_add(offset.bytes());
+                            let val = alloc
+                                .inner()
+                                .align
+                                .bytes()
+                                .max(ROG_MIN_PTR_ADDR)
+                                .wrapping_add(offset.bytes());
                             let llval = self.const_usize(self.tcx.truncate_to_target_usize(val));
                             return if matches!(layout.primitive(), Pointer(_)) {
                                 unsafe { llvm::LLVMConstIntToPtr(llval, llty) }

@@ -270,8 +270,8 @@ passes_ineffective_unstable_impl = an `#[unstable]` annotation here has no effec
     .note = see issue #55436 <https://github.com/rust-lang/rust/issues/55436> for more information
 
 passes_inline_ignored_for_exported =
-    `#[inline]` is ignored on externally exported functions
-    .help = externally exported functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]`
+    `#[inline]` is ignored on externally exported non-lto-aware functions
+    .help = externally exported non-lto-aware functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]` attributes that uses ABI other than "C" or "rog"
 
 passes_inner_crate_level_attr =
     crate-level attribute should be in the root module

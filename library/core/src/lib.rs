@@ -163,6 +163,7 @@
 #![feature(intrinsics)]
 #![feature(lang_items)]
 #![feature(link_llvm_intrinsics)]
+#![feature(linkage)]
 #![feature(macro_metavar_expr)]
 #![feature(macro_metavar_expr_concat)]
 #![feature(marker_trait_attr)]
@@ -177,6 +178,7 @@
 #![feature(prelude_import)]
 #![feature(reborrow)]
 #![feature(repr_simd)]
+#![feature(rust_cold_cc)]
 #![feature(rustc_allow_const_fn_unstable)]
 #![feature(rustc_attrs)]
 #![feature(rustdoc_internals)]
@@ -400,5 +402,17 @@ pub mod simd {
     #[unstable(feature = "portable_simd", issue = "86656")]
     pub use crate::core_simd::simd::*;
 }
+
+/// ROG GC Write Barrier stub symbols
+#[stable(feature = "rog", since = "1.0.0")]
+pub mod gcwb;
+
+/// ROG GC Stack Check stub symbols
+#[stable(feature = "rog", since = "1.0.0")]
+pub mod stack;
+
+/// ROG Runtime Check Point stub symbols
+#[stable(feature = "rog", since = "1.0.0")]
+pub mod checkpoint;
 
 include!("primitive_docs.rs");
