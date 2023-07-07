@@ -1543,7 +1543,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
                 bx.lifetime_start(llscratch, scratch_size);
-                // ...memcpy the value...
+                // ...memcpy the value (treat as no_ptr since the dst value is on stack)...
                 bx.memcpy(
                     llscratch,
                     scratch_align,
@@ -1551,6 +1551,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     align,
                     bx.const_usize(copy_bytes),
                     MemFlags::empty(),
+                    false,
                 );
                 // ...and then load it with the ABI type.
                 let cast_ty = bx.cast_backend_type(cast);

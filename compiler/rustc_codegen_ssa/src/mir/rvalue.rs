@@ -2,6 +2,7 @@ use std::assert_matches::assert_matches;
 
 use arrayvec::ArrayVec;
 use rustc_abi::{self as abi, FIRST_VARIANT, FieldIdx};
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
@@ -98,6 +99,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let try_init_all_same = |bx: &mut Bx, v| {
                     let start = dest.val.llval;
                     let size = bx.const_usize(dest.layout.size.bytes());
+                    let has_pointers = bx.pointer_map(dest.layout).has_pointers();
 
                     // Use llvm.memset.p0i8.* to initialize all same byte arrays
                     if let Some(int) = bx.cx().const_to_opt_u128(v, false) {
@@ -105,7 +107,14 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         let first = bytes[0];
                         if bytes[1..].iter().all(|&b| b == first) {
                             let fill = bx.cx().const_u8(first);
-                            bx.memset(start, fill, size, dest.val.align, MemFlags::empty());
+                            bx.memset(
+                                start,
+                                fill,
+                                size,
+                                dest.val.align,
+                                MemFlags::empty(),
+                                has_pointers,
+                            );
                             return true;
                         }
                     }
@@ -113,7 +122,8 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     // Use llvm.memset.p0i8.* to initialize byte arrays
                     let v = bx.from_immediate(v);
                     if bx.cx().val_ty(v) == bx.cx().type_i8() {
-                        bx.memset(start, v, size, dest.val.align, MemFlags::empty());
+                        assert!(!has_pointers, "cannot fill managed memory with arbitrary bytes");
+                        bx.memset(start, v, size, dest.val.align, MemFlags::empty(), false);
                         return true;
                     }
                     false
