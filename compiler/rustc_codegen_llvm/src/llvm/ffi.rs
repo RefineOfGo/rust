@@ -1342,6 +1342,7 @@ extern "C" {
     pub fn LLVMRustSetFastMath(Instr: &Value);
 
     // Memory
+    pub fn LLVMRustIsOnStack(V: &Value) -> bool;
     pub fn LLVMBuildAlloca<'a>(B: &Builder<'a>, Ty: &'a Type, Name: *const c_char) -> &'a Value;
     pub fn LLVMBuildArrayAlloca<'a>(
         B: &Builder<'a>,

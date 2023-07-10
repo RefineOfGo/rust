@@ -2030,6 +2030,15 @@ extern "C" int32_t LLVMRustGetElementTypeArgIndex(LLVMValueRef CallSite) {
     return -1;
 }
 
+extern "C" bool LLVMRustIsOnStack(LLVMValueRef V) {
+  Value *val = unwrap<Value>(V);
+  GetElementPtrInst *gep;
+  while ((gep = dyn_cast<GetElementPtrInst>(val)) != nullptr) {
+    val = gep->getPointerOperand();
+  }
+  return isa<AllocaInst>(*val);
+}
+
 extern "C" bool LLVMRustIsBitcode(char *ptr, size_t len) {
   return identify_magic(StringRef(ptr, len)) == file_magic::bitcode;
 }

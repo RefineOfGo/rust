@@ -656,12 +656,11 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         assert_eq!(self.cx.type_kind(self.cx.val_ty(ptr)), TypeKind::Pointer);
         let ty = self.cx.val_ty(val);
         unsafe {
-            if self.cx.type_kind(ty) == TypeKind::Pointer {
+            if self.cx.type_kind(ty) == TypeKind::Pointer && !llvm::LLVMRustIsOnStack(ptr) {
                 assert!(!flags.contains(MemFlags::VOLATILE), "volatile pointer store");
                 assert!(!flags.contains(MemFlags::UNALIGNED), "unaligned pointer store");
                 assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal pointer store");
-                let nil = self.cx.const_null(ty);
-                self.call_intrinsic("llvm.gcwrite", &[val, &nil, ptr])
+                self.call_intrinsic("llvm.gcwrite", &[val, self.cx.const_null(ty), ptr])
             } else {
                 let store = llvm::LLVMBuildStore(self.llbuilder, val, ptr);
                 let align =
@@ -695,10 +694,9 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         assert_eq!(self.cx.type_kind(self.cx.val_ty(ptr)), TypeKind::Pointer);
         let ty = self.cx.val_ty(val);
         unsafe {
-            if self.cx.type_kind(ty) == TypeKind::Pointer {
-                let nil = self.cx.const_null(ty);
+            if self.cx.type_kind(ty) == TypeKind::Pointer && !llvm::LLVMRustIsOnStack(ptr) {
                 self.atomic_fence(order, SynchronizationScope::CrossThread);
-                self.call_intrinsic("llvm.gcwrite", &[val, &nil, ptr]);
+                self.call_intrinsic("llvm.gcwrite", &[val, self.cx.const_null(ty), ptr]);
             } else {
                 let store = llvm::LLVMRustBuildAtomicStore(
                     self.llbuilder,
