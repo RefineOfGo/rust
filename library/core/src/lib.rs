@@ -231,6 +231,7 @@
 #![feature(lang_items)]
 #![feature(let_chains)]
 #![feature(link_llvm_intrinsics)]
+#![feature(linkage)]
 #![feature(macro_metavar_expr)]
 #![feature(min_specialization)]
 #![feature(multiple_supertrait_upcastable)]
@@ -242,6 +243,7 @@
 #![feature(platform_intrinsics)]
 #![feature(prelude_import)]
 #![feature(repr_simd)]
+#![feature(rust_cold_cc)]
 #![feature(rustc_allow_const_fn_unstable)]
 #![feature(rustc_attrs)]
 #![feature(rustdoc_internals)]
@@ -444,5 +446,8 @@ pub mod simd {
     #[unstable(feature = "portable_simd", issue = "86656")]
     pub use crate::core_simd::simd::*;
 }
+
+// ROG GC Write Barrier stub symbols
+mod gcwb;
 
 include!("primitive_docs.rs");
