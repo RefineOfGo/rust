@@ -388,6 +388,20 @@ pub enum AtomicOrdering {
 }
 
 impl AtomicOrdering {
+    pub const fn name(self) -> &'static str {
+        match self {
+            AtomicOrdering::NotAtomic => "not_atomic",
+            AtomicOrdering::Unordered => "unordered",
+            AtomicOrdering::Monotonic => "monotonic",
+            AtomicOrdering::Acquire => "acquire",
+            AtomicOrdering::Release => "release",
+            AtomicOrdering::AcquireRelease => "acq_rel",
+            AtomicOrdering::SequentiallyConsistent => "seq_cst",
+        }
+    }
+}
+
+impl AtomicOrdering {
     pub fn from_generic(ao: rustc_codegen_ssa::common::AtomicOrdering) -> Self {
         match ao {
             rustc_codegen_ssa::common::AtomicOrdering::Unordered => AtomicOrdering::Unordered,

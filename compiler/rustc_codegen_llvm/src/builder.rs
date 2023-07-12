@@ -695,8 +695,15 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         let ty = self.cx.val_ty(val);
         unsafe {
             if self.cx.type_kind(ty) == TypeKind::Pointer && !llvm::LLVMRustIsOnStack(ptr) {
-                self.atomic_fence(order, SynchronizationScope::CrossThread);
-                self.call_intrinsic("llvm.gcwrite", &[val, self.cx.const_null(ty), ptr]);
+                llvm::AddCallSiteAttributes(
+                    self.call_intrinsic("llvm.gcwrite", &[val, self.cx.const_null(ty), ptr]),
+                    llvm::AttributePlace::Function,
+                    &[llvm::CreateAttrStringValue(
+                        self.cx.llcx,
+                        "order",
+                        AtomicOrdering::from_generic(order).name(),
+                    )],
+                );
             } else {
                 let store = llvm::LLVMRustBuildAtomicStore(
                     self.llbuilder,
@@ -1086,19 +1093,46 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         failure_order: rustc_codegen_ssa::common::AtomicOrdering,
         weak: bool,
     ) -> &'ll Value {
-        let weak = if weak { llvm::True } else { llvm::False };
         unsafe {
-            let value = llvm::LLVMBuildAtomicCmpXchg(
-                self.llbuilder,
-                dst,
-                cmp,
-                src,
-                AtomicOrdering::from_generic(order),
-                AtomicOrdering::from_generic(failure_order),
-                llvm::False, // SingleThreaded
-            );
-            llvm::LLVMSetWeak(value, weak);
-            value
+            if self.cx.type_kind(self.cx.val_ty(src)) == TypeKind::Pointer
+                && !llvm::LLVMRustIsOnStack(dst)
+            {
+                let value = self.call_intrinsic("llvm.gcatomic.cas", &[dst, cmp, src]);
+                llvm::AddCallSiteAttributes(
+                    value,
+                    llvm::AttributePlace::Function,
+                    &[
+                        llvm::CreateAttrStringValue(
+                            self.cx.llcx,
+                            "order",
+                            AtomicOrdering::from_generic(order).name(),
+                        ),
+                        llvm::CreateAttrStringValue(
+                            self.cx.llcx,
+                            "failure_order",
+                            AtomicOrdering::from_generic(failure_order).name(),
+                        ),
+                        llvm::CreateAttrStringValue(
+                            self.cx.llcx,
+                            "weak",
+                            if weak { "true" } else { "false" },
+                        ),
+                    ],
+                );
+                value
+            } else {
+                let value = llvm::LLVMBuildAtomicCmpXchg(
+                    self.llbuilder,
+                    dst,
+                    cmp,
+                    src,
+                    AtomicOrdering::from_generic(order),
+                    AtomicOrdering::from_generic(failure_order),
+                    llvm::False, // SingleThreaded
+                );
+                llvm::LLVMSetWeak(value, if weak { llvm::True } else { llvm::False });
+                value
+            }
         }
     }
     fn atomic_rmw(
@@ -1109,14 +1143,30 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         order: rustc_codegen_ssa::common::AtomicOrdering,
     ) -> &'ll Value {
         unsafe {
-            llvm::LLVMBuildAtomicRMW(
-                self.llbuilder,
-                AtomicRmwBinOp::from_generic(op),
-                dst,
-                src,
-                AtomicOrdering::from_generic(order),
-                llvm::False, // SingleThreaded
-            )
+            if self.cx.type_kind(self.cx.val_ty(src)) == TypeKind::Pointer
+                && !llvm::LLVMRustIsOnStack(dst)
+            {
+                let value = self.call_intrinsic("llvm.gcatomic.swap", &[dst, src]);
+                llvm::AddCallSiteAttributes(
+                    value,
+                    llvm::AttributePlace::Function,
+                    &[llvm::CreateAttrStringValue(
+                        self.cx.llcx,
+                        "order",
+                        AtomicOrdering::from_generic(order).name(),
+                    )],
+                );
+                value
+            } else {
+                llvm::LLVMBuildAtomicRMW(
+                    self.llbuilder,
+                    AtomicRmwBinOp::from_generic(op),
+                    dst,
+                    src,
+                    AtomicOrdering::from_generic(order),
+                    llvm::False, // SingleThreaded
+                )
+            }
         }
     }
 

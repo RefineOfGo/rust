@@ -929,6 +929,8 @@ impl<'ll> CodegenCx<'ll, '_> {
 
         ifn!("llvm.ptrmask", fn(ptr, t_isize) -> ptr);
         ifn!("llvm.gcwrite", fn(ptr, ptr, ptr) -> void);
+        ifn!("llvm.gcatomic.cas", fn(ptr, ptr, ptr) -> mk_struct! {ptr, i1});
+        ifn!("llvm.gcatomic.swap", fn(ptr, ptr) -> ptr);
 
         None
     }

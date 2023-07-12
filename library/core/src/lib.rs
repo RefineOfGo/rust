@@ -448,6 +448,7 @@ pub mod simd {
 }
 
 // ROG GC Write Barrier stub symbols
+#[cfg(not(bootstrap))]
 mod gcwb;
 
 include!("primitive_docs.rs");
