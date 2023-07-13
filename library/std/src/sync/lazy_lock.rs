@@ -1,9 +1,8 @@
 use crate::cell::UnsafeCell;
-use crate::mem::ManuallyDrop;
+use crate::fmt;
 use crate::ops::Deref;
 use crate::panic::{RefUnwindSafe, UnwindSafe};
 use crate::sync::Once;
-use crate::{fmt, ptr};
 
 use super::once::ExclusiveState;
 
@@ -12,9 +11,9 @@ use super::once::ExclusiveState;
 // `call_once`, `f` is taken and run. If it succeeds, `value` is set and the state
 // is changed to "complete". If it panics, the Once is poisoned, so none of the
 // two fields is initialized.
-union Data<T, F> {
-    value: ManuallyDrop<T>,
-    f: ManuallyDrop<F>,
+enum Data<T, F> {
+    Value(T),
+    Fn(F),
 }
 
 /// A value which is initialized on the first access.
@@ -86,7 +85,7 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
     #[inline]
     #[unstable(feature = "lazy_cell", issue = "109736")]
     pub const fn new(f: F) -> LazyLock<T, F> {
-        LazyLock { once: Once::new(), data: UnsafeCell::new(Data { f: ManuallyDrop::new(f) }) }
+        LazyLock { once: Once::new(), data: UnsafeCell::new(Data::Fn(f)) }
     }
 
     /// Creates a new lazy value that is already initialized.
@@ -95,7 +94,7 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
     pub(crate) fn preinit(value: T) -> LazyLock<T, F> {
         let once = Once::new();
         once.call_once(|| {});
-        LazyLock { once, data: UnsafeCell::new(Data { value: ManuallyDrop::new(value) }) }
+        LazyLock { once, data: UnsafeCell::new(Data::Value(value)) }
     }
 
     /// Consumes this `LazyLock` returning the stored value.
@@ -118,19 +117,17 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
     /// assert_eq!(LazyLock::into_inner(lazy).ok(), Some("HELLO, WORLD!".to_string()));
     /// ```
     #[unstable(feature = "lazy_cell_consume", issue = "109736")]
-    pub fn into_inner(mut this: Self) -> Result<T, F> {
-        let state = this.once.state();
-        match state {
+    pub fn into_inner(mut self) -> Result<T, F> {
+        match self.once.state() {
             ExclusiveState::Poisoned => panic!("LazyLock instance has previously been poisoned"),
-            state => {
-                let this = ManuallyDrop::new(this);
-                let data = unsafe { ptr::read(&this.data) }.into_inner();
-                match state {
-                    ExclusiveState::Incomplete => Err(ManuallyDrop::into_inner(unsafe { data.f })),
-                    ExclusiveState::Complete => Ok(ManuallyDrop::into_inner(unsafe { data.value })),
-                    ExclusiveState::Poisoned => unreachable!(),
-                }
-            }
+            ExclusiveState::Complete => Ok(match self.data.into_inner() {
+                Data::Value(v) => v,
+                Data::Fn(_) => unreachable!(),
+            }),
+            ExclusiveState::Incomplete => Err(match self.data.into_inner() {
+                Data::Value(_) => unreachable!(),
+                Data::Fn(f) => f,
+            }),
         }
     }
 
@@ -153,12 +150,10 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
     #[inline]
     #[unstable(feature = "lazy_cell", issue = "109736")]
     pub fn force(this: &LazyLock<T, F>) -> &T {
-        this.once.call_once(|| {
-            // SAFETY: `call_once` only runs this closure once, ever.
-            let data = unsafe { &mut *this.data.get() };
-            let f = unsafe { ManuallyDrop::take(&mut data.f) };
-            let value = f();
-            data.value = ManuallyDrop::new(value);
+        this.once.call_once(|| unsafe {
+            let data = &mut *this.data.get();
+            let Data::Fn(f) = crate::ptr::read(data) else { unreachable!() };
+            crate::ptr::write(data, Data::Value(f()));
         });
 
         // SAFETY:
@@ -169,7 +164,10 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
         // * the closure was not called because the Once is poisoned, so this point
         //   is never reached.
         // So `value` has definitely been initialized and will not be modified again.
-        unsafe { &*(*this.data.get()).value }
+        unsafe {
+            let Data::Value(ret) = &*this.data.get() else { unreachable!() };
+            ret
+        }
     }
 }
 
@@ -180,22 +178,12 @@ impl<T, F> LazyLock<T, F> {
             // SAFETY:
             // The closure has been run successfully, so `value` has been initialized
             // and will not be modified again.
-            Some(unsafe { &*(*self.data.get()).value })
+            unsafe {
+                let Data::Value(ret) = &*self.data.get() else { unreachable!() };
+                Some(ret)
+            }
         } else {
             None
-        }
-    }
-}
-
-#[unstable(feature = "lazy_cell", issue = "109736")]
-impl<T, F> Drop for LazyLock<T, F> {
-    fn drop(&mut self) {
-        match self.once.state() {
-            ExclusiveState::Incomplete => unsafe { ManuallyDrop::drop(&mut self.data.get_mut().f) },
-            ExclusiveState::Complete => unsafe {
-                ManuallyDrop::drop(&mut self.data.get_mut().value)
-            },
-            ExclusiveState::Poisoned => {}
         }
     }
 }
