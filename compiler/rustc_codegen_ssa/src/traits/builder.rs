@@ -238,6 +238,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         src_align: Align,
         size: Self::Value,
         flags: MemFlags,
+        has_pointers: bool,
     );
     fn memmove(
         &mut self,
@@ -247,6 +248,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         src_align: Align,
         size: Self::Value,
         flags: MemFlags,
+        has_pointers: bool,
     );
     fn memset(
         &mut self,
@@ -255,6 +257,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         size: Self::Value,
         align: Align,
         flags: MemFlags,
+        has_pointers: bool,
     );
 
     fn select(

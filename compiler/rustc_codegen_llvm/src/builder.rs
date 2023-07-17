@@ -891,6 +891,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         src_align: Align,
         size: &'ll Value,
         flags: MemFlags,
+        has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memcpy not supported");
         let size = self.intcast(size, self.type_isize(), false);
@@ -904,6 +905,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
+                has_pointers && !llvm::LLVMRustIsOnStack(dst),
             );
         }
     }
@@ -916,6 +918,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         src_align: Align,
         size: &'ll Value,
         flags: MemFlags,
+        has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memmove not supported");
         let size = self.intcast(size, self.type_isize(), false);
@@ -929,6 +932,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
+                has_pointers && !llvm::LLVMRustIsOnStack(dst),
             );
         }
     }
@@ -940,9 +944,14 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         size: &'ll Value,
         align: Align,
         flags: MemFlags,
+        has_pointers: bool,
     ) {
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
+            assert!(
+                !has_pointers || llvm::LLVMRustIsConstZero(fill_byte),
+                "cannot fill pointer memory with arbitrary bytes"
+            );
             llvm::LLVMRustBuildMemSet(
                 self.llbuilder,
                 ptr,
@@ -950,6 +959,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 fill_byte,
                 size,
                 is_volatile,
+                has_pointers && !llvm::LLVMRustIsOnStack(ptr),
             );
         }
     }
@@ -1115,7 +1125,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                         llvm::CreateAttrStringValue(
                             self.cx.llcx,
                             "weak",
-                            if weak { "true" } else { "false" },
+                            weak.to_string().as_str(),
                         ),
                     ],
                 );

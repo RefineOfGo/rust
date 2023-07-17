@@ -8,8 +8,8 @@ use crate::value::Value;
 
 use rustc_codegen_ssa::mir::operand::OperandValue;
 use rustc_codegen_ssa::mir::place::PlaceRef;
-use rustc_codegen_ssa::traits::*;
 use rustc_codegen_ssa::MemFlags;
+use rustc_codegen_ssa::{ptrinfo, traits::*};
 use rustc_middle::bug;
 use rustc_middle::ty::layout::LayoutOf;
 pub use rustc_middle::ty::layout::{FAT_PTR_ADDR, FAT_PTR_EXTRA};
@@ -236,6 +236,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                 let scratch_size = cast.size(bx);
                 let scratch_align = cast.align(bx);
                 let llscratch = bx.alloca(cast.llvm_type(bx), scratch_align);
+                let has_pointers = ptrinfo::may_contain_heap_ptr(bx, dst.layout);
                 bx.lifetime_start(llscratch, scratch_size);
 
                 // ... where we first store the value...
@@ -249,6 +250,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     scratch_align,
                     bx.const_usize(self.layout.size.bytes()),
                     MemFlags::empty(),
+                    has_pointers,
                 );
 
                 bx.lifetime_end(llscratch, scratch_size);

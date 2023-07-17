@@ -53,6 +53,7 @@ pub mod glue;
 pub mod meth;
 pub mod mir;
 pub mod mono_item;
+pub mod ptrinfo;
 pub mod target_features;
 pub mod traits;
 

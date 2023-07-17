@@ -5,12 +5,12 @@ use crate::back::write::{
     submit_post_lto_module_to_llvm, submit_pre_lto_module_to_llvm, ComputedLtoType, OngoingCodegen,
 };
 use crate::common::{IntPredicate, RealPredicate, TypeKind};
-use crate::errors;
 use crate::meth;
 use crate::mir;
 use crate::mir::operand::OperandValue;
 use crate::mir::place::PlaceRef;
 use crate::traits::*;
+use crate::{errors, ptrinfo};
 use crate::{CachedModuleCodegen, CompiledModule, CrateInfo, MemFlags, ModuleCodegen, ModuleKind};
 
 use rustc_ast::expand::allocator::{global_fn_name, AllocatorKind, ALLOCATOR_METHODS};
@@ -373,7 +373,8 @@ pub fn memcpy_ty<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         let temp = bx.load(bty, src, src_align);
         bx.store(temp, dst, dst_align);
     } else {
-        bx.memcpy(dst, dst_align, src, src_align, bx.cx().const_usize(size), flags);
+        let has_pointers = ptrinfo::may_contain_heap_ptr(bx, layout);
+        bx.memcpy(dst, dst_align, src, src_align, bx.cx().const_usize(size), flags, has_pointers);
     }
 }
 

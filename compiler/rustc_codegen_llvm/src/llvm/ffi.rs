@@ -916,6 +916,8 @@ extern "C" {
     pub fn LLVMValueAsMetadata(Node: &Value) -> &Metadata;
     pub fn LLVMIsAFunction(Val: &Value) -> Option<&Value>;
     pub fn LLVMRustIsNonGVFunctionPointerTy(Val: &Value) -> bool;
+    pub fn LLVMRustIsOnStack(Val: &Value) -> bool;
+    pub fn LLVMRustIsConstZero(Val: &Value) -> bool;
 
     // Operations on constants of any type
     pub fn LLVMConstNull(Ty: &Type) -> &Value;
@@ -1356,7 +1358,6 @@ extern "C" {
     pub fn LLVMRustSetFastMath(Instr: &Value);
 
     // Memory
-    pub fn LLVMRustIsOnStack(V: &Value) -> bool;
     pub fn LLVMBuildAlloca<'a>(B: &Builder<'a>, Ty: &'a Type, Name: *const c_char) -> &'a Value;
     pub fn LLVMBuildArrayAlloca<'a>(
         B: &Builder<'a>,
@@ -1520,6 +1521,7 @@ extern "C" {
         SrcAlign: c_uint,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
     pub fn LLVMRustBuildMemMove<'a>(
         B: &Builder<'a>,
@@ -1529,6 +1531,7 @@ extern "C" {
         SrcAlign: c_uint,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
     pub fn LLVMRustBuildMemSet<'a>(
         B: &Builder<'a>,
@@ -1537,6 +1540,7 @@ extern "C" {
         Val: &'a Value,
         Size: &'a Value,
         IsVolatile: bool,
+        NeedBarriers: bool,
     ) -> &'a Value;
     pub fn LLVMBuildSelect<'a>(
         B: &Builder<'a>,

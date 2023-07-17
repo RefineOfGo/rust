@@ -481,7 +481,9 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
         let neg_address = bx.neg(address);
         let offset = bx.and(neg_address, align_minus_1);
         let dst = bx.inbounds_gep(bx.type_i8(), alloca, &[offset]);
-        bx.memcpy(dst, min_align, llptr, min_align, size, MemFlags::empty());
+        // This is stack access, so we may assume it's pointer-free,
+        // since stack store doesn't need barriers anyway.
+        bx.memcpy(dst, min_align, llptr, min_align, size, MemFlags::empty(), false);
 
         // Store the allocated region and the extra to the indirect place.
         let indirect_operand = OperandValue::Pair(dst, llextra);

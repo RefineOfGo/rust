@@ -1476,29 +1476,59 @@ extern "C" LLVMValueRef LLVMRustGetInstrProfIncrementIntrinsic(LLVMModuleRef M) 
 extern "C" LLVMValueRef LLVMRustBuildMemCpy(LLVMBuilderRef B,
                                             LLVMValueRef Dst, unsigned DstAlign,
                                             LLVMValueRef Src, unsigned SrcAlign,
-                                            LLVMValueRef Size, bool IsVolatile) {
-  return wrap(unwrap(B)->CreateMemCpy(
-      unwrap(Dst), MaybeAlign(DstAlign),
-      unwrap(Src), MaybeAlign(SrcAlign),
-      unwrap(Size), IsVolatile));
+                                            LLVMValueRef Size, bool IsVolatile,
+                                            bool NeedBarriers) {
+  Value *dst = unwrap(Dst);
+  Value *src = unwrap(Src);
+  Value *size = unwrap(Size);
+  IRBuilder<> *irb = unwrap(B);
+  if (!NeedBarriers) {
+    return wrap(irb->CreateMemCpy(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  }
+  Module *mod = irb->GetInsertBlock()->getParent()->getParent();
+  return wrap(irb->CreateCall(
+      Intrinsic::getDeclaration(mod, Intrinsic::gcmemcpy, { dst->getType(), src->getType(), size->getType() }),
+      { dst, src, size, ConstantInt::getBool(Type::getInt1Ty(irb->getContext()), IsVolatile) }
+  ));
 }
 
 extern "C" LLVMValueRef LLVMRustBuildMemMove(LLVMBuilderRef B,
                                              LLVMValueRef Dst, unsigned DstAlign,
                                              LLVMValueRef Src, unsigned SrcAlign,
-                                             LLVMValueRef Size, bool IsVolatile) {
-  return wrap(unwrap(B)->CreateMemMove(
-      unwrap(Dst), MaybeAlign(DstAlign),
-      unwrap(Src), MaybeAlign(SrcAlign),
-      unwrap(Size), IsVolatile));
+                                             LLVMValueRef Size, bool IsVolatile,
+                                             bool NeedBarriers) {
+  Value *dst = unwrap(Dst);
+  Value *src = unwrap(Src);
+  Value *size = unwrap(Size);
+  IRBuilder<> *irb = unwrap(B);
+  if (!NeedBarriers) {
+    return wrap(irb->CreateMemMove(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  }
+  Module *mod = irb->GetInsertBlock()->getParent()->getParent();
+  return wrap(irb->CreateCall(
+      Intrinsic::getDeclaration(mod, Intrinsic::gcmemmove, { dst->getType(), src->getType(), size->getType() }),
+      { dst, src, size, ConstantInt::getBool(Type::getInt1Ty(irb->getContext()), IsVolatile) }
+  ));
 }
 
 extern "C" LLVMValueRef LLVMRustBuildMemSet(LLVMBuilderRef B,
                                             LLVMValueRef Dst, unsigned DstAlign,
-                                            LLVMValueRef Val,
-                                            LLVMValueRef Size, bool IsVolatile) {
-  return wrap(unwrap(B)->CreateMemSet(
-      unwrap(Dst), unwrap(Val), unwrap(Size), MaybeAlign(DstAlign), IsVolatile));
+                                            LLVMValueRef Val, LLVMValueRef Size,
+                                            bool IsVolatile, bool NeedBarriers) {
+  Value *dst = unwrap(Dst);
+  Value *val = unwrap(Val);
+  Value *size = unwrap(Size);
+  IRBuilder<> *irb = unwrap(B);
+  if (!NeedBarriers) {
+    return wrap(irb->CreateMemSet(dst, val, size, MaybeAlign(DstAlign), IsVolatile));
+  }
+  ConstantInt *fill = dyn_cast<ConstantInt>(val);
+  assert(fill && fill->isZero() && "Cannot fill barrier memory with arbitrary bytes");
+  Module *mod = irb->GetInsertBlock()->getParent()->getParent();
+  return wrap(irb->CreateCall(
+      Intrinsic::getDeclaration(mod, Intrinsic::gcmemclr, { dst->getType(), size->getType() }),
+      { dst, size, ConstantInt::getBool(Type::getInt1Ty(irb->getContext()), IsVolatile) }
+  ));
 }
 
 extern "C" LLVMValueRef
@@ -2041,6 +2071,11 @@ extern "C" bool LLVMRustIsOnStack(LLVMValueRef V) {
 
 extern "C" bool LLVMRustIsBitcode(char *ptr, size_t len) {
   return identify_magic(StringRef(ptr, len)) == file_magic::bitcode;
+}
+
+extern "C" bool LLVMRustIsConstZero(LLVMValueRef V) {
+  ConstantInt *val = dyn_cast<ConstantInt>(unwrap<Value>(V));
+  return val && val->isZero();
 }
 
 extern "C" bool LLVMRustIsNonGVFunctionPointerTy(LLVMValueRef V) {
