@@ -1141,7 +1141,10 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         self.check_scalar(ty);
         unsafe {
             if self.cx.type_kind(ty) == TypeKind::Pointer && !llvm::LLVMRustIsOnStack(dst) {
-                let value = self.call_intrinsic("llvm.gcatomic.cas", &[dst, cmp, src]);
+                let value = self.call_intrinsic(
+                    "llvm.gcatomic.cas",
+                    &[dst, cmp, src, self.cx.const_bool(weak), self.cx.const_bool(false)],
+                );
                 llvm::AddCallSiteAttributes(
                     value,
                     llvm::AttributePlace::Function,
@@ -1155,11 +1158,6 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                             self.cx.llcx,
                             "failure_order",
                             AtomicOrdering::from_generic(failure_order).name(),
-                        ),
-                        llvm::CreateAttrStringValue(
-                            self.cx.llcx,
-                            "weak",
-                            weak.to_string().as_str(),
                         ),
                     ],
                 );
@@ -1191,7 +1189,8 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         self.check_scalar(ty);
         unsafe {
             if self.cx.type_kind(ty) == TypeKind::Pointer && !llvm::LLVMRustIsOnStack(dst) {
-                let value = self.call_intrinsic("llvm.gcatomic.swap", &[dst, src]);
+                let value = self
+                    .call_intrinsic("llvm.gcatomic.swap", &[dst, src, self.cx.const_bool(false)]);
                 llvm::AddCallSiteAttributes(
                     value,
                     llvm::AttributePlace::Function,
