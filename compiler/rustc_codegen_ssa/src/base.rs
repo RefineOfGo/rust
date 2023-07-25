@@ -371,7 +371,7 @@ pub fn memcpy_ty<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         && let Some(bty) = bx.cx().scalar_copy_backend_type(layout)
     {
         let temp = bx.load(bty, src, src_align);
-        bx.store(temp, dst, dst_align);
+        bx.store(temp, dst, dst_align, layout);
     } else {
         let has_pointers = ptrinfo::may_contain_heap_ptr(bx, layout);
         bx.memcpy(dst, dst_align, src, src_align, bx.cx().const_usize(size), flags, has_pointers);

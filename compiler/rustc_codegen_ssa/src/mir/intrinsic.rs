@@ -323,9 +323,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                             let success = bx.from_immediate(success);
 
                             let dest = result.project_field(bx, 0);
-                            bx.store(val, dest.llval, dest.align);
+                            bx.store(val, dest.llval, dest.align, dest.layout);
                             let dest = result.project_field(bx, 1);
-                            bx.store(success, dest.llval, dest.align);
+                            bx.store_noptr(success, dest.llval, dest.align);
                             return;
                         } else {
                             return invalid_monomorphization(ty);
@@ -347,10 +347,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     "store" => {
                         let ty = fn_args.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
-                            let size = bx.layout_of(ty).size;
+                            let layout = bx.layout_of(ty);
                             let val = args[1].immediate();
                             let ptr = args[0].immediate();
-                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), size);
+                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), layout);
                             return;
                         } else {
                             return invalid_monomorphization(ty);
@@ -443,7 +443,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
 
         if !fn_abi.ret.is_ignore() {
             if let PassMode::Cast { .. } = &fn_abi.ret.mode {
-                bx.store(llval, result.llval, result.align);
+                bx.store(llval, result.llval, result.align, result.layout);
             } else {
                 OperandRef::from_immediate_or_packed_pair(bx, llval, result.layout)
                     .val

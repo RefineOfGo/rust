@@ -859,6 +859,7 @@ extern "C" {
 
     /// See llvm::LLVMTypeKind::getTypeID.
     pub fn LLVMRustGetTypeKind(Ty: &Type) -> TypeKind;
+    pub fn LLVMRustGetTypeSize(M: &Module, Ty: &Type) -> usize;
 
     // Operations on integer types
     pub fn LLVMInt1TypeInContext(C: &Context) -> &Type;

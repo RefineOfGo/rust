@@ -1334,6 +1334,10 @@ LLVMRustGetDiagInfoKind(LLVMDiagnosticInfoRef DI) {
   return toRust((DiagnosticKind)unwrap(DI)->getKind());
 }
 
+extern "C" size_t LLVMRustGetTypeSize(LLVMModuleRef M, LLVMTypeRef Ty) {
+  return unwrap(M)->getDataLayout().getTypeAllocSize(unwrap(Ty));
+}
+
 // This is kept distinct from LLVMGetTypeKind, because when
 // a new type kind is added, the Rust-side enum must be
 // updated or UB will result.
@@ -2063,10 +2067,14 @@ extern "C" int32_t LLVMRustGetElementTypeArgIndex(LLVMValueRef CallSite) {
 extern "C" bool LLVMRustIsOnStack(LLVMValueRef V) {
   Value *val = unwrap<Value>(V);
   GetElementPtrInst *gep;
-  while ((gep = dyn_cast<GetElementPtrInst>(val)) != nullptr) {
+  for (;;) {
+    val = val->stripPointerCastsForAliasAnalysis();
+    gep = dyn_cast<GetElementPtrInst>(val);
+    if (gep == nullptr) {
+      return isa<AllocaInst>(*val);
+    }
     val = gep->getPointerOperand();
   }
-  return isa<AllocaInst>(*val);
 }
 
 extern "C" bool LLVMRustIsBitcode(char *ptr, size_t len) {

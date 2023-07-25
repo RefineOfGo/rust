@@ -216,7 +216,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
             // uses it for i16 -> {i8, i8}, but not for i24 -> {i8, i8, i8}.
             let can_store_through_cast_ptr = false;
             if can_store_through_cast_ptr {
-                bx.store(val, dst.llval, self.layout.align.abi);
+                bx.store(val, dst.llval, self.layout.align.abi, self.layout);
             } else {
                 // The actual return type is a struct, but the ABI
                 // adaptation code has cast it into some scalar type. The
@@ -240,7 +240,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                 bx.lifetime_start(llscratch, scratch_size);
 
                 // ... where we first store the value...
-                bx.store(val, llscratch, scratch_align);
+                bx.store_noptr(val, llscratch, scratch_align);
 
                 // ... and then memcpy it to the intended destination.
                 bx.memcpy(

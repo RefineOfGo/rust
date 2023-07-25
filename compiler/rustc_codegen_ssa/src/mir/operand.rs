@@ -1,10 +1,10 @@
 use super::place::PlaceRef;
 use super::{FunctionCx, LocalRef};
 
-use crate::base;
 use crate::glue;
 use crate::traits::*;
 use crate::MemFlags;
+use crate::{base, ptrinfo};
 
 use rustc_middle::mir::interpret::{alloc_range, Pointer, Scalar};
 use rustc_middle::mir::{self, ConstValue};
@@ -328,7 +328,8 @@ impl<'a, 'tcx, V: CodegenObject> OperandRef<'tcx, V> {
 
                 // Can't bitcast an aggregate, so round trip through memory.
                 let llptr = bx.alloca(llfield_ty, field.align.abi);
-                bx.store(*llval, llptr, field.align.abi);
+                // Storing to stack, treat as noptr, since stack access doesn't need write barriers anyway.
+                bx.store_noptr(*llval, llptr, field.align.abi);
                 *llval = bx.load(llfield_ty, llptr, field.align.abi);
             }
             (OperandValue::Immediate(_), Abi::Uninhabited | Abi::Aggregate { sized: false }) => {
@@ -405,7 +406,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
         self,
         bx: &mut Bx,
         dest: PlaceRef<'tcx, V>,
-        flags: MemFlags,
+        mut flags: MemFlags,
     ) {
         debug!("OperandRef::store: operand={:?}, dest={:?}", self, dest);
         match self {
@@ -414,21 +415,25 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
                 // value is through `undef`/`poison`, and the store itself is useless.
             }
             OperandValue::Ref(r, None, source_align) => {
-                if flags.contains(MemFlags::NONTEMPORAL) {
+                if flags.contains(MemFlags::NONTEMPORAL)
+                    && !ptrinfo::may_contain_heap_ptr(bx, dest.layout)
+                {
                     // HACK(nox): This is inefficient but there is no nontemporal memcpy.
                     let ty = bx.backend_type(dest.layout);
                     let val = bx.load(ty, r, source_align);
-                    bx.store_with_flags(val, dest.llval, dest.align, flags);
+                    bx.store_noptr_with_flags(val, dest.llval, dest.align, flags);
                     return;
                 }
-                base::memcpy_ty(bx, dest.llval, dest.align, r, source_align, dest.layout, flags)
+                // memcpy for pointers are always temporal
+                flags.remove(MemFlags::NONTEMPORAL);
+                base::memcpy_ty(bx, dest.llval, dest.align, r, source_align, dest.layout, flags);
             }
             OperandValue::Ref(_, Some(_), _) => {
                 bug!("cannot directly store unsized values");
             }
             OperandValue::Immediate(s) => {
                 let val = bx.from_immediate(s);
-                bx.store_with_flags(val, dest.llval, dest.align, flags);
+                bx.store_with_flags(val, dest.llval, dest.align, flags, dest.layout);
             }
             OperandValue::Pair(a, b) => {
                 let Abi::ScalarPair(a_scalar, b_scalar) = dest.layout.abi else {
@@ -440,12 +445,22 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
                 let llptr = bx.struct_gep(ty, dest.llval, 0);
                 let val = bx.from_immediate(a);
                 let align = dest.align;
-                bx.store_with_flags(val, llptr, align, flags);
+                if matches!(a_scalar, abi::Scalar::Initialized { value: abi::Pointer(_), .. }) {
+                    assert!(align >= bx.data_layout().pointer_align.abi);
+                    bx.store_ptr_with_flags(val, llptr, flags);
+                } else {
+                    bx.store_noptr_with_flags(val, llptr, align, flags);
+                }
 
                 let llptr = bx.struct_gep(ty, dest.llval, 1);
                 let val = bx.from_immediate(b);
                 let align = dest.align.restrict_for_offset(b_offset);
-                bx.store_with_flags(val, llptr, align, flags);
+                if matches!(b_scalar, abi::Scalar::Initialized { value: abi::Pointer(_), .. }) {
+                    assert!(align >= bx.data_layout().pointer_align.abi);
+                    bx.store_ptr_with_flags(val, llptr, flags);
+                } else {
+                    bx.store_noptr_with_flags(val, llptr, align, flags);
+                }
             }
         }
     }
