@@ -28,16 +28,14 @@ pub fn get_stack_limit() -> usize {
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
     unsafe {
-        let mut temp: usize;
         let mut limit: usize;
         asm!(
             "mrs {temp}, tpidr_el0",
             "add {temp}, {temp}, :tprel_hi12:rog_stack_limit",
             "ldr {limit}, [{temp}, :tprel_lo12_nc:rog_stack_limit]",
-            temp = out(reg) temp,
+            temp = out(reg) _,
             limit = out(reg) limit
         );
-        let _ = temp;
         limit
     }
 }
@@ -82,15 +80,13 @@ pub unsafe fn set_stack_limit(limit: usize) {
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
     unsafe {
-        let mut temp: usize;
         asm!(
             "mrs {temp}, tpidr_el0",
             "add {temp}, {temp}, :tprel_hi12:rog_stack_limit",
             "str {limit}, [{temp}, :tprel_lo12_nc:rog_stack_limit]",
-            temp = out(reg) temp,
+            temp = out(reg) _,
             limit = in(reg) limit
         );
-        let _ = temp;
     }
 }
 
