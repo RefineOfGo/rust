@@ -447,8 +447,13 @@ pub mod simd {
     pub use crate::core_simd::simd::*;
 }
 
-// ROG GC Write Barrier stub symbols
+/// ROG GC Write Barrier stub symbols
 #[cfg(not(bootstrap))]
 mod gcwb;
+
+/// ROG GC Stack Check stub symbols
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+pub mod stack;
 
 include!("primitive_docs.rs");

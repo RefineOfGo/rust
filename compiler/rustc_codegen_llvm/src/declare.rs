@@ -20,6 +20,7 @@ use crate::type_::Type;
 use crate::value::Value;
 use llvm::ROG_GC_NAME;
 use rustc_codegen_ssa::traits::TypeMembershipMethods;
+use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::ty::{Instance, Ty};
 use rustc_symbol_mangling::typeid::{
     kcfi_typeid_for_fnabi, kcfi_typeid_for_instance, typeid_for_fnabi, typeid_for_instance,
@@ -49,8 +50,8 @@ fn declare_raw_fn<'ll>(
     llvm::SetUnnamedAddress(llfn, unnamed);
     llvm::set_visibility(llfn, visibility);
 
-    if let Some(name) = gc {
-        llvm::SetGC(llfn, name);
+    if let Some(gc_name) = gc {
+        llvm::SetGC(llfn, gc_name);
     }
 
     let mut attrs = SmallVec::<[_; 4]>::new();
@@ -129,12 +130,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
         unnamed: llvm::UnnamedAddr,
         fn_type: &'ll Type,
     ) -> &'ll Value {
-        let visibility = if self.tcx.sess.target.default_hidden_visibility {
-            llvm::Visibility::Hidden
-        } else {
-            llvm::Visibility::Default
-        };
-        declare_raw_fn(self, name, callconv, unnamed, visibility, fn_type, Some(ROG_GC_NAME))
+        self.declare_foreign_fn(name, unnamed, fn_type, callconv)
     }
 
     /// Declare a Rust function.
@@ -158,7 +154,15 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             llvm::UnnamedAddr::Global,
             llvm::Visibility::Default,
             fn_abi.llvm_type(self),
-            Some(ROG_GC_NAME),
+            instance
+                .filter(|inst| {
+                    !self
+                        .tcx
+                        .codegen_fn_attrs(inst.def_id())
+                        .flags
+                        .contains(CodegenFnAttrFlags::NO_GCWB)
+                })
+                .map(|_| ROG_GC_NAME),
         );
         fn_abi.apply_attrs_llfn(self, llfn);
 
