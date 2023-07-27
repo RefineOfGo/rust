@@ -1,11 +1,11 @@
 /// ROG GC Write Barrier switch.
-/// Known to the relative LLVM passes.
+/// Known to the relevant LLVM passes.
 #[no_mangle]
 #[linkage = "weak"]
 static mut rog_gcwb_switch: u32 = 0;
 
-/// ROG GC Write Barrier stub, should be implemented in ROG runtime.
-/// Known to the relative LLVM passes.
+/// ROG GC Write Barrier stub, implemented in ROG runtime.
+/// Known to the relevant LLVM passes.
 #[no_gcwb]
 #[no_split]
 #[no_mangle]
@@ -14,8 +14,8 @@ extern "rust-cold" fn rog_write_barrier(_slot: &usize, _ptr: usize) {
     unreachable!();
 }
 
-/// ROG GC Bulk Write Barrier stub, should be implemented in ROG runtime.
-/// Known to the relative LLVM passes.
+/// ROG GC Bulk Write Barrier stub, implemented in ROG runtime.
+/// Known to the relevant LLVM passes.
 #[no_gcwb]
 #[no_split]
 #[no_mangle]
