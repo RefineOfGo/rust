@@ -170,6 +170,7 @@ fn lang_start<T: crate::process::Termination + 'static>(
 ) -> isize {
     #[cfg(not(bootstrap))]
     unsafe {
+        core::gcwb::disable();
         core::stack::set_stack_limit(0);
     }
     let Ok(v) = lang_start_internal(

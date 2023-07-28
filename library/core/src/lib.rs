@@ -231,7 +231,6 @@
 #![feature(lang_items)]
 #![feature(let_chains)]
 #![feature(link_llvm_intrinsics)]
-#![feature(linkage)]
 #![feature(macro_metavar_expr)]
 #![feature(min_specialization)]
 #![feature(multiple_supertrait_upcastable)]
@@ -449,7 +448,8 @@ pub mod simd {
 
 /// ROG GC Write Barrier stub symbols
 #[cfg(not(bootstrap))]
-mod gcwb;
+#[stable(feature = "rog", since = "1.0.0")]
+pub mod gcwb;
 
 /// ROG GC Stack Check stub symbols
 #[cfg(not(bootstrap))]

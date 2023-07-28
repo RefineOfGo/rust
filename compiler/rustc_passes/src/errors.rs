@@ -560,7 +560,6 @@ pub struct NoGCWB {
 
 #[derive(LintDiagnostic)]
 #[diag(passes_no_gcwb_foreign)]
-#[warning]
 #[note]
 pub struct NoGCWBForeign {
     #[label]
@@ -579,7 +578,6 @@ pub struct NoSplit {
 
 #[derive(LintDiagnostic)]
 #[diag(passes_no_split_foreign)]
-#[warning]
 #[note]
 pub struct NoSplitForeign {
     #[label]
