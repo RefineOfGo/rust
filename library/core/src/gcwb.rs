@@ -11,7 +11,7 @@ static mut rog_gcwb_switch: u32 = 0;
 #[no_mangle]
 #[linkage = "weak"]
 extern "rust-cold" fn rog_write_barrier(_slot: &usize, _ptr: usize) {
-    unreachable!();
+    core::intrinsics::abort();
 }
 
 /// ROG GC Bulk Write Barrier stub, implemented in ROG runtime.
@@ -21,5 +21,5 @@ extern "rust-cold" fn rog_write_barrier(_slot: &usize, _ptr: usize) {
 #[no_mangle]
 #[linkage = "weak"]
 extern "rust-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
-    unreachable!();
+    core::intrinsics::abort();
 }

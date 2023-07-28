@@ -56,7 +56,7 @@ use crate::arch::asm;
 #[no_mangle]
 #[linkage = "weak"]
 extern "rust-cold" fn rog_morestack_abi() {
-    unreachable!();
+    core::intrinsics::abort();
 }
 
 /// Get the stack limit (lower boundary) of the current rog-routine.
