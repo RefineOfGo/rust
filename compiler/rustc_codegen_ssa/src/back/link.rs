@@ -2273,7 +2273,7 @@ fn add_order_independent_options(
     if sess.target.os == "macos" {
         cmd.args(["-undefined", "dynamic_lookup"]);
     } else {
-        cmd.args(["--unresolved-symbols=ignore-all"]);
+        cmd.args(["-Wl,--unresolved-symbols=ignore-all"]);
     }
 
     if sess.target.os == "fuchsia"
