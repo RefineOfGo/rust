@@ -63,7 +63,7 @@ extern "rust-cold" {
 pub fn get_stack_limit() -> usize {
     unsafe {
         let mut limit: usize;
-        asm!("mov {limit}, fs:rog_stack_limit@tpoff", limit = out(reg) limit);
+        asm!("mov {limit}, fs:0x80@tpoff", limit = out(reg) limit);
         limit
     }
 }
@@ -116,7 +116,7 @@ pub fn get_stack_limit() -> usize {
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
     unsafe {
-        asm!("mov fs:rog_stack_limit@tpoff, {limit}", limit = in(reg) limit);
+        asm!("mov fs:0x80@tpoff, {limit}", limit = in(reg) limit);
     }
 }
 
