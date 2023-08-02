@@ -2064,7 +2064,16 @@ extern "C" int32_t LLVMRustGetElementTypeArgIndex(LLVMValueRef CallSite) {
     return -1;
 }
 
-extern "C" bool LLVMRustIsOnStack(LLVMValueRef V) {
+extern "C" bool LLVMRustIsBitcode(char *ptr, size_t len) {
+  return identify_magic(StringRef(ptr, len)) == file_magic::bitcode;
+}
+
+extern "C" bool LLVMRustIsConstZero(LLVMValueRef V) {
+  ConstantInt *val = dyn_cast<ConstantInt>(unwrap<Value>(V));
+  return val && val->isZero();
+}
+
+extern "C" bool LLVMRustIsLocalFrame(LLVMValueRef V) {
   Value *val = unwrap<Value>(V);
   GetElementPtrInst *gep;
   for (;;) {
@@ -2075,15 +2084,6 @@ extern "C" bool LLVMRustIsOnStack(LLVMValueRef V) {
     }
     val = gep->getPointerOperand();
   }
-}
-
-extern "C" bool LLVMRustIsBitcode(char *ptr, size_t len) {
-  return identify_magic(StringRef(ptr, len)) == file_magic::bitcode;
-}
-
-extern "C" bool LLVMRustIsConstZero(LLVMValueRef V) {
-  ConstantInt *val = dyn_cast<ConstantInt>(unwrap<Value>(V));
-  return val && val->isZero();
 }
 
 extern "C" bool LLVMRustIsNonGVFunctionPointerTy(LLVMValueRef V) {

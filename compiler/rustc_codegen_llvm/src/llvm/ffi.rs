@@ -917,8 +917,8 @@ extern "C" {
     pub fn LLVMValueAsMetadata(Node: &Value) -> &Metadata;
     pub fn LLVMIsAFunction(Val: &Value) -> Option<&Value>;
     pub fn LLVMRustIsNonGVFunctionPointerTy(Val: &Value) -> bool;
-    pub fn LLVMRustIsOnStack(Val: &Value) -> bool;
     pub fn LLVMRustIsConstZero(Val: &Value) -> bool;
+    pub fn LLVMRustIsLocalFrame(Val: &Value) -> bool;
 
     // Operations on constants of any type
     pub fn LLVMConstNull(Ty: &Type) -> &Value;

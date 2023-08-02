@@ -642,8 +642,12 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         }
     }
 
-    fn is_stack_address(&mut self, val: &'ll Value) -> bool {
-        unsafe { llvm::LLVMRustIsOnStack(val) }
+    fn is_const_zero(&mut self, val: &'ll Value) -> bool {
+        unsafe { llvm::LLVMRustIsConstZero(val) }
+    }
+
+    fn is_local_frame(&mut self, val: &'ll Value) -> bool {
+        unsafe { llvm::LLVMRustIsLocalFrame(val) }
     }
 
     fn store_ptr(&mut self, val: &'ll Value, ptr: &'ll Value) {
@@ -656,8 +660,8 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal pointer store");
         let ty = self.cx.val_ty(val);
         self.check_scalar(ty);
-        if self.is_stack_address(ptr) {
-            debug!("Slot {:?} is on stack, switch to noptr version.", val);
+        if self.is_local_frame(ptr) {
+            debug!("StorePtr: Slot {:?} is in local frame, no write barriers needed.", val);
             self.store_noptr_with_flags(val, ptr, self.data_layout().pointer_align.abi, flags);
         } else {
             llvm::AddCallSiteAttributes(
@@ -714,8 +718,8 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         debug!("AtomicStorePtr {:?} -> {:?}", val, ptr);
         let ty = self.cx.val_ty(val);
         self.check_scalar(ty);
-        if self.is_stack_address(ptr) {
-            debug!("Slot {:?} is on stack, switch to noptr version.", val);
+        if self.is_local_frame(ptr) {
+            debug!("AtomicStorePtr: Slot {:?} is in local frame, no write barriers needed.", val);
             self.atomic_store_noptr(val, ptr, order, self.data_layout().pointer_size);
         } else {
             llvm::AddCallSiteAttributes(
@@ -929,6 +933,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memcpy not supported");
         let size = self.intcast(size, self.type_isize(), false);
+        let is_local = self.is_local_frame(dst);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
             llvm::LLVMRustBuildMemCpy(
@@ -939,7 +944,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
-                has_pointers && !llvm::LLVMRustIsOnStack(dst),
+                has_pointers && !is_local,
             );
         }
     }
@@ -956,6 +961,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memmove not supported");
         let size = self.intcast(size, self.type_isize(), false);
+        let is_local = self.is_local_frame(dst);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
             llvm::LLVMRustBuildMemMove(
@@ -966,7 +972,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
-                has_pointers && !llvm::LLVMRustIsOnStack(dst),
+                has_pointers && !is_local,
             );
         }
     }
@@ -980,12 +986,13 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         flags: MemFlags,
         has_pointers: bool,
     ) {
+        assert!(
+            !has_pointers || self.is_const_zero(fill_byte),
+            "Cannot fill pointer memory with arbitrary bytes"
+        );
+        let is_local = self.is_local_frame(ptr);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
-            assert!(
-                !has_pointers || llvm::LLVMRustIsConstZero(fill_byte),
-                "cannot fill pointer memory with arbitrary bytes"
-            );
             llvm::LLVMRustBuildMemSet(
                 self.llbuilder,
                 ptr,
@@ -993,7 +1000,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 fill_byte,
                 size,
                 is_volatile,
-                has_pointers && !llvm::LLVMRustIsOnStack(ptr),
+                has_pointers && !is_local,
             );
         }
     }
@@ -1140,7 +1147,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         let ty = self.cx.val_ty(src);
         self.check_scalar(ty);
         unsafe {
-            if self.cx.type_kind(ty) == TypeKind::Pointer && !llvm::LLVMRustIsOnStack(dst) {
+            if self.cx.type_kind(ty) == TypeKind::Pointer && !self.is_local_frame(dst) {
                 let value = self.call_intrinsic(
                     "llvm.gcatomic.cas",
                     &[dst, cmp, src, self.cx.const_bool(weak), self.cx.const_bool(false)],
@@ -1188,7 +1195,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         let ty = self.cx.val_ty(src);
         self.check_scalar(ty);
         unsafe {
-            if self.cx.type_kind(ty) == TypeKind::Pointer && !llvm::LLVMRustIsOnStack(dst) {
+            if self.cx.type_kind(ty) == TypeKind::Pointer && !self.is_local_frame(dst) {
                 let value = self
                     .call_intrinsic("llvm.gcatomic.swap", &[dst, src, self.cx.const_bool(false)]);
                 llvm::AddCallSiteAttributes(
