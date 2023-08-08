@@ -416,7 +416,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
             }
             OperandValue::Ref(r, None, source_align) => {
                 if flags.contains(MemFlags::NONTEMPORAL)
-                    && !ptrinfo::may_contain_heap_ptr(bx, dest.layout)
+                    && !ptrinfo::may_contain_heap_ptr(bx.cx(), dest.layout)
                 {
                     // HACK(nox): This is inefficient but there is no nontemporal memcpy.
                     let ty = bx.backend_type(dest.layout);

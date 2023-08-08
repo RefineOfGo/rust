@@ -58,6 +58,7 @@ build/
 \#*
 \#*\#
 .#*
+/rustc-ice-*
 
 ## Tags
 tags

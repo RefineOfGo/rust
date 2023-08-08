@@ -97,7 +97,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     let zero = bx.const_usize(0);
                     let proj = dest.project_index(bx, zero);
                     let size = bx.const_usize(dest.layout.size.bytes());
-                    let has_pointers = ptrinfo::may_contain_heap_ptr(bx, proj.layout);
+                    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), proj.layout);
                     let flags = MemFlags::empty();
 
                     // Use llvm.memset.p0i8.* to initialize all zero arrays

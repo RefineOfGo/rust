@@ -196,7 +196,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         flags: MemFlags,
         layout: TyAndLayout<'tcx>,
     ) {
-        if ptrinfo::may_contain_heap_ptr(self, layout) && !self.is_local_frame(ptr) {
+        if ptrinfo::may_contain_heap_ptr(self.cx(), layout) && !self.is_local_frame(ptr) {
             assert!(
                 align >= self.data_layout().pointer_align.abi,
                 "invalid pointer alignment: {:?}",
@@ -234,7 +234,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         order: AtomicOrdering,
         layout: TyAndLayout<'tcx>,
     ) {
-        if ptrinfo::may_contain_heap_ptr(self, layout) {
+        if ptrinfo::may_contain_heap_ptr(self.cx(), layout) {
             assert_eq!(layout.size, self.data_layout().pointer_size);
             self.atomic_store_ptr(val, ptr, order);
         } else {

@@ -87,7 +87,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let align = pointee_layout.align;
                 let dst = dst_val.immediate();
                 let src = src_val.immediate();
-                let has_pointers = ptrinfo::may_contain_heap_ptr(bx, dst_val.layout);
+                let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), dst_val.layout);
                 bx.memcpy(dst, align, src, align, bytes, crate::MemFlags::empty(), has_pointers);
             }
             mir::StatementKind::FakeRead(..)
