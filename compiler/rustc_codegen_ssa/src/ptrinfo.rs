@@ -1,6 +1,9 @@
-use std::ops::RangeInclusive;
+use std::{
+    fmt::{Debug, Formatter, Result as FmtResult},
+    ops::RangeInclusive,
+};
 
-use rustc_index::IndexVec;
+use rustc_data_structures::fx::FxHashMap;
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_target::abi::{
     Abi, FieldsShape, Primitive, Scalar, Size, TagEncoding, VariantIdx, Variants,
@@ -9,23 +12,61 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::traits::CodegenMethods;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Slot {
+    Void,
     Ptr,
-    Int,
+    Int(Size),
     Enum {
+        max_size: Size,
         tag_offs: Size,
         tag_size: Size,
-        variants: IndexVec<VariantIdx, PointerMap>,
+        variants: FxHashMap<u128, PointerMap>,
     },
     Niche {
+        max_size: Size,
         tag_offs: Size,
         tag_size: Size,
-        variants: IndexVec<VariantIdx, PointerMap>,
+        variants: FxHashMap<u128, PointerMap>,
         niche_start: u128,
         niche_variants: RangeInclusive<VariantIdx>,
         untagged_variant: VariantIdx,
     },
+}
+
+impl Debug for Slot {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Self::Void => write!(f, "_"),
+            Self::Ptr => write!(f, "ptr"),
+            Self::Int(size) => write!(f, "i{}", size.bits_usize()),
+            Self::Enum { max_size, tag_offs, tag_size, variants } => f
+                .debug_struct("Enum")
+                .field("max_size", &max_size.bytes_usize())
+                .field("tag_offs", &tag_offs.bytes_usize())
+                .field("tag_size", &tag_size.bytes_usize())
+                .field("variants", variants)
+                .finish(),
+            Self::Niche {
+                max_size,
+                tag_offs,
+                tag_size,
+                variants,
+                niche_start,
+                niche_variants,
+                untagged_variant,
+            } => f
+                .debug_struct("Niche")
+                .field("max_size", &max_size.bytes_usize())
+                .field("tag_offs", &tag_offs.bytes_usize())
+                .field("tag_size", &tag_size.bytes_usize())
+                .field("variants", variants)
+                .field("niche_start", niche_start)
+                .field("niche_variants", niche_variants)
+                .field("untagged_variant", untagged_variant)
+                .finish(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -34,20 +75,8 @@ pub struct PointerMap {
 }
 
 impl PointerMap {
-    pub fn int() -> Self {
-        Self { slots: smallvec![Slot::Int] }
-    }
-
-    pub fn ptr() -> Self {
-        Self { slots: smallvec![Slot::Ptr] }
-    }
-}
-
-impl PointerMap {
-    pub fn array(self, count: usize) -> Self {
-        let size = self.slots.len() * count;
-        let slots = self.slots.into_iter().cycle().take(size).collect();
-        Self { slots }
+    pub fn encode(&self) -> Vec<u8> {
+        todo!();
     }
 }
 
@@ -55,122 +84,191 @@ impl PointerMap {
     pub fn has_pointers(&self) -> bool {
         self.slots.iter().any(|slot| match slot {
             Slot::Ptr => true,
-            Slot::Int => false,
-            Slot::Enum { variants, .. } => variants.iter().any(Self::has_pointers),
-            Slot::Niche { variants, .. } => variants.iter().any(Self::has_pointers),
+            Slot::Void | Slot::Int(_) => false,
+            Slot::Enum { variants, .. } => variants.values().any(Self::has_pointers),
+            Slot::Niche { variants, .. } => variants.values().any(Self::has_pointers),
         })
     }
 }
 
 impl PointerMap {
-    fn from_layout_uncached<'tcx, Cx: CodegenMethods<'tcx>>(
+    fn tag_of<'tcx, Cx: CodegenMethods<'tcx>>(
         cx: &Cx,
         layout: TyAndLayout<'tcx>,
-    ) -> Self {
-        match layout.abi {
+        variant_idx: VariantIdx,
+    ) -> u128 {
+        layout
+            .ty
+            .discriminant_for_variant(cx.tcx(), variant_idx)
+            .map_or(variant_idx.as_u32() as u128, |d| d.val)
+    }
+}
+
+impl PointerMap {
+    fn set(&mut self, offset: Size, idx: usize, slot: Slot) {
+        self.slots[offset.bytes_usize() + idx] = slot;
+    }
+
+    fn set_submap(&mut self, offset: Size, submap: PointerMap) {
+        submap.slots.iter().enumerate().for_each(|(idx, slot)| {
+            self.set(offset, idx, slot.clone());
+        });
+    }
+
+    fn set_scalar<'tcx, Cx: CodegenMethods<'tcx>>(
+        &mut self,
+        cx: &Cx,
+        offset: Size,
+        scalar: Scalar,
+    ) {
+        match scalar {
+            Scalar::Initialized { value, .. } => {
+                if matches!(value, Primitive::Pointer(_)) {
+                    self.set(offset, 0, Slot::Ptr);
+                } else {
+                    self.set(offset, 0, Slot::Int(value.size(cx)));
+                }
+            }
             // Unions does not have deterministic runtime type information, so
             // user must take care of their pointer variants. ROG GC won't deal
             // with those pointers.
-            Abi::Scalar(Scalar::Initialized { value: Primitive::Pointer(_), .. })
-            | Abi::ScalarPair(Scalar::Initialized { value: Primitive::Pointer(_), .. }, _)
-            | Abi::ScalarPair(_, Scalar::Initialized { value: Primitive::Pointer(_), .. })
-            | Abi::Vector {
-                element: Scalar::Initialized { value: Primitive::Pointer(_), .. },
-                ..
-            } => Self::ptr(),
+            Scalar::Union { value } => {
+                self.set(offset, 0, Slot::Int(value.size(cx)));
+            }
+        }
+    }
+
+    fn set_layout<'tcx, Cx: CodegenMethods<'tcx>>(
+        &mut self,
+        cx: &Cx,
+        offset: Size,
+        layout: TyAndLayout<'tcx>,
+    ) {
+        match layout.abi {
+            Abi::Uninhabited => {}
+            Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
+            Abi::ScalarPair(a, b) => {
+                self.set_scalar(cx, offset, a);
+                self.set_scalar(cx, offset + a.size(cx).align_to(b.align(cx).abi), b);
+            }
+            Abi::Vector { element, count } => {
+                for i in 0..count {
+                    self.set_scalar(
+                        cx,
+                        offset + (element.size(cx) * i).align_to(element.align(cx).abi),
+                        element,
+                    )
+                }
+            }
             Abi::Aggregate { .. } => match layout.fields {
-                // Don't deal with unions.
-                FieldsShape::Primitive | FieldsShape::Union(_) => Self::int(),
+                // Treat unions as opaque data, as described above.
+                FieldsShape::Primitive | FieldsShape::Union(_) => {
+                    self.set(offset, 0, Slot::Int(layout.size));
+                }
                 FieldsShape::Array { count, .. } => {
-                    let elem = layout.field(cx, 0);
-                    if elem.size < cx.data_layout().pointer_size {
-                        Self::int()
-                    } else {
-                        Self::from_layout(cx, elem).array(count as usize)
+                    let elem = Self::resolve(cx, layout.field(cx, 0), None);
+                    let size = Size::from_bytes(elem.slots.len());
+                    for i in 0..count {
+                        self.set_submap(offset + size * i, elem.clone());
                     }
                 }
-                FieldsShape::Arbitrary { .. } => match &layout.variants {
+                FieldsShape::Arbitrary { .. } => match layout.variants {
                     Variants::Single { .. } => {
-                        let unit = cx.data_layout().pointer_size.bytes_usize();
-                        let align = cx.data_layout().pointer_align.abi;
-
-                        let mut slots = smallvec![
-                            Slot::Int;
-                            layout.size.align_to(align).bytes_usize() / unit
-                        ];
-
                         for i in layout.fields.index_by_increasing_offset() {
-                            let offs = layout.fields.offset(i);
-                            if !offs.is_aligned(align) {
-                                continue;
-                            }
-
-                            let base = offs.bytes_usize() / unit;
-                            Self::from_layout(cx, layout.field(cx, i))
+                            Self::resolve(cx, layout.field(cx, i), None)
                                 .slots
                                 .iter()
                                 .enumerate()
-                                .for_each(|(idx, slot)| slots[base + idx] = slot.clone());
+                                .for_each(|(idx, slot)| {
+                                    self.set(offset + layout.fields.offset(i), idx, slot.clone())
+                                });
                         }
-                        Self { slots }
                     }
                     Variants::Multiple {
                         tag: Scalar::Initialized { value, .. },
                         tag_encoding: TagEncoding::Direct,
                         tag_field,
-                        variants,
+                        ref variants,
                         ..
-                    } => Self {
-                        slots: smallvec!(Slot::Enum {
-                            tag_offs: layout.fields.offset(*tag_field),
+                    } => self.set(
+                        offset,
+                        0,
+                        Slot::Enum {
+                            max_size: layout.size,
+                            tag_offs: layout.fields.offset(tag_field),
                             tag_size: value.size(cx),
                             variants: variants
                                 .indices()
-                                .map(|i| Self::from_layout(cx, layout.for_variant(cx, i)))
+                                .map(|i| {
+                                    (
+                                        Self::tag_of(cx, layout, i),
+                                        Self::resolve(cx, layout, Some(i)),
+                                    )
+                                })
                                 .collect(),
-                        }),
-                    },
+                        },
+                    ),
                     Variants::Multiple {
                         tag: Scalar::Initialized { value, .. },
                         tag_encoding:
-                            TagEncoding::Niche { untagged_variant, niche_variants, niche_start },
+                            TagEncoding::Niche { untagged_variant, ref niche_variants, niche_start },
                         tag_field,
-                        variants,
+                        ref variants,
                         ..
-                    } => Self {
-                        slots: smallvec!(Slot::Niche {
-                            tag_offs: layout.fields.offset(*tag_field),
+                    } => self.set(
+                        offset,
+                        0,
+                        Slot::Niche {
+                            max_size: layout.size,
+                            tag_offs: layout.fields.offset(tag_field),
                             tag_size: value.size(cx),
                             variants: variants
                                 .indices()
-                                .map(|i| Self::from_layout(cx, layout.for_variant(cx, i)))
+                                .map(|i| {
+                                    (
+                                        Self::tag_of(cx, layout, i),
+                                        Self::resolve(cx, layout, Some(i)),
+                                    )
+                                })
                                 .collect(),
-                            niche_start: *niche_start,
+                            niche_start,
                             niche_variants: niche_variants.clone(),
-                            untagged_variant: *untagged_variant,
-                        }),
-                    },
+                            untagged_variant,
+                        },
+                    ),
                     Variants::Multiple { tag, .. } => {
-                        unreachable!("Union discriminant value: {:?}", tag)
+                        unreachable!("Union discriminant value: {:#?}", tag)
                     }
                 },
             },
-            _ => Self::int(),
         }
     }
 }
 
 impl PointerMap {
-    pub fn from_layout<'tcx, Cx: CodegenMethods<'tcx>>(cx: &Cx, layout: TyAndLayout<'tcx>) -> Self {
-        if layout.size < cx.data_layout().pointer_size {
-            return PointerMap { slots: smallvec![] };
-        }
-        if let Some(map) = cx.get_pointer_map(layout.ty) {
+    pub fn resolve<'tcx, Cx: CodegenMethods<'tcx>>(
+        cx: &Cx,
+        layout: TyAndLayout<'tcx>,
+        variant_idx: Option<VariantIdx>,
+    ) -> Self {
+        let ty = layout.ty;
+        if let Some(map) = cx.get_pointer_map(ty, variant_idx) {
             return map;
         }
-        let map = Self::from_layout_uncached(cx, layout);
-        cx.add_pointer_map(layout.ty, map.clone());
-        map
+        let layout = match variant_idx {
+            Some(idx) => layout.for_variant(cx, idx),
+            None => layout,
+        };
+        let mut ret = Self {
+            slots: smallvec![
+                Slot::Void;
+                layout.size.bytes_usize()
+            ],
+        };
+        ret.set_layout(cx, Size::ZERO, layout);
+        eprintln!("ty({:?}) {:#?} :: {:?} -> PointerMap {:#?}", layout.size, ty, variant_idx, &ret);
+        cx.add_pointer_map(ty, variant_idx, ret.clone());
+        ret
     }
 }
 
@@ -178,5 +276,5 @@ pub fn may_contain_heap_ptr<'tcx, Cx: CodegenMethods<'tcx>>(
     cx: &Cx,
     layout: TyAndLayout<'tcx>,
 ) -> bool {
-    PointerMap::from_layout(cx, layout).has_pointers()
+    PointerMap::resolve(cx, layout, None).has_pointers()
 }

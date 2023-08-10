@@ -84,7 +84,7 @@ pub struct CodegenCx<'ll, 'tcx> {
     /// Mapping of scalar types to llvm types.
     pub scalar_lltypes: RefCell<FxHashMap<Ty<'tcx>, &'ll Type>>,
 
-    pub pointer_map: RefCell<FxHashMap<Ty<'tcx>, PointerMap>>,
+    pub pointer_map: RefCell<FxHashMap<(Ty<'tcx>, Option<VariantIdx>), PointerMap>>,
     pub pointee_infos: RefCell<FxHashMap<(Ty<'tcx>, Size), Option<PointeeInfo>>>,
     pub isize_ty: &'ll Type,
 
@@ -598,12 +598,12 @@ impl<'ll, 'tcx> MiscMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         self.codegen_unit
     }
 
-    fn get_pointer_map(&self, ty: Ty<'tcx>) -> Option<PointerMap> {
-        self.pointer_map.borrow().get(&ty).cloned()
+    fn get_pointer_map(&self, ty: Ty<'tcx>, idx: Option<VariantIdx>) -> Option<PointerMap> {
+        self.pointer_map.borrow().get(&(ty, idx)).cloned()
     }
 
-    fn add_pointer_map(&self, ty: Ty<'tcx>, map: PointerMap) {
-        self.pointer_map.borrow_mut().insert(ty, map);
+    fn add_pointer_map(&self, ty: Ty<'tcx>, idx: Option<VariantIdx>, map: PointerMap) {
+        self.pointer_map.borrow_mut().insert((ty, idx), map);
     }
 
     fn set_frame_pointer_type(&self, llfn: &'ll Value) {
