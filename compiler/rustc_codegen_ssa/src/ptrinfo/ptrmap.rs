@@ -3,6 +3,7 @@ use std::{
     ops::RangeInclusive,
 };
 
+use itertools::Itertools;
 use rustc_data_structures::{fx::FxHashMap, stack::ensure_sufficient_stack};
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_target::abi::{
@@ -12,7 +13,9 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::traits::CodegenMethods;
 
-#[derive(Clone)]
+use super::bitvec::{BitmapData, CompressedBitVec};
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct Enum {
     pub max_size: Size,
     pub tag_offs: Size,
@@ -37,7 +40,7 @@ impl Debug for Enum {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Niche {
     pub niche_start: u128,
     pub niche_variants: RangeInclusive<VariantIdx>,
@@ -62,7 +65,7 @@ impl Debug for Niche {
 
 /// Pointer Map Calculation
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Slot {
     Void(Size),
     Ptr(usize),
@@ -99,8 +102,9 @@ impl Debug for Slot {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PointerMap {
+    pub size: Size,
     pub slots: SmallVec<[Slot; 32]>,
 }
 
@@ -115,18 +119,101 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn encode<'tcx, Cx: CodegenMethods<'tcx>>(&self, cx: &Cx) -> Vec<u8> {
+    pub fn encode<'tcx, Cx: CodegenMethods<'tcx>>(&self, cx: &Cx) -> BitmapData {
         self.clone().into_encoded(cx)
     }
 
-    pub fn into_encoded<'tcx, Cx: CodegenMethods<'tcx>>(mut self, cx: &Cx) -> Vec<u8> {
+    pub fn into_encoded<'tcx, Cx: CodegenMethods<'tcx>>(mut self, cx: &Cx) -> BitmapData {
         ensure_sufficient_stack(|| {
+            let mut out = CompressedBitVec::new();
             self.legalize(cx);
+            self.simplify();
             self.compress();
-        });
-        // TODO: serialize the map
-        eprintln!("{:#?}", &self);
-        vec![]
+            // TODO: remove this
+            eprintln!("compressed pointer map: {:#?}", self);
+            self.monolize();
+            self.serialize_into(cx, &mut out, Size::ZERO);
+            out.finish()
+        })
+    }
+}
+
+impl PointerMap {
+    fn serialize_into<'tcx, Cx: CodegenMethods<'tcx>>(
+        self,
+        cx: &Cx,
+        out: &mut CompressedBitVec,
+        mut offs: Size,
+    ) {
+        let ptr_size = cx.data_layout().pointer_size;
+        let ptr_align = cx.data_layout().pointer_align.abi;
+
+        /* common case 1: type without pointers encodes to a single byte */
+        if !self.has_pointers() {
+            out.add_noptr(self.size.bytes_usize());
+            return;
+        }
+
+        /* common case 2: types that with at most 4 pointer slots and is
+         * pointer-size aligned encodes into a single byte */
+        if self.size <= ptr_size * 4
+            && self.size.is_aligned(ptr_align)
+            && self.slots.iter().all(|slot| !matches!(slot, Slot::Enum(_, _)))
+        {
+            assert!(self.slots.len() <= 4, "Uncompressed pointer map");
+            let unit = ptr_size.bytes_usize();
+            let slots: SmallVec<[bool; 4]> = self
+                .slots
+                .into_iter()
+                .map(|slot| -> SmallVec<[bool; 4]> {
+                    match slot {
+                        Slot::Void(_) => bug!("Illegal pointer map with void slots: {:?}", slot),
+                        Slot::Ptr(rep) => smallvec![true; rep],
+                        Slot::Int(size) => smallvec![false; size.bytes_usize() / unit],
+                        Slot::Enum(_, _) => unreachable!(),
+                    }
+                })
+                .flatten()
+                .collect();
+            out.add_simple(&slots);
+            return;
+        }
+
+        /* other more complex types */
+        let start = offs;
+        out.add_complex(self.size.bytes_usize());
+
+        for slot in self.slots {
+            match slot {
+                Slot::Void(_) => {
+                    bug!("Illegal pointer map with void slots: {:?}", slot);
+                }
+                Slot::Ptr(rep) => {
+                    assert_ne!(rep, 0, "Pointer slot with zero size");
+                    assert!(offs.is_aligned(ptr_align), "Unaligned pointer slot");
+                    out.add_ptr(rep);
+                    offs += ptr_size * (rep as u64);
+                }
+                Slot::Int(size) => {
+                    assert_ne!(size, Size::ZERO, "Integer slot with zero size");
+                    out.add_int(size.bytes_usize() / ptr_size.bytes_usize());
+                    offs += size;
+                }
+                Slot::Enum(value, niche) => {
+                    assert!(!value.variants.is_empty(), "Empty enum");
+                    assert_ne!(value.max_size, Size::ZERO, "Enum slot with zero size");
+                    out.add_enum_header(&value, niche);
+                    value.variants.into_iter().sorted_by_key(|(tag, _)| *tag).for_each(
+                        |(tag, map)| {
+                            out.add_enum_tag(tag);
+                            map.serialize_into(cx, out, offs);
+                        },
+                    );
+                    offs += value.max_size;
+                }
+            }
+        }
+        assert_eq!(offs - start, self.size, "Size mismatch for encoded pointer map");
     }
 }
 
@@ -200,6 +287,58 @@ impl PointerMap {
         });
     }
 
+    fn monolize(&mut self) {
+        let mut merge_list: SmallVec<[usize; 8]> = smallvec![];
+        for (i, slot) in self.slots.iter_mut().enumerate() {
+            if let Slot::Enum(ex, _) = slot {
+                for value in ex.variants.values_mut() {
+                    value.monolize();
+                }
+                if ex.variants.values().all_equal() {
+                    merge_list.push(i);
+                }
+            }
+        }
+        // TODO: remove this
+        let printmerge = !merge_list.is_empty();
+        // TODO: remove this
+        if printmerge {
+            eprintln!("can merge variants: {:#?}", self);
+        }
+        for i in merge_list.into_iter().rev() {
+            let Slot::Enum(enum_data, _) = self.slots.remove(i) else { unreachable!() };
+            let submap = enum_data.variants.into_values().next().expect("Empty variants");
+            self.slots.insert_many(i, submap.slots);
+        }
+        // TODO: remove this
+        if printmerge {
+            eprintln!("merged variants: {:#?}", self);
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        let mut has_pointers = false;
+        for slot in self.slots.iter_mut() {
+            match slot {
+                Slot::Ptr(_) => {
+                    has_pointers = true;
+                }
+                Slot::Enum(ex, _) => {
+                    for value in ex.variants.values_mut() {
+                        if value.simplify() {
+                            has_pointers = true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !has_pointers {
+            self.slots = smallvec![Slot::Int(self.size)];
+        }
+        has_pointers
+    }
+
     fn legalize<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx) {
         let len = self.slots.len();
         let mut del = 0;
@@ -241,13 +380,35 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    fn set(&mut self, offset: Size, idx: usize, slot: Slot) {
-        self.slots[offset.bytes_usize() + idx] = slot;
+    fn set<'tcx, Cx: CodegenMethods<'tcx>>(
+        &mut self,
+        cx: &Cx,
+        offset: Size,
+        idx: usize,
+        slot: Slot,
+    ) {
+        let pos = offset + Size::from_bytes(idx);
+        let size = cx.data_layout().pointer_size;
+        let align = cx.data_layout().pointer_align.abi;
+
+        /* unaligned pointer, it's technically invalid, but some FFI related
+         * code do need these (e.g. libc::unix::bsd::apple::shmid_ds), marking
+         * as integers to ignore these slots */
+        if let Slot::Ptr(n) = slot && !pos.is_aligned(align) {
+            self.slots[pos.bytes_usize()] = Slot::Int((n as u64) * size);
+        } else {
+            self.slots[pos.bytes_usize()] = slot;
+        }
     }
 
-    fn set_submap(&mut self, offset: Size, submap: PointerMap) {
+    fn set_submap<'tcx, Cx: CodegenMethods<'tcx>>(
+        &mut self,
+        cx: &Cx,
+        offset: Size,
+        submap: PointerMap,
+    ) {
         submap.slots.iter().enumerate().for_each(|(idx, slot)| {
-            self.set(offset, idx, slot.clone());
+            self.set(cx, offset, idx, slot.clone());
         });
     }
 
@@ -260,16 +421,16 @@ impl PointerMap {
         match scalar {
             Scalar::Initialized { value, .. } => {
                 if matches!(value, Primitive::Pointer(_)) {
-                    self.set(offset, 0, Slot::Ptr(1));
+                    self.set(cx, offset, 0, Slot::Ptr(1));
                 } else {
-                    self.set(offset, 0, Slot::Int(value.size(cx)));
+                    self.set(cx, offset, 0, Slot::Int(value.size(cx)));
                 }
             }
-            // Unions does not have deterministic runtime type information, so
-            // user must take care of their pointer variants. ROG GC won't deal
-            // with those pointers.
+            /* unions does not have deterministic runtime type information, so
+             * user must take care of their pointer variants, ROG GC won't deal
+             * with those pointers. */
             Scalar::Union { value } => {
-                self.set(offset, 0, Slot::Int(value.size(cx)));
+                self.set(cx, offset, 0, Slot::Int(value.size(cx)));
             }
         }
     }
@@ -280,6 +441,10 @@ impl PointerMap {
         offset: Size,
         layout: TyAndLayout<'tcx>,
     ) {
+        if layout.size < cx.data_layout().pointer_size {
+            self.set(cx, offset, 0, Slot::Int(layout.size));
+            return;
+        }
         match layout.abi {
             Abi::Uninhabited => {}
             Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
@@ -297,15 +462,15 @@ impl PointerMap {
                 }
             }
             Abi::Aggregate { .. } => match layout.fields {
-                // Treat unions as opaque data, as described above.
+                /* treat unions as opaque data, as described above. */
                 FieldsShape::Primitive | FieldsShape::Union(_) => {
-                    self.set(offset, 0, Slot::Int(layout.size));
+                    self.set(cx, offset, 0, Slot::Int(layout.size));
                 }
                 FieldsShape::Array { count, .. } => {
                     let elem = Self::resolve(cx, layout.field(cx, 0), None);
                     let size = Size::from_bytes(elem.slots.len());
                     for i in 0..count {
-                        self.set_submap(offset + size * i, elem.clone());
+                        self.set_submap(cx, offset + size * i, elem.clone());
                     }
                 }
                 FieldsShape::Arbitrary { .. } => match layout.variants {
@@ -316,7 +481,12 @@ impl PointerMap {
                                 .iter()
                                 .enumerate()
                                 .for_each(|(idx, slot)| {
-                                    self.set(offset + layout.fields.offset(i), idx, slot.clone())
+                                    self.set(
+                                        cx,
+                                        offset + layout.fields.offset(i),
+                                        idx,
+                                        slot.clone(),
+                                    )
                                 });
                         }
                     }
@@ -328,6 +498,7 @@ impl PointerMap {
                         ..
                     } => {
                         self.set(
+                            cx,
                             offset,
                             0,
                             Slot::Enum(
@@ -384,20 +555,25 @@ impl PointerMap {
             None => layout,
         };
         let mut ret = Self {
-            slots: if layout.size == Size::ZERO {
-                smallvec![]
-            } else {
-                SmallVec::from_elem(Slot::Void(Size::from_bytes(1)), layout.size.bytes_usize())
-            },
+            size: layout.size,
+            slots: smallvec![Slot::Void(Size::from_bytes(1)); layout.size.bytes_usize()],
         };
         if layout.size != Size::ZERO {
             ret.set_layout(cx, Size::ZERO, layout);
         }
         cx.add_pointer_map(ty, variant_idx, ret.clone());
         // TODO: remove this block
-        {
-            eprint!("ty({:?}) {:#?} :: {:?} -> ", layout.size, ty, variant_idx);
-            ret.encode(cx);
+        if variant_idx.is_none() {
+            eprintln!(
+                "ty({:?}) {:#?} -> [ {} ]\n",
+                layout.size,
+                ty,
+                ret.encode(cx)
+                    .into_iter()
+                    .map(|v| format!("{:08b}", v))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            );
         }
         ret
     }
