@@ -1,13 +1,10 @@
-use std::{
-    fmt::{Debug, DebugStruct, Formatter, Result as FmtResult},
-    ops::RangeInclusive,
-};
+use std::fmt::{Debug, DebugStruct, Formatter, Result as FmtResult};
 
 use itertools::Itertools;
 use rustc_data_structures::{fx::FxHashMap, stack::ensure_sufficient_stack};
 use rustc_middle::ty::layout::TyAndLayout;
 use rustc_target::abi::{
-    Abi, FieldsShape, Primitive, Scalar, Size, TagEncoding, VariantIdx, Variants,
+    Abi, FieldIdx, FieldsShape, Primitive, Scalar, Size, TagEncoding, VariantIdx, Variants,
 };
 use smallvec::{smallvec, SmallVec};
 
@@ -21,6 +18,23 @@ pub struct Enum {
     pub tag_offs: Size,
     pub tag_size: Size,
     pub variants: FxHashMap<u128, PointerMap>,
+    pub untagged_variant: Option<PointerMap>,
+}
+
+impl Enum {
+    pub fn iter(&self) -> impl Iterator<Item = &PointerMap> {
+        self.variants.values().chain(self.untagged_variant.iter())
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut PointerMap> {
+        self.variants.values_mut().chain(self.untagged_variant.iter_mut())
+    }
+}
+
+impl Enum {
+    pub fn into_values(self) -> impl Iterator<Item = PointerMap> {
+        self.variants.into_values().chain(self.untagged_variant.into_iter())
+    }
 }
 
 impl Enum {
@@ -40,29 +54,6 @@ impl Debug for Enum {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct Niche {
-    pub niche_start: u128,
-    pub niche_variants: RangeInclusive<VariantIdx>,
-    pub untagged_variant: VariantIdx,
-}
-
-impl Niche {
-    fn debug_fields(&self, f: &mut DebugStruct<'_, '_>) {
-        f.field("niche_start", &self.niche_start)
-            .field("niche_variants", &self.niche_variants)
-            .field("untagged_variant", &self.untagged_variant);
-    }
-}
-
-impl Debug for Niche {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let mut dx = f.debug_struct("Niche");
-        self.debug_fields(&mut dx);
-        dx.finish()
-    }
-}
-
 /// Pointer Map Calculation
 
 #[derive(Clone, PartialEq, Eq)]
@@ -70,7 +61,7 @@ pub enum Slot {
     Void(Size),
     Ptr(usize),
     Int(Size),
-    Enum(Enum, Option<Niche>),
+    Enum(Box<Enum>),
 }
 
 impl Debug for Slot {
@@ -87,16 +78,17 @@ impl Debug for Slot {
                 n => write!(f, "ptr*{}", n),
             },
             Self::Int(size) => write!(f, "i{}", size.bits_usize()),
-            Self::Enum(ex, None) => {
-                let mut dx = f.debug_struct("Enum");
-                ex.debug_fields(&mut dx);
-                dx.finish()
-            }
-            Self::Enum(ex, Some(nx)) => {
-                let mut dx = f.debug_struct("Niche");
-                ex.debug_fields(&mut dx);
-                nx.debug_fields(&mut dx);
-                dx.finish()
+            Self::Enum(ex) => {
+                if let Some(ref v) = ex.untagged_variant {
+                    let mut dx = f.debug_struct("Niche");
+                    ex.debug_fields(&mut dx);
+                    dx.field("untagged_variant", v);
+                    dx.finish()
+                } else {
+                    let mut dx = f.debug_struct("Enum");
+                    ex.debug_fields(&mut dx);
+                    dx.finish()
+                }
             }
         }
     }
@@ -109,11 +101,15 @@ pub struct PointerMap {
 }
 
 impl PointerMap {
+    pub fn is_static(&self) -> bool {
+        self.slots.iter().all(|slot| !matches!(slot, Slot::Enum(_)))
+    }
+
     pub fn has_pointers(&self) -> bool {
         self.slots.iter().any(|slot| match slot {
             Slot::Ptr(_) => true,
             Slot::Int(_) | Slot::Void(_) => false,
-            Slot::Enum(ex, ..) => ex.variants.values().any(Self::has_pointers),
+            Slot::Enum(ex, ..) => ex.iter().any(Self::has_pointers),
         })
     }
 }
@@ -127,11 +123,11 @@ impl PointerMap {
         ensure_sufficient_stack(|| {
             let mut out = CompressedBitVec::new();
             self.legalize(cx);
+            self.trimming(cx);
             self.simplify();
             self.compress();
-            // TODO: remove this
-            eprintln!("compressed pointer map: {:#?}", self);
             self.monolize();
+            self.compress();
             self.serialize_into(cx, &mut out, Size::ZERO);
             out.finish()
         })
@@ -148,18 +144,16 @@ impl PointerMap {
         let ptr_size = cx.data_layout().pointer_size;
         let ptr_align = cx.data_layout().pointer_align.abi;
 
-        /* common case 1: type without pointers encodes to a single byte */
+        /* common case 1: type without pointers encodes into a single byte */
         if !self.has_pointers() {
-            out.add_noptr(self.size.bytes_usize());
+            assert_eq!(self.size, Size::ZERO, "No pointer type with non-zero size");
+            out.add_noptr();
             return;
         }
 
-        /* common case 2: types that with at most 4 pointer slots and is
+        /* common case 2: static types that with at most 4 pointer slots and is
          * pointer-size aligned encodes into a single byte */
-        if self.size <= ptr_size * 4
-            && self.size.is_aligned(ptr_align)
-            && self.slots.iter().all(|slot| !matches!(slot, Slot::Enum(_, _)))
-        {
+        if self.size <= ptr_size * 4 && self.size.is_aligned(ptr_align) && self.is_static() {
             assert!(self.slots.len() <= 4, "Uncompressed pointer map");
             let unit = ptr_size.bytes_usize();
             let slots: SmallVec<[bool; 4]> = self
@@ -170,7 +164,7 @@ impl PointerMap {
                         Slot::Void(_) => bug!("Illegal pointer map with void slots: {:?}", slot),
                         Slot::Ptr(rep) => smallvec![true; rep],
                         Slot::Int(size) => smallvec![false; size.bytes_usize() / unit],
-                        Slot::Enum(_, _) => unreachable!(),
+                        Slot::Enum(_) => unreachable!(),
                     }
                 })
                 .flatten()
@@ -199,16 +193,19 @@ impl PointerMap {
                     out.add_int(size.bytes_usize() / ptr_size.bytes_usize());
                     offs += size;
                 }
-                Slot::Enum(value, niche) => {
+                Slot::Enum(box value) => {
                     assert!(!value.variants.is_empty(), "Empty enum");
                     assert_ne!(value.max_size, Size::ZERO, "Enum slot with zero size");
-                    out.add_enum_header(&value, niche);
+                    out.add_enum_header(&value);
                     value.variants.into_iter().sorted_by_key(|(tag, _)| *tag).for_each(
                         |(tag, map)| {
                             out.add_enum_tag(tag);
                             map.serialize_into(cx, out, offs);
                         },
                     );
+                    if let Some(map) = value.untagged_variant {
+                        map.serialize_into(cx, out, offs);
+                    }
                     offs += value.max_size;
                 }
             }
@@ -260,7 +257,7 @@ impl PointerMap {
                 assert_ne!(size, Size::ZERO, "Integer slot with zero size");
                 self.void_slots(pos, size.bytes_usize())
             }
-            Slot::Enum(ref ex, _) => {
+            Slot::Enum(ref ex) => {
                 assert_ne!(ex.max_size, Size::ZERO, "Enum slot with zero size");
                 self.void_slots(pos, ex.max_size.bytes_usize())
             }
@@ -275,12 +272,12 @@ impl PointerMap {
                 (Slot::Void(a), Slot::Void(b)) => *a += std::mem::replace(b, Size::ZERO),
                 (Slot::Ptr(a), Slot::Ptr(b)) => *a += std::mem::replace(b, 0usize),
                 (Slot::Int(a), Slot::Int(b)) => *a += std::mem::replace(b, Size::ZERO),
-                (_, Slot::Enum(ex, _)) => ex.variants.values_mut().for_each(Self::compress),
+                (_, Slot::Enum(ex)) => ex.iter_mut().for_each(Self::compress),
                 _ => {}
             }
         }
-        if let Some(Slot::Enum(ex, _)) = self.slots.first_mut() {
-            ex.variants.values_mut().for_each(Self::compress);
+        if let Some(Slot::Enum(ex)) = self.slots.first_mut() {
+            ex.iter_mut().for_each(Self::compress);
         }
         self.slots.retain(|slot| {
             !matches!(slot, Slot::Ptr(0) | Slot::Int(Size::ZERO) | Slot::Void(Size::ZERO))
@@ -290,29 +287,19 @@ impl PointerMap {
     fn monolize(&mut self) {
         let mut merge_list: SmallVec<[usize; 8]> = smallvec![];
         for (i, slot) in self.slots.iter_mut().enumerate() {
-            if let Slot::Enum(ex, _) = slot {
-                for value in ex.variants.values_mut() {
-                    value.monolize();
+            if let Slot::Enum(ex) = slot {
+                for map in ex.iter_mut() {
+                    map.monolize();
                 }
-                if ex.variants.values().all_equal() {
+                if ex.iter().all_equal() {
                     merge_list.push(i);
                 }
             }
         }
-        // TODO: remove this
-        let printmerge = !merge_list.is_empty();
-        // TODO: remove this
-        if printmerge {
-            eprintln!("can merge variants: {:#?}", self);
-        }
         for i in merge_list.into_iter().rev() {
-            let Slot::Enum(enum_data, _) = self.slots.remove(i) else { unreachable!() };
-            let submap = enum_data.variants.into_values().next().expect("Empty variants");
+            let Slot::Enum(ex) = self.slots.remove(i) else { unreachable!() };
+            let submap = ex.into_values().next().expect("Empty variants");
             self.slots.insert_many(i, submap.slots);
-        }
-        // TODO: remove this
-        if printmerge {
-            eprintln!("merged variants: {:#?}", self);
         }
     }
 
@@ -323,11 +310,16 @@ impl PointerMap {
                 Slot::Ptr(_) => {
                     has_pointers = true;
                 }
-                Slot::Enum(ex, _) => {
-                    for value in ex.variants.values_mut() {
+                Slot::Enum(ex) => {
+                    let mut enum_has_pointers = false;
+                    for value in ex.iter_mut() {
                         if value.simplify() {
                             has_pointers = true;
+                            enum_has_pointers = true;
                         }
+                    }
+                    if !enum_has_pointers {
+                        *slot = Slot::Int(ex.max_size);
                     }
                 }
                 _ => {}
@@ -339,13 +331,55 @@ impl PointerMap {
         has_pointers
     }
 
+    fn trimming<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx) {
+        let mut keep = 0;
+        let mut total = Size::ZERO;
+        let mut prefix = Size::ZERO;
+        for (i, slot) in self.slots.iter_mut().enumerate() {
+            let mut is_ptr = false;
+            match slot {
+                Slot::Void(_) => {
+                    bug!("Illegal pointer map with void slots: {:?}", slot);
+                }
+                Slot::Ptr(rep) => {
+                    total += (*rep as u64) * cx.data_layout().pointer_size;
+                    is_ptr = true;
+                }
+                Slot::Int(size) => {
+                    total += *size;
+                }
+                Slot::Enum(data) => {
+                    let mut max_size = Size::ZERO;
+                    for map in data.iter_mut() {
+                        map.trimming(cx);
+                        max_size = max_size.max(map.size);
+                        if map.has_pointers() {
+                            is_ptr = true;
+                        }
+                    }
+                    total += max_size;
+                    data.max_size = max_size;
+                }
+            }
+            if is_ptr {
+                keep = i + 1;
+                prefix = total;
+            }
+        }
+        self.size = prefix;
+        self.slots.truncate(keep);
+        self.slots.shrink_to_fit();
+    }
+
     fn legalize<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx) {
         let len = self.slots.len();
         let mut del = 0;
         let mut pos = 0;
         while pos < len {
-            if let Slot::Enum(ref mut ex, _) = self.slots[pos] {
-                ex.variants.values_mut().for_each(|m| m.legalize(cx));
+            if let Slot::Enum(ref mut ex) = self.slots[pos] {
+                for map in ex.iter_mut() {
+                    map.legalize(cx);
+                }
             }
             if let Some(pfx) = self.legal_prefix(cx, pos) {
                 if del > 0 {
@@ -473,7 +507,7 @@ impl PointerMap {
                         self.set_submap(cx, offset + size * i, elem.clone());
                     }
                 }
-                FieldsShape::Arbitrary { .. } => match layout.variants {
+                FieldsShape::Arbitrary { ref offsets, .. } => match layout.variants {
                     Variants::Single { .. } => {
                         for i in layout.fields.index_by_increasing_offset() {
                             Self::resolve(cx, layout.field(cx, i), None)
@@ -497,38 +531,39 @@ impl PointerMap {
                         ref variants,
                         ..
                     } => {
+                        let (untagged_idx, adjust) = match tag_encoding {
+                            TagEncoding::Direct => (None, 0u128),
+                            TagEncoding::Niche {
+                                untagged_variant,
+                                niche_variants,
+                                niche_start,
+                            } => {
+                                let start = niche_variants.start().as_usize();
+                                let adjust = niche_start.wrapping_sub(start as u128);
+                                (Some(*untagged_variant), adjust)
+                            }
+                        };
                         self.set(
                             cx,
                             offset,
                             0,
-                            Slot::Enum(
-                                Enum {
-                                    max_size: layout.size,
-                                    tag_offs: layout.fields.offset(tag_field),
-                                    tag_size: value.size(cx),
-                                    variants: variants
-                                        .indices()
-                                        .map(|i| {
-                                            (
-                                                Self::tag_of(cx, layout, i),
-                                                Self::resolve(cx, layout, Some(i)),
-                                            )
-                                        })
-                                        .collect(),
-                                },
-                                match tag_encoding {
-                                    TagEncoding::Direct => None,
-                                    TagEncoding::Niche {
-                                        untagged_variant,
-                                        niche_variants,
-                                        niche_start,
-                                    } => Some(Niche {
-                                        niche_start: *niche_start,
-                                        niche_variants: niche_variants.clone(),
-                                        untagged_variant: *untagged_variant,
-                                    }),
-                                },
-                            ),
+                            Slot::Enum(Box::new(Enum {
+                                max_size: layout.size,
+                                tag_offs: offsets[FieldIdx::from_usize(tag_field)],
+                                tag_size: value.size(cx),
+                                variants: variants
+                                    .indices()
+                                    .filter(|i| untagged_idx.map_or(true, |v| v != *i))
+                                    .map(|i| {
+                                        (
+                                            Self::tag_of(cx, layout, i).wrapping_add(adjust),
+                                            Self::resolve(cx, layout, Some(i)),
+                                        )
+                                    })
+                                    .collect(),
+                                untagged_variant: untagged_idx
+                                    .map(|i| Self::resolve(cx, layout, Some(i))),
+                            })),
                         );
                     }
                     Variants::Multiple { tag, .. } => {
@@ -565,12 +600,12 @@ impl PointerMap {
         // TODO: remove this block
         if variant_idx.is_none() {
             eprintln!(
-                "ty({:?}) {:#?} -> [ {} ]\n",
+                "ty({:?}) {:#?} -> \n[ {} ]\n",
                 layout.size,
                 ty,
                 ret.encode(cx)
                     .into_iter()
-                    .map(|v| format!("{:08b}", v))
+                    .map(|v| format!("{:02x}", v))
                     .collect::<Vec<String>>()
                     .join(" ")
             );

@@ -2,18 +2,17 @@ use std::ops::BitOr;
 
 use smallvec::SmallVec;
 
-use super::{Enum, Niche};
+use super::Enum;
 
 /// First-byte encodes pointer info for simple types or `sizeof(type)` for
 /// more complex types:
-///     0nnn_nnnn   Varint size `nnn_nnnn` (in bytes) of types that have no
-///                 pointers.
-///     10ww_pppp   Types which contains at most 4 pointer slots and is pointer
+///     0000_0000   Types that don't have any pointers.
+///     01ww_pppp   Types which contains at most 4 pointer slots and is pointer
 ///                 size aligned, it's size is encoded as `(ww + 1) * sizeof(pointer)`.
 ///                 `pppp` indicates which slot is a pointer. `pppp` == 0 is
 ///                 invalid in this encoding.
-///     11nn_nnnn   Varint size `nn_nnnn` (in bytes) of types that cannot be
-///                 encoded with the methods above. Right after this byte are
+///     1nnn_nnnn   Varint size `nnn_nnnn` (in bytes) of types that cannot be
+///                 encoded with the first method. Right after this byte are
 ///                 all the components encoded back to back.
 ///
 /// Encoding for each component:
@@ -31,46 +30,15 @@ use super::{Enum, Niche};
 ///         variants ...
 ///     }
 ///
-/// Niche enums are encoded as follows:
+/// Niche enums are encoded as follows (like direct enum, but with an
+/// extra untagged variant):
 ///     Niche {
 ///         header            : Identifier described as above (1110_xxxx).
 ///         tag_offs          : Varint, offset to the tag field.
 ///         tag_size          : Varint, size of the tag field.
-///         niche_start       : Varint, offset of the tag value.
-///         niche_range_start : Varint, start of the niche value, inclusive.
-///         niche_range_end   : Varint, start of the niche value, inclusive.
-///         untagged_variant  : Varint, discriminant value of the untagged niche.
 ///         variants ...
-///     }
-///
-/// A general algorithm to extract the discriminant from the tag is:
-///     relative_tag = tag - niche_start
-///     relative_max = niche_range_end - niche_range_start
-///     is_niche = relative_tag <= (ule) relative_max
-///     discr = if is_niche {
-///         cast(relative_tag) + niche_range_start
-///     } else {
 ///         untagged_variant
 ///     }
-
-const NOPTR: usize = 0b0;
-const NOPTR_LEN: usize = 1;
-
-const SIMPLE: usize = 0b10;
-const COMPLEX: usize = 0b11;
-const COMPLEX_LEN: usize = 2;
-
-const SEQ_INT: usize = 0b10;
-const SEQ_INT_LEN: usize = 2;
-
-const SEQ_PTR: usize = 0b110;
-const SEQ_PTR_LEN: usize = 3;
-
-const ENUM_CASE: usize = 0b1110;
-const ENUM_CASE_LEN: usize = 4;
-
-const ENUM_NICHE: usize = 0b1111;
-const ENUM_NICHE_LEN: usize = 4;
 
 pub type BitmapData = SmallVec<[u8; 16]>;
 
@@ -104,7 +72,7 @@ impl CompressedBitVec {
 
             /* lots of ones, encode them as "varint lots of ptr bits" */
             if trailing_one > 7 {
-                self.emit_varint(SEQ_PTR, SEQ_PTR_LEN, trailing_one - 1);
+                self.emit_varint(0b110, 3, trailing_one - 1);
                 self.buf >>= trailing_one;
                 size -= trailing_one;
                 continue;
@@ -112,7 +80,7 @@ impl CompressedBitVec {
 
             /* lots of zeros, encode them as "varint lots of int bits" */
             if trailing_zero > 7 {
-                self.emit_varint(SEQ_INT, SEQ_INT_LEN, trailing_zero - 1);
+                self.emit_varint(0b10, 2, trailing_zero - 1);
                 self.buf >>= trailing_zero;
                 size -= trailing_zero;
                 continue;
@@ -185,8 +153,9 @@ impl CompressedBitVec {
         self.emit_rep(1, rep);
     }
 
-    pub fn add_noptr(&mut self, len: usize) {
-        self.emit_varint(NOPTR, NOPTR_LEN, len);
+    pub fn add_noptr(&mut self) {
+        self.commit();
+        self.bytes.push(0x00);
     }
 
     pub fn add_simple(&mut self, map: &[bool]) {
@@ -200,33 +169,26 @@ impl CompressedBitVec {
             map.iter()
                 .enumerate()
                 .map(|(i, b)| (*b as usize) << i)
-                .fold((SIMPLE << 6) | (map.len() - 1) << 4, usize::bitor) as u8,
+                .fold(0x40 | ((map.len() - 1) << 4), usize::bitor) as u8,
         );
     }
 
     pub fn add_complex(&mut self, len: usize) {
-        self.emit_varint(COMPLEX, COMPLEX_LEN, len);
+        self.emit_varint(1, 1, len);
     }
 
     pub fn add_enum_tag(&mut self, tag: u128) {
         self.emit_varint(0, 0, tag);
     }
 
-    pub fn add_enum_header(&mut self, value: &Enum, niche: Option<Niche>) {
-        if niche.is_none() {
-            self.emit_varint(ENUM_CASE, ENUM_CASE_LEN, value.variants.len() - 1);
+    pub fn add_enum_header(&mut self, value: &Enum) {
+        if value.untagged_variant.is_none() {
+            self.emit_varint(0b1110, 4, value.variants.len() - 1);
         } else {
-            self.emit_varint(ENUM_NICHE, ENUM_NICHE_LEN, value.variants.len() - 1);
+            self.emit_varint(0b1111, 4, value.variants.len() - 1);
         }
 
         self.emit_varint(0, 0, value.tag_offs.bytes());
         self.emit_varint(0, 0, value.tag_size.bytes());
-
-        if let Some(nx) = niche {
-            self.emit_varint(0, 0, nx.niche_start);
-            self.emit_varint(0, 0, nx.niche_variants.start().as_usize());
-            self.emit_varint(0, 0, nx.niche_variants.end().as_usize());
-            self.emit_varint(0, 0, nx.untagged_variant.as_usize());
-        }
     }
 }
