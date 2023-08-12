@@ -121,7 +121,7 @@ impl PointerMap {
 
     pub fn into_encoded<'tcx, Cx: CodegenMethods<'tcx>>(mut self, cx: &Cx) -> BitmapData {
         ensure_sufficient_stack(|| {
-            let mut out = CompressedBitVec::new();
+            let mut out = CompressedBitVec::default();
             self.legalize(cx);
             self.trimming(cx);
             self.simplify();

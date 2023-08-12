@@ -6,8 +6,8 @@ use super::Enum;
 
 /// First-byte encodes pointer info for simple types or `sizeof(type)` for
 /// more complex types:
-///     0000_0000   Types that don't have any pointers.
-///     01ww_pppp   Types which contains at most 4 pointer slots and is pointer
+///     0000_0000   Types that don't have any pointers, trimmed for root types.
+///     00ww_pppp   Types which contains at most 4 pointer slots and is pointer
 ///                 size aligned, it's size is encoded as `(ww + 1) * sizeof(pointer)`.
 ///                 `pppp` indicates which slot is a pointer. `pppp` == 0 is
 ///                 invalid in this encoding.
@@ -42,16 +42,11 @@ use super::Enum;
 
 pub type BitmapData = SmallVec<[u8; 16]>;
 
+#[derive(Clone, Debug, Default)]
 pub struct CompressedBitVec {
     buf: u128,
     size: usize,
     bytes: BitmapData,
-}
-
-impl CompressedBitVec {
-    pub fn new() -> CompressedBitVec {
-        Self { buf: 0, size: 0, bytes: SmallVec::new() }
-    }
 }
 
 impl CompressedBitVec {
@@ -139,8 +134,13 @@ impl CompressedBitVec {
 
 impl CompressedBitVec {
     pub fn finish(mut self) -> BitmapData {
-        self.commit();
-        self.bytes
+        if self.size != 0 {
+            self.commit();
+        }
+        match self.bytes.as_slice() {
+            &[0] => BitmapData::new(),
+            _ => self.bytes,
+        }
     }
 }
 
@@ -169,7 +169,7 @@ impl CompressedBitVec {
             map.iter()
                 .enumerate()
                 .map(|(i, b)| (*b as usize) << i)
-                .fold(0x40 | ((map.len() - 1) << 4), usize::bitor) as u8,
+                .fold((map.len() - 1) << 4, usize::bitor) as u8,
         );
     }
 
