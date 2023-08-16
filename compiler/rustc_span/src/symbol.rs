@@ -1169,6 +1169,7 @@ symbols! {
         pointee_trait,
         pointer,
         pointer_like,
+        pointer_map_of,
         poll,
         position,
         post_dash_lto: "post-lto",

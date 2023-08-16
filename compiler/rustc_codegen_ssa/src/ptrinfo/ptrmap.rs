@@ -121,11 +121,7 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn encode<'tcx, Cx: CodegenMethods<'tcx>>(&self, cx: &Cx) -> BitmapData {
-        self.clone().into_encoded(cx)
-    }
-
-    pub fn into_encoded<'tcx, Cx: CodegenMethods<'tcx>>(mut self, cx: &Cx) -> BitmapData {
+    pub fn encode<'tcx, Cx: CodegenMethods<'tcx>>(mut self, cx: &Cx) -> BitmapData {
         ensure_sufficient_stack(|| {
             let mut out = CompressedBitVec::default();
             self.legalize(cx);
@@ -135,8 +131,6 @@ impl PointerMap {
             self.compress();
             self.resizing();
             self.trimming(cx);
-            // TODO: remove this
-            eprintln!("trimmed {:#?}", &self);
             self.serialize_into(cx, &mut out, Size::ZERO, EnumTag::None);
             out.finish()
         })
@@ -655,19 +649,6 @@ impl PointerMap {
             ret.set_layout(cx, Size::ZERO, layout);
         }
         cx.add_pointer_map(ty, variant_idx, ret.clone());
-        // TODO: remove this block
-        if variant_idx.is_none() {
-            eprintln!(
-                "ty({:?}) {:#?} ->\n[ {} ]\n",
-                layout.size,
-                ty,
-                ret.encode(cx)
-                    .into_iter()
-                    .map(|v| format!("{:02x}", v))
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            );
-        }
         ret
     }
 }

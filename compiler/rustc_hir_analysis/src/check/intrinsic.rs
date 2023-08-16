@@ -81,6 +81,7 @@ pub fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: DefId) -> hir
         | sym::assert_mem_uninitialized_valid
         | sym::size_of
         | sym::min_align_of
+        | sym::pointer_map_of
         | sym::needs_drop
         | sym::caller_location
         | sym::add_with_overflow
@@ -213,7 +214,7 @@ pub fn check_intrinsic_type(tcx: TyCtxt<'_>, it: &hir::ForeignItem<'_>) {
             ),
             sym::drop_in_place => (1, vec![Ty::new_mut_ptr(tcx, param(0))], Ty::new_unit(tcx)),
             sym::needs_drop => (1, Vec::new(), tcx.types.bool),
-
+            sym::pointer_map_of => (1, Vec::new(), Ty::new_static_bytes(tcx)),
             sym::type_name => (1, Vec::new(), Ty::new_static_str(tcx)),
             sym::type_id => (1, Vec::new(), tcx.types.u128),
             sym::offset => (2, vec![param(0), param(1)], param(0)),

@@ -5,10 +5,12 @@ use crate::common::IntPredicate;
 use crate::errors::InvalidMonomorphization;
 use crate::glue;
 use crate::meth;
+use crate::ptrinfo::PointerMap;
 use crate::traits::*;
 use crate::MemFlags;
 use crate::{errors, ptrinfo};
 
+use rustc_middle::mir::interpret::{Allocation, ConstValue};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::{sym, Span};
 use rustc_target::abi::{
@@ -106,6 +108,13 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 } else {
                     bx.const_usize(bx.layout_of(tp_ty).align.abi.bytes())
                 }
+            }
+            sym::pointer_map_of => {
+                let layout = bx.layout_of(fn_args.type_at(0));
+                let ptrmap = PointerMap::resolve(bx.cx(), layout, None).encode(bx.cx());
+                let alloc = bx.tcx().mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(ptrmap.as_slice()));
+                let val = ConstValue::Slice { data: alloc, start: 0, end: alloc.inner().len() };
+                OperandRef::from_const(bx, val, ret_ty).immediate_or_packed_pair(bx)
             }
             sym::vtable_size | sym::vtable_align => {
                 let vtable = args[0].immediate();
