@@ -94,6 +94,12 @@ impl Debug for Slot {
     }
 }
 
+enum EnumTag {
+    None,
+    Tagged(u128),
+    Untagged,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PointerMap {
     pub size: Size,
@@ -123,12 +129,15 @@ impl PointerMap {
         ensure_sufficient_stack(|| {
             let mut out = CompressedBitVec::default();
             self.legalize(cx);
-            self.trimming(cx);
             self.simplify();
             self.compress();
             self.monolize();
             self.compress();
-            self.serialize_into(cx, &mut out, Size::ZERO);
+            self.resizing();
+            self.trimming(cx);
+            // TODO: remove this
+            eprintln!("trimmed {:#?}", &self);
+            self.serialize_into(cx, &mut out, Size::ZERO, EnumTag::None);
             out.finish()
         })
     }
@@ -140,16 +149,25 @@ impl PointerMap {
         cx: &Cx,
         out: &mut CompressedBitVec,
         mut offs: Size,
+        enum_tag: EnumTag,
     ) {
-        let ptr_size = cx.data_layout().pointer_size;
-        let ptr_align = cx.data_layout().pointer_align.abi;
+        let has_submap = self.has_pointers();
+        assert!(has_submap || self.slots.is_empty(), "Untrimmed pointer map");
 
-        /* common case 1: type without pointers encodes into a single byte */
-        if !self.has_pointers() {
-            assert_eq!(self.size, Size::ZERO, "No pointer type with non-zero size");
-            out.add_noptr();
+        /* encode the enum tag, if any */
+        match enum_tag {
+            EnumTag::None => {}
+            EnumTag::Tagged(tag) => out.add_enum_tag(Some(tag), has_submap),
+            EnumTag::Untagged => out.add_enum_tag(None, has_submap),
+        }
+
+        /* common case 1: type without pointers encodes into nothing */
+        if !has_submap {
             return;
         }
+
+        let ptr_size = cx.data_layout().pointer_size;
+        let ptr_align = cx.data_layout().pointer_align.abi;
 
         /* common case 2: static types that with at most 4 pointer slots and is
          * pointer-size aligned encodes into a single byte */
@@ -174,8 +192,8 @@ impl PointerMap {
         }
 
         /* other more complex types */
-        let start = offs;
-        out.add_complex(self.size.bytes_usize());
+        let len = self.size.bytes_usize();
+        out.add_complex(len);
 
         for slot in self.slots {
             match slot {
@@ -194,23 +212,19 @@ impl PointerMap {
                     offs += size;
                 }
                 Slot::Enum(box value) => {
-                    assert!(!value.variants.is_empty(), "Empty enum");
-                    assert_ne!(value.max_size, Size::ZERO, "Enum slot with zero size");
                     out.add_enum_header(&value);
                     value.variants.into_iter().sorted_by_key(|(tag, _)| *tag).for_each(
                         |(tag, map)| {
-                            out.add_enum_tag(tag);
-                            map.serialize_into(cx, out, offs);
+                            map.serialize_into(cx, out, offs, EnumTag::Tagged(tag));
                         },
                     );
                     if let Some(map) = value.untagged_variant {
-                        map.serialize_into(cx, out, offs);
+                        map.serialize_into(cx, out, offs, EnumTag::Untagged);
                     }
                     offs += value.max_size;
                 }
             }
         }
-        assert_eq!(offs - start, self.size, "Size mismatch for encoded pointer map");
     }
 }
 
@@ -298,7 +312,12 @@ impl PointerMap {
         }
         for i in merge_list.into_iter().rev() {
             let Slot::Enum(ex) = self.slots.remove(i) else { unreachable!() };
+            let size = ex.max_size;
             let submap = ex.into_values().next().expect("Empty variants");
+            if size != submap.size {
+                assert!(size > submap.size, "Submap does not fit into this slot");
+                self.slots.insert(i, Slot::Int(size - submap.size));
+            }
             self.slots.insert_many(i, submap.slots);
         }
     }
@@ -331,44 +350,83 @@ impl PointerMap {
         has_pointers
     }
 
-    fn trimming<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx) {
-        let mut keep = 0;
-        let mut total = Size::ZERO;
-        let mut prefix = Size::ZERO;
-        for (i, slot) in self.slots.iter_mut().enumerate() {
-            let mut is_ptr = false;
+    fn resizing(&mut self) -> bool {
+        let mut keep = self.size;
+        let mut slots = self.slots.len();
+        let mut has_pointers = false;
+
+        for slot in self.slots.iter_mut().rev() {
             match slot {
                 Slot::Void(_) => {
                     bug!("Illegal pointer map with void slots: {:?}", slot);
                 }
-                Slot::Ptr(rep) => {
-                    total += (*rep as u64) * cx.data_layout().pointer_size;
-                    is_ptr = true;
+                Slot::Ptr(_) => {
+                    has_pointers = true;
+                    break;
                 }
                 Slot::Int(size) => {
-                    total += *size;
+                    keep -= *size;
+                    slots -= 1;
                 }
                 Slot::Enum(data) => {
-                    let mut max_size = Size::ZERO;
+                    let old_size = data.max_size;
+                    let mut new_size = Size::ZERO;
+
                     for map in data.iter_mut() {
-                        map.trimming(cx);
-                        max_size = max_size.max(map.size);
-                        if map.has_pointers() {
-                            is_ptr = true;
+                        if map.resizing() {
+                            has_pointers = true;
                         }
+                        new_size = new_size.max(map.size);
                     }
-                    total += max_size;
-                    data.max_size = max_size;
+
+                    assert!(new_size <= old_size, "Enum grows after resizing");
+                    keep -= old_size - new_size;
+                    data.max_size = new_size;
+
+                    if has_pointers {
+                        break;
+                    }
+
+                    assert_eq!(new_size, Size::ZERO, "Non-empty noptr map");
+                    slots -= 1;
                 }
             }
-            if is_ptr {
-                keep = i + 1;
-                prefix = total;
+        }
+
+        self.size = keep;
+        self.slots.truncate(slots);
+        self.slots.shrink_to_fit();
+        has_pointers
+    }
+
+    fn trimming<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx) -> bool {
+        let mut keep = 0;
+        let mut has_pointers = false;
+
+        for (i, slot) in self.slots.iter_mut().enumerate() {
+            match slot {
+                Slot::Void(_) => {
+                    bug!("Illegal pointer map with void slots: {:?}", slot);
+                }
+                Slot::Ptr(_) => {
+                    keep = i + 1;
+                    has_pointers = true;
+                }
+                Slot::Int(_) => {}
+                Slot::Enum(data) => {
+                    for map in data.iter_mut() {
+                        if map.trimming(cx) {
+                            keep = i + 1;
+                            has_pointers = true;
+                        }
+                    }
+                }
             }
         }
-        self.size = prefix;
+
         self.slots.truncate(keep);
         self.slots.shrink_to_fit();
+        has_pointers
     }
 
     fn legalize<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx) {
@@ -600,7 +658,7 @@ impl PointerMap {
         // TODO: remove this block
         if variant_idx.is_none() {
             eprintln!(
-                "ty({:?}) {:#?} -> \n[ {} ]\n",
+                "ty({:?}) {:#?} ->\n[ {} ]\n",
                 layout.size,
                 ty,
                 ret.encode(cx)
