@@ -61,31 +61,36 @@ fn is_managed_impl<'tcx>(
     item_ty: Ty<'tcx>,
     param_env: ParamEnv<'tcx>,
 ) -> bool {
-    match is_managed_self(tcx, item_ty, param_env) {
-        ManagedSelf::No => return false,
-        ManagedSelf::Yes => return true,
-        ManagedSelf::Unsure => {}
+    if let Some(is_managed) = tcx.managed_type_cache.read().get(&item_ty) {
+        return *is_managed;
     }
-    if !seen.insert(item_ty) {
-        return false;
-    }
-    let is_managed = match item_ty.kind() {
-        ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => {
-            is_managed_impl(tcx, seen, *ty, param_env)
+    let is_managed = match is_managed_self(tcx, item_ty, param_env) {
+        ManagedSelf::No => false,
+        ManagedSelf::Yes => true,
+        ManagedSelf::Unsure => {
+            if !seen.insert(item_ty) {
+                return false;
+            }
+            let result = match item_ty.kind() {
+                ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => {
+                    is_managed_impl(tcx, seen, *ty, param_env)
+                }
+                ty::Tuple(fields) => {
+                    fields.iter().any(|field_ty| is_managed_impl(tcx, seen, field_ty, param_env))
+                }
+                ty::Slice(elem_ty) | ty::Array(elem_ty, _) => {
+                    is_managed_impl(tcx, seen, *elem_ty, param_env)
+                }
+                ty::Adt(adt, args) => {
+                    find_managed_field_impl(tcx, *adt, *args, seen, param_env).is_some()
+                }
+                _ => unreachable!("checking trivially unmanaged type in slow path"),
+            };
+            seen.remove(&item_ty);
+            result
         }
-        ty::Tuple(fields) => {
-            fields.iter().any(|field_ty| is_managed_impl(tcx, seen, field_ty, param_env))
-        }
-        ty::Slice(elem_ty) | ty::Array(elem_ty, _) => {
-            is_managed_impl(tcx, seen, *elem_ty, param_env)
-        }
-        ty::Adt(adt, args) => {
-            let field = find_managed_field_impl(tcx, *adt, *args, seen, param_env);
-            field.is_some()
-        }
-        _ => unreachable!("checking trivially unmanaged type in slow path"),
     };
-    seen.remove(&item_ty);
+    tcx.managed_type_cache.write().insert(item_ty, is_managed);
     is_managed
 }
 
