@@ -102,8 +102,8 @@ fn visit_implementation_of_copy(tcx: TyCtxt<'_>, impl_did: LocalDefId) {
 fn visit_implementation_of_managed(tcx: TyCtxt<'_>, impl_did: LocalDefId) {
     // Managed types only work on local non-union ADT types.
     match tcx.type_of(impl_did).instantiate_identity().kind() {
-        ty::Adt(def, _) if def.did().is_local() && !def.is_union() => {}
-        ty::Ref(_, _, _) | ty::RawPtr(_) | ty::Error(_) => {}
+        ty::Adt(def, ..) if def.did().is_local() && !def.is_union() => {}
+        ty::Ref(..) | ty::RawPtr(..) | ty::Slice(..) | ty::Array(..) | ty::Error(..) => {}
         _ => {
             let impl_ = tcx.hir().expect_item(impl_did).expect_impl();
             tcx.sess.emit_err(errors::ManagedImplOnWrongType { span: impl_.self_ty.span });

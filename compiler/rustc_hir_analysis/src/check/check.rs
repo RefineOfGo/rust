@@ -51,39 +51,42 @@ impl ManagedSelf {
 }
 
 fn is_managed<'tcx>(tcx: TyCtxt<'tcx>, item_ty: Ty<'tcx>, param_env: ParamEnv<'tcx>) -> bool {
-    fn is_managed_recursively<'tcx>(
-        tcx: TyCtxt<'tcx>,
-        seen: &mut FxHashSet<Ty<'tcx>>,
-        item_ty: Ty<'tcx>,
-        param_env: ParamEnv<'tcx>,
-    ) -> bool {
-        match is_managed_self(tcx, item_ty, param_env) {
-            ManagedSelf::No => return false,
-            ManagedSelf::Yes => return true,
-            ManagedSelf::Unsure => {}
-        }
-        if !seen.insert(item_ty) {
-            return false;
-        }
-        let is_managed = match item_ty.kind() {
-            ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => {
-                is_managed_recursively(tcx, seen, *ty, param_env)
-            }
-            ty::Tuple(fields) => {
-                fields.iter().any(|field_ty| is_managed_recursively(tcx, seen, field_ty, param_env))
-            }
-            ty::Slice(elem_ty) | ty::Array(elem_ty, _) => {
-                is_managed_recursively(tcx, seen, *elem_ty, param_env)
-            }
-            ty::Adt(adt, args) => find_managed_field(tcx, *adt, *args, param_env).is_some(),
-            _ => unreachable!("checking trivially unmanaged type in slow path"),
-        };
-        seen.remove(&item_ty);
-        is_managed
-    }
-
     let mut seen = FxHashSet::default();
-    is_managed_recursively(tcx, &mut seen, item_ty, param_env)
+    is_managed_impl(tcx, &mut seen, item_ty, param_env)
+}
+
+fn is_managed_impl<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    seen: &mut FxHashSet<Ty<'tcx>>,
+    item_ty: Ty<'tcx>,
+    param_env: ParamEnv<'tcx>,
+) -> bool {
+    match is_managed_self(tcx, item_ty, param_env) {
+        ManagedSelf::No => return false,
+        ManagedSelf::Yes => return true,
+        ManagedSelf::Unsure => {}
+    }
+    if !seen.insert(item_ty) {
+        return false;
+    }
+    let is_managed = match item_ty.kind() {
+        ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => {
+            is_managed_impl(tcx, seen, *ty, param_env)
+        }
+        ty::Tuple(fields) => {
+            fields.iter().any(|field_ty| is_managed_impl(tcx, seen, field_ty, param_env))
+        }
+        ty::Slice(elem_ty) | ty::Array(elem_ty, _) => {
+            is_managed_impl(tcx, seen, *elem_ty, param_env)
+        }
+        ty::Adt(adt, args) => {
+            let field = find_managed_field_impl(tcx, *adt, *args, seen, param_env);
+            field.is_some()
+        }
+        _ => unreachable!("checking trivially unmanaged type in slow path"),
+    };
+    seen.remove(&item_ty);
+    is_managed
 }
 
 fn is_managed_self<'tcx>(
@@ -140,6 +143,17 @@ fn find_managed_field<'tcx>(
     args: &'tcx List<GenericArg<'tcx>>,
     param_env: ParamEnv<'tcx>,
 ) -> Option<&'tcx FieldDef> {
+    let mut seen = FxHashSet::default();
+    find_managed_field_impl(tcx, adt, args, &mut seen, param_env)
+}
+
+fn find_managed_field_impl<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    adt: AdtDef<'tcx>,
+    args: &'tcx List<GenericArg<'tcx>>,
+    seen: &mut FxHashSet<Ty<'tcx>>,
+    param_env: ParamEnv<'tcx>,
+) -> Option<&'tcx FieldDef> {
     if adt.is_union() {
         None
     } else {
@@ -147,7 +161,7 @@ fn find_managed_field<'tcx>(
         adt.variants().iter().map(|def| def.fields.iter()).flatten().find(|field| {
             let field_ty = field.ty(tcx, args);
             let field_ty = tcx.normalize_erasing_regions(param_env, field_ty);
-            is_managed(tcx, field_ty, param_env)
+            is_managed_impl(tcx, seen, field_ty, param_env)
         })
     }
 }

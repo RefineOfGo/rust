@@ -504,7 +504,7 @@ impl<T: ?Sized> Copy for &T {}
 #[lang = "managed"]
 #[rustc_unsafe_specialization_marker]
 #[rustc_diagnostic_item = "Managed"]
-pub trait Managed: ?Sized {
+pub trait Managed: Sized {
     // Empty.
 }
 
@@ -516,12 +516,12 @@ pub macro Managed($item:item) {
     /* compiler built-in */
 }
 
-#[cfg(not(bootstrap))]
-#[stable(feature = "rog", since = "1.0.0")]
 marker_impls! {
+    #[cfg(not(bootstrap))]
+    #[stable(feature = "rog", since = "1.0.0")]
     Managed for
         {T: Managed, const N: usize} [T; N],
-        {T: Managed} [T],
+        {T: Managed} &[T],
         {T: Managed} &T,
         {T: Managed} &mut T,
         {T: Managed} *const T,
