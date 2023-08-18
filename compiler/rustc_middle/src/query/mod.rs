@@ -951,6 +951,10 @@ rustc_queries! {
         desc { |tcx| "checking privacy in {}", describe_as_module(key.to_local_def_id(), tcx) }
     }
 
+    query check_managed_captures(key: LocalDefId) -> () {
+        desc { |tcx| "checking captures to `Managed` values in {}", describe_as_module(key, tcx) }
+    }
+
     query check_liveness(key: LocalDefId) {
         desc { |tcx| "checking liveness of variables in `{}`", tcx.def_path_str(key) }
     }
@@ -1353,6 +1357,10 @@ rustc_queries! {
     /// Query backing `Ty::is_unpin`.
     query is_unpin_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
         desc { "computing whether `{}` is `Unpin`", env.value }
+    }
+    /// Query backing `Ty::is_managed`.
+    query is_managed_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
+        desc { "computing whether `{}` is `Managed`", env.value }
     }
     /// Query backing `Ty::needs_drop`.
     query needs_drop_raw(env: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {

@@ -498,6 +498,36 @@ impl Copy for ! {}
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> Copy for &T {}
 
+/// Types that can be managed by ROG GC.
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+#[lang = "managed"]
+#[rustc_unsafe_specialization_marker]
+#[rustc_diagnostic_item = "Managed"]
+pub trait Managed: ?Sized {
+    // Empty.
+}
+
+/// Derive macro generating an impl of the trait `Managed`.
+#[cfg(not(bootstrap))]
+#[rustc_builtin_macro]
+#[stable(feature = "rog", since = "1.0.0")]
+pub macro Managed($item:item) {
+    /* compiler built-in */
+}
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+marker_impls! {
+    Managed for
+        {T: Managed, const N: usize} [T; N],
+        {T: Managed} [T],
+        {T: Managed} &T,
+        {T: Managed} &mut T,
+        {T: Managed} *const T,
+        {T: Managed} *mut T,
+}
+
 /// Types for which it is safe to share references between threads.
 ///
 /// This trait is automatically implemented when the compiler determines

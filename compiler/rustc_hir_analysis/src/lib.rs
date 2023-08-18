@@ -213,6 +213,10 @@ pub fn check_crate(tcx: TyCtxt<'_>) -> Result<(), ErrorGuaranteed> {
         tcx.hir().for_each_module(|module| tcx.ensure().check_mod_item_types(module))
     });
 
+    tcx.sess.time("managed_capture_checking", || {
+        tcx.hir().par_body_owners(|item| tcx.ensure().check_managed_captures(item))
+    });
+
     // Freeze definitions as we don't add new ones at this point. This improves performance by
     // allowing lock-free access to them.
     tcx.untracked().definitions.freeze();

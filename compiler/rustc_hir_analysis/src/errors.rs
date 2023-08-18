@@ -108,6 +108,14 @@ pub struct CopyImplOnNonAdt {
 }
 
 #[derive(Diagnostic)]
+#[diag(hir_analysis_managed_impl_on_wrong_type)]
+pub struct ManagedImplOnWrongType {
+    #[primary_span]
+    #[label]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
 #[diag(hir_analysis_const_param_ty_impl_on_non_adt)]
 pub struct ConstParamTyImplOnNonAdt {
     #[primary_span]
@@ -518,6 +526,35 @@ pub(crate) struct InvalidUnionFieldSuggestion {
     pub lo: Span,
     #[suggestion_part(code = ">")]
     pub hi: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(hir_analysis_managed_union_field)]
+pub(crate) struct ManagedUnionField {
+    #[primary_span]
+    pub field_span: Span,
+    #[note]
+    pub note: (),
+}
+
+#[derive(Diagnostic)]
+#[diag(hir_analysis_managed_field_in_unmanaged_adt)]
+pub(crate) struct ManagedFieldInUnmanagedAdt {
+    #[primary_span]
+    pub field_span: Span,
+    #[note]
+    pub note: (),
+}
+
+#[derive(Diagnostic)]
+#[diag(hir_analysis_closure_captures_managed_value)]
+pub(crate) struct ClosureCapturesManagedValue {
+    #[primary_span]
+    pub span: Span,
+    #[label]
+    pub value_span: Span,
+    #[note]
+    pub note: (),
 }
 
 #[derive(Diagnostic)]
