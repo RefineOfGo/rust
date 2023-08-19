@@ -141,17 +141,23 @@ impl CompressedBitVec {
         if self.size != 0 {
             self.commit();
         }
+
         let mut tag = tag as u128;
         let mut value: u128 = value.try_into().ok().unwrap();
+
         while value >= 1 << (7 - tag_size) {
             let v_tag = tag << (8 - tag_size);
             let v_flag = 1u128 << (7 - tag_size);
+
             self.bytes.push((v_tag | v_flag | (value & (v_flag - 1))) as u8);
             value >>= 7 - tag_size;
+
             tag_size = 0;
             tag = 0;
         }
-        self.bytes.push(((tag << (8 - tag_size)) | value) as u8);
+
+        let v_tag = tag << (8 - tag_size);
+        self.bytes.push((v_tag | value) as u8);
     }
 }
 

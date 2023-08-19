@@ -32,7 +32,7 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), bx.layout_of(ty));
+    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), layout);
 
     if allow_overlap {
         bx.memmove(dst, align, src, align, size, flags, has_pointers);
@@ -54,7 +54,7 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), bx.layout_of(ty));
+    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), layout);
     bx.memset(dst, val, size, align, flags, has_pointers);
 }
 
