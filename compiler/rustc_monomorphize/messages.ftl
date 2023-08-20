@@ -32,3 +32,21 @@ monomorphize_unknown_partition_strategy = unknown partitioning strategy
 monomorphize_unused_generic_params = item has unused generic parameters
 
 monomorphize_written_to_path = the full type name has been written to '{$path}'
+
+monomorphize_managed_union_field =
+    unions cannot hold `Managed` value of type `{$field_ty}`
+    .note = union fields cannot be managed by ROG, which should not hold any managed values
+
+monomorphize_managed_field_in_unmanaged_adt =
+    unmanaged structs or enums cannot hold `Managed` value of type `{$field_ty}`
+    .note = add `#[derive(Managed)]` to the containing struct/enum in order to hold this field
+
+monomorphize_closure_captures_managed_value =
+    `Managed` value of type `{$value_ty}` captured by closure
+    .note = to ROG developers: maybe implement a `KeepAlive<T>` container?
+
+monomorphize_closure_captures_managed_value_span =
+    the captured `Managed` value
+
+monomorphize_closure_captures_managed_capture_span =
+    referenced here

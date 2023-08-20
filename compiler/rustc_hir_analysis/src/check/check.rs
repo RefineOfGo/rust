@@ -19,11 +19,11 @@ use rustc_middle::traits::{DefiningAnchor, ObligationCauseCode};
 use rustc_middle::ty::fold::BottomUpFolder;
 use rustc_middle::ty::layout::{LayoutError, MAX_SIMD_LANES};
 use rustc_middle::ty::util::{Discr, IntTypeExt};
+use rustc_middle::ty::GenericArgKind;
 use rustc_middle::ty::{
-    self, AdtDef, FieldDef, List, ParamEnv, RegionKind, Ty, TyCtxt, TypeAndMut, TypeSuperVisitable,
-    TypeVisitable, TypeVisitableExt,
+    self, AdtDef, ParamEnv, RegionKind, Ty, TyCtxt, TypeSuperVisitable, TypeVisitable,
+    TypeVisitableExt,
 };
-use rustc_middle::ty::{GenericArg, GenericArgKind};
 use rustc_session::lint::builtin::{UNINHABITED_STATIC, UNSUPPORTED_CALLING_CONVENTIONS};
 use rustc_span::symbol::sym;
 use rustc_span::{self, Span};
@@ -36,140 +36,6 @@ use rustc_trait_selection::traits::{self, ObligationCtxt, TraitEngine, TraitEngi
 use rustc_type_ir::fold::TypeFoldable;
 
 use std::ops::ControlFlow;
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-enum ManagedSelf {
-    No,
-    Yes,
-    Unsure,
-}
-
-impl ManagedSelf {
-    fn truth(self) -> bool {
-        self == Self::Yes
-    }
-}
-
-fn is_managed<'tcx>(tcx: TyCtxt<'tcx>, item_ty: Ty<'tcx>, param_env: ParamEnv<'tcx>) -> bool {
-    let mut seen = FxHashSet::default();
-    is_managed_impl(tcx, &mut seen, item_ty, param_env)
-}
-
-fn is_managed_impl<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    seen: &mut FxHashSet<Ty<'tcx>>,
-    item_ty: Ty<'tcx>,
-    param_env: ParamEnv<'tcx>,
-) -> bool {
-    if let Some(is_managed) = tcx.managed_type_cache.read().get(&item_ty) {
-        return *is_managed;
-    }
-    let is_managed = match is_managed_self(tcx, item_ty, param_env) {
-        ManagedSelf::No => false,
-        ManagedSelf::Yes => true,
-        ManagedSelf::Unsure => {
-            if !seen.insert(item_ty) {
-                return false;
-            }
-            let result = match item_ty.kind() {
-                ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => {
-                    is_managed_impl(tcx, seen, *ty, param_env)
-                }
-                ty::Tuple(fields) => {
-                    fields.iter().any(|field_ty| is_managed_impl(tcx, seen, field_ty, param_env))
-                }
-                ty::Slice(elem_ty) | ty::Array(elem_ty, _) => {
-                    is_managed_impl(tcx, seen, *elem_ty, param_env)
-                }
-                ty::Adt(adt, args) => {
-                    find_managed_field_impl(tcx, *adt, *args, seen, param_env).is_some()
-                }
-                _ => unreachable!("checking trivially unmanaged type in slow path"),
-            };
-            seen.remove(&item_ty);
-            result
-        }
-    };
-    tcx.managed_type_cache.write().insert(item_ty, is_managed);
-    is_managed
-}
-
-fn is_managed_self<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    item_ty: Ty<'tcx>,
-    param_env: ParamEnv<'tcx>,
-) -> ManagedSelf {
-    fn is_unmanaged_fast(ty: Ty<'_>) -> bool {
-        match ty.kind() {
-            ty::Int(_)
-            | ty::Uint(_)
-            | ty::Float(_)
-            | ty::Bool
-            | ty::Char
-            | ty::Str
-            | ty::Never
-            | ty::FnDef(..)
-            | ty::Error(_)
-            | ty::FnPtr(_)
-            | ty::Foreign(_) => true,
-            ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => is_unmanaged_fast(*ty),
-            ty::Tuple(fields) => fields.iter().all(is_unmanaged_fast),
-            ty::Slice(elem_ty) | ty::Array(elem_ty, _) => is_unmanaged_fast(*elem_ty),
-            ty::Adt(..) => false,
-            // TODO: determain whether these types could possible be `Managed`
-            ty::Bound(..)
-            | ty::Closure(..)
-            | ty::Dynamic(..)
-            | ty::Generator(..)
-            | ty::GeneratorWitness(_)
-            | ty::GeneratorWitnessMIR(..)
-            | ty::Infer(_)
-            | ty::Alias(..)
-            | ty::Param(_)
-            | ty::Placeholder(_) => {
-                debug!("suspicious type, assuming unmanaged {:#?}", ty);
-                true
-            }
-        }
-    }
-
-    if is_unmanaged_fast(item_ty) {
-        ManagedSelf::No
-    } else if tcx.is_managed_raw(param_env.and(item_ty)) {
-        ManagedSelf::Yes
-    } else {
-        ManagedSelf::Unsure
-    }
-}
-
-fn find_managed_field<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    adt: AdtDef<'tcx>,
-    args: &'tcx List<GenericArg<'tcx>>,
-    param_env: ParamEnv<'tcx>,
-) -> Option<&'tcx FieldDef> {
-    let mut seen = FxHashSet::default();
-    find_managed_field_impl(tcx, adt, args, &mut seen, param_env)
-}
-
-fn find_managed_field_impl<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    adt: AdtDef<'tcx>,
-    args: &'tcx List<GenericArg<'tcx>>,
-    seen: &mut FxHashSet<Ty<'tcx>>,
-    param_env: ParamEnv<'tcx>,
-) -> Option<&'tcx FieldDef> {
-    if adt.is_union() {
-        None
-    } else {
-        assert!(adt.is_enum() || adt.is_struct());
-        adt.variants().iter().map(|def| def.fields.iter()).flatten().find(|field| {
-            let field_ty = field.ty(tcx, args);
-            let field_ty = tcx.normalize_erasing_regions(param_env, field_ty);
-            is_managed_impl(tcx, seen, field_ty, param_env)
-        })
-    }
-}
 
 pub fn check_abi(tcx: TyCtxt<'_>, hir_id: hir::HirId, span: Span, abi: Abi) {
     match tcx.sess.target.is_abi_supported(abi) {
@@ -216,29 +82,7 @@ fn check_struct(tcx: TyCtxt<'_>, def_id: LocalDefId) {
     }
 
     check_transparent(tcx, def);
-    check_adt_fields(tcx, def_id);
     check_packed(tcx, span, def);
-}
-
-fn check_adt_fields(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
-    let item_ty = tcx.type_of(def_id).instantiate_identity();
-    let param_env = tcx.param_env(def_id);
-    is_managed_self(tcx, item_ty, param_env).truth() || {
-        let ty::Adt(adt, args) = item_ty.kind() else {
-            unreachable!("check_adt_field on non-adt types")
-        };
-        if let Some(field) = find_managed_field(tcx, *adt, *args, param_env) {
-            let field_span = match tcx.hir().get_if_local(field.did) {
-                // We are currently checking the type this field came from, so it must be local.
-                Some(Node::Field(field)) => field.span,
-                _ => unreachable!("mir field has to correspond to hir field"),
-            };
-            tcx.sess.emit_err(errors::ManagedFieldInUnmanagedAdt { field_span, note: () });
-            false
-        } else {
-            true
-        }
-    }
 }
 
 fn check_union(tcx: TyCtxt<'_>, def_id: LocalDefId) {
@@ -300,16 +144,6 @@ fn check_union_fields(tcx: TyCtxt<'_>, span: Span, item_def_id: LocalDefId) -> b
                     },
                     note: (),
                 });
-                return false;
-            }
-
-            if is_managed(tcx, field_ty, param_env) {
-                let field_span = match tcx.hir().get_if_local(field.did) {
-                    // We are currently checking the type this field came from, so it must be local.
-                    Some(Node::Field(field)) => field.span,
-                    _ => unreachable!("mir field has to correspond to hir field"),
-                };
-                tcx.sess.emit_err(errors::ManagedUnionField { field_span, note: () });
                 return false;
             }
 
@@ -1331,7 +1165,6 @@ fn check_enum(tcx: TyCtxt<'_>, def_id: LocalDefId) {
 
     detect_discriminant_duplicate(tcx, def);
     check_transparent(tcx, def);
-    check_adt_fields(tcx, def_id);
 }
 
 /// Part of enum check. Given the discriminants of an enum, errors if two or more discriminants are equal
@@ -1492,17 +1325,6 @@ pub(super) fn check_mod_item_types(tcx: TyCtxt<'_>, module_def_id: LocalModDefId
     }
     if module_def_id == LocalModDefId::CRATE_DEF_ID {
         super::entry::check_for_entry_fn(tcx);
-    }
-}
-
-pub(super) fn check_managed_captures(tcx: TyCtxt<'_>, def_id: LocalDefId) {
-    let span = tcx.def_span(def_id);
-    let param_env = tcx.param_env(def_id);
-    for place in tcx.closure_captures(def_id) {
-        if is_managed(tcx, place.place.base_ty, param_env) {
-            let value_span = place.get_path_span(tcx);
-            tcx.sess.emit_err(errors::ClosureCapturesManagedValue { span, value_span, note: () });
-        }
     }
 }
 

@@ -85,11 +85,6 @@ hir_analysis_managed_impl_on_wrong_type =
     the trait `Managed` cannot be implemented for this type
     .label = type is not a non-union structure or enumeration
 
-hir_analysis_closure_captures_managed_value =
-    `Managed` values captured by closure
-    .label = the captured `Managed` value
-    .note = to ROG developers: maybe implement a `KeepAlive<T>` container?
-
 hir_analysis_drop_impl_negative = negative `Drop` impls are not supported
 
 hir_analysis_drop_impl_on_wrong_item =
@@ -160,14 +155,6 @@ hir_analysis_invalid_union_field =
 
 hir_analysis_invalid_union_field_sugg =
     wrap the field type in `ManuallyDrop<...>`
-
-hir_analysis_managed_union_field =
-    field must not implement `Managed` to be used in a union
-    .note = union fields cannot be managed by ROG, which should not hold any managed values
-
-hir_analysis_managed_field_in_unmanaged_adt =
-    field must not implement `Managed` to be used in an unmanaged struct or enum
-    .note = add `#[derive(Managed)]` to the containing struct/enum in order to hold this field
 
 hir_analysis_late_bound_const_in_apit = `impl Trait` can only mention const parameters from an fn or impl
     .label = const parameter declared here

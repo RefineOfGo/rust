@@ -951,10 +951,6 @@ rustc_queries! {
         desc { |tcx| "checking privacy in {}", describe_as_module(key.to_local_def_id(), tcx) }
     }
 
-    query check_managed_captures(key: LocalDefId) -> () {
-        desc { |tcx| "checking captures to `Managed` values in {}", describe_as_module(key, tcx) }
-    }
-
     query check_liveness(key: LocalDefId) {
         desc { |tcx| "checking liveness of variables in `{}`", tcx.def_path_str(key) }
     }

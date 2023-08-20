@@ -529,35 +529,6 @@ pub(crate) struct InvalidUnionFieldSuggestion {
 }
 
 #[derive(Diagnostic)]
-#[diag(hir_analysis_managed_union_field)]
-pub(crate) struct ManagedUnionField {
-    #[primary_span]
-    pub field_span: Span,
-    #[note]
-    pub note: (),
-}
-
-#[derive(Diagnostic)]
-#[diag(hir_analysis_managed_field_in_unmanaged_adt)]
-pub(crate) struct ManagedFieldInUnmanagedAdt {
-    #[primary_span]
-    pub field_span: Span,
-    #[note]
-    pub note: (),
-}
-
-#[derive(Diagnostic)]
-#[diag(hir_analysis_closure_captures_managed_value)]
-pub(crate) struct ClosureCapturesManagedValue {
-    #[primary_span]
-    pub span: Span,
-    #[label]
-    pub value_span: Span,
-    #[note]
-    pub note: (),
-}
-
-#[derive(Diagnostic)]
 #[diag(hir_analysis_return_type_notation_equality_bound)]
 pub(crate) struct ReturnTypeNotationEqualityBound {
     #[primary_span]

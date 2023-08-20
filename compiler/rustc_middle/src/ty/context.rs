@@ -39,9 +39,7 @@ use rustc_data_structures::profiling::SelfProfilerRef;
 use rustc_data_structures::sharded::{IntoPointer, ShardedHashMap};
 use rustc_data_structures::stable_hasher::{HashStable, StableHasher};
 use rustc_data_structures::steal::Steal;
-use rustc_data_structures::sync::{
-    self, FreezeReadGuard, Lock, Lrc, RwLock, WorkerLocal,
-};
+use rustc_data_structures::sync::{self, FreezeReadGuard, Lock, Lrc, WorkerLocal};
 use rustc_data_structures::unord::UnordSet;
 use rustc_errors::{
     DecorateLint, DiagnosticBuilder, DiagnosticMessage, ErrorGuaranteed, MultiSpan,
@@ -587,9 +585,6 @@ pub struct GlobalCtxt<'tcx> {
 
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: Lock<interpret::AllocMap<'tcx>>,
-
-    /// Internal cache for computing managed types.
-    pub managed_type_cache: RwLock<FxHashMap<Ty<'tcx>, bool>>,
 }
 
 impl<'tcx> GlobalCtxt<'tcx> {
@@ -747,7 +742,6 @@ impl<'tcx> TyCtxt<'tcx> {
             new_solver_coherence_evaluation_cache: Default::default(),
             data_layout,
             alloc_map: Lock::new(interpret::AllocMap::new()),
-            managed_type_cache: Default::default(),
         }
     }
 
