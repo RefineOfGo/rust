@@ -1166,14 +1166,18 @@ fn should_codegen_locally<'tcx>(tcx: TyCtxt<'tcx>, instance: &Instance<'tcx>) ->
         return false;
     }
 
-    if !tcx.is_mir_available(def_id) {
-        tcx.sess.emit_fatal(NoOptimizedMir {
-            span: tcx.def_span(def_id),
-            crate_name: tcx.crate_name(def_id.krate),
-        });
+    if tcx.is_mir_available(def_id) {
+        return true;
     }
 
-    true
+    if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
+        return false;
+    }
+
+    tcx.sess.emit_fatal(NoOptimizedMir {
+        span: tcx.def_span(def_id),
+        crate_name: tcx.crate_name(def_id.krate),
+    });
 }
 
 /// For a given pair of source and target type that occur in an unsizing coercion,
