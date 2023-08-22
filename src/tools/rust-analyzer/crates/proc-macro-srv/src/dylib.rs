@@ -15,6 +15,32 @@ use proc_macro_api::{read_dylib_info, ProcMacroKind};
 
 const NEW_REGISTRAR_SYMBOL: &str = "_rustc_proc_macro_decls_";
 
+/// ROG related stubs, required for RA to load ROG compiled proc_macros.
+#[cfg(not(bootstrap))]
+#[allow(dead_code)]
+mod rog_stubs {
+    #[no_gcwb]
+    #[no_split]
+    #[no_mangle]
+    unsafe extern "C" fn rog_morestack_abi() {
+        std::process::abort();
+    }
+
+    #[no_gcwb]
+    #[no_split]
+    #[no_mangle]
+    unsafe extern "C" fn rog_write_barrier(_slot: &usize, _ptr: usize) {
+        std::process::abort();
+    }
+
+    #[no_gcwb]
+    #[no_split]
+    #[no_mangle]
+    unsafe extern "C" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
+        std::process::abort();
+    }
+}
+
 fn invalid_data_err(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, e)
 }
