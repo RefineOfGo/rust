@@ -3,16 +3,33 @@
 #[no_mangle]
 static mut rog_gcwb_switch: u32 = 0;
 
-#[allow(dead_code)]
-extern "rust-cold" {
-    /// ROG GC Write Barrier stub, implemented in ROG runtime.
-    /// Known to the relevant LLVM passes.
-    fn rog_write_barrier(_slot: &usize, _ptr: usize);
-
-    /// ROG GC Bulk Write Barrier stub, implemented in ROG runtime.
-    /// Known to the relevant LLVM passes.
-    fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize);
+/// ROG GC Write Barrier stub, the real implementation is in ROG runtime.
+/// Known to the relevant LLVM passes.
+#[no_gcwb]
+#[no_split]
+#[no_mangle]
+#[linkage = "linkonce"]
+extern "rust-cold" fn rog_write_barrier(_slot: *mut usize, _ptr: usize) {
+    crate::intrinsics::abort();
 }
+
+/// ROG GC Bulk Write Barrier stub, the real implementation is in ROG runtime.
+/// Known to the relevant LLVM passes.
+#[no_gcwb]
+#[no_split]
+#[no_mangle]
+#[linkage = "linkonce"]
+extern "rust-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
+    crate::intrinsics::abort();
+}
+
+/// Prevent compiler from removing it as dead-code.
+#[used]
+static _X: extern "rust-cold" fn(*mut usize, usize) = rog_write_barrier;
+
+/// Prevent compiler from removing it as dead-code.
+#[used]
+static _Y: extern "rust-cold" fn(usize, usize, usize) = rog_bulk_write_barrier;
 
 /// Enable ROG write barrier.
 #[no_gcwb]
@@ -21,7 +38,7 @@ extern "rust-cold" {
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn enable() {
     unsafe {
-        core::intrinsics::atomic_store_seqcst(&mut rog_gcwb_switch as *mut _, 1u32);
+        crate::intrinsics::atomic_store_seqcst(&mut rog_gcwb_switch as *mut _, 1u32);
     }
 }
 
@@ -32,7 +49,7 @@ pub unsafe fn enable() {
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn disable() {
     unsafe {
-        core::intrinsics::atomic_store_seqcst(&mut rog_gcwb_switch as *mut _, 0u32);
+        crate::intrinsics::atomic_store_seqcst(&mut rog_gcwb_switch as *mut _, 0u32);
     }
 }
 
@@ -42,5 +59,5 @@ pub unsafe fn disable() {
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub fn is_enabled() -> bool {
-    unsafe { core::intrinsics::atomic_load_seqcst(&rog_gcwb_switch as *const _) != 0u32 }
+    unsafe { crate::intrinsics::atomic_load_seqcst(&rog_gcwb_switch as *const _) != 0u32 }
 }

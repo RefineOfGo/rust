@@ -1,60 +1,67 @@
 use crate::arch::asm;
 
-#[allow(dead_code)]
-extern "rust-cold" {
-    /// ROG Stack Growing stub, implemented in ROG runtime.
-    /// Known to the relevant LLVM passes.
-    ///
-    /// This function takes exactly 1 argument, which is the stack limit
-    /// requirement, but it uses it's own calling convention:
-    ///
-    /// * x86_64  : passed in `%rax` register
-    /// * aarch64 : passed in `X16` register
-    ///
-    /// This is because the function is called within the prologue region,
-    /// registers are not spilled yet, so the choose of parameter registers
-    /// are rather limited, but there are some general guidelines:
-    ///
-    /// 1. It cannot be any of the parameter registers:
-    ///
-    ///     * For x86_64 they are %rdi, %rsi, %rdx, %rcx, %r8, %r9
-    ///     * For aarch64 they are X0-X7, and X8 for struct results
-    ///
-    /// 2. It cannot be any of the callee-saved registers, otherwise it may
-    ///    corrupt the caller's state:
-    ///
-    ///     * For x86_64 they are %rbx, %rbp, %rsp, %r12-r15
-    ///     * For aarch64 they are X19-X30
-    ///
-    /// 3. As for aarch64, the X18 register is specially reserved for platform
-    ///    specific data, and should not be used by user code, so it's out.
-    ///
-    /// So... There are only a few registers available for us to choose from,
-    /// let's see what we've got:
-    ///
-    ///     * x86_64  : %rax, %r10, %r11
-    ///     * aarch64 : X9-X15, IP0(X16), IP1(X17)
-    ///
-    /// For x86_64, %rax seems to be a good choice, since it's the default
-    /// register to store return values, so it will be clobbered anyway. It also
-    /// have the benifit of saving a few bytes because some instructions have
-    /// shorter encodings when %rax is one of its operand.
-    ///
-    /// AArch64 provided us with two registers IP0 and IP1 specifically for this
-    /// kind of usage (actually it was intended to give the linker some free
-    /// registers to clobber, but anyway), so it's the most nature selection.
-    ///
-    /// Also accessing TLS in AArch64 is not as straightforward as x86_64 do, so
-    /// we also clobbers X17 for MRS instruction to read from TPIDR[RO]_EL0
-    /// register.
-    ///
-    /// Also natually, this function MUST preserve every register accross the call
-    /// except the parameter register, otherwise it may corrupt the program state.
-    ///
-    /// As a side-effect of the unusual calling convention, this function MUST
-    /// implement in assembly, or at least a wrapper to the real function should.
-    fn rog_morestack_abi();
+/// ROG Stack Growing stub, the real implementation is in ROG runtime.
+/// Known to the relevant LLVM passes.
+///
+/// This function takes exactly 1 argument, which is the stack limit
+/// requirement, but it uses it's own calling convention:
+///
+/// * x86_64  : passed in `%rax` register
+/// * aarch64 : passed in `X16` register
+///
+/// This is because the function is called within the prologue region,
+/// registers are not spilled yet, so the choose of parameter registers
+/// are rather limited, but there are some general guidelines:
+///
+/// 1. It cannot be any of the parameter registers:
+///
+///     * For x86_64 they are %rdi, %rsi, %rdx, %rcx, %r8, %r9
+///     * For aarch64 they are X0-X7, and X8 for struct results
+///
+/// 2. It cannot be any of the callee-saved registers, otherwise it may
+///    corrupt the caller's state:
+///
+///     * For x86_64 they are %rbx, %rbp, %rsp, %r12-r15
+///     * For aarch64 they are X19-X30
+///
+/// 3. As for aarch64, the X18 register is specially reserved for platform
+///    specific data, and should not be used by user code, so it's out.
+///
+/// So... There are only a few registers available for us to choose from,
+/// let's see what we've got:
+///
+///     * x86_64  : %rax, %r10, %r11
+///     * aarch64 : X9-X15, IP0(X16), IP1(X17)
+///
+/// For x86_64, %rax seems to be a good choice, since it's the default
+/// register to store return values, so it will be clobbered anyway. It also
+/// have the benifit of saving a few bytes because some instructions have
+/// shorter encodings when %rax is one of its operand.
+///
+/// AArch64 provided us with two registers IP0 and IP1 specifically for this
+/// kind of usage (actually it was intended to give the linker some free
+/// registers to clobber, but anyway), so it's the most nature selection.
+///
+/// Also accessing TLS in AArch64 is not as straightforward as x86_64 do, so
+/// we also clobbers X17 for MRS instruction to read from TPIDR[RO]_EL0
+/// register.
+///
+/// Also natually, this function MUST preserve every register accross the call
+/// except the parameter register, otherwise it may corrupt the program state.
+///
+/// As a side-effect of the unusual calling convention, this function MUST
+/// implement in assembly, or at least a wrapper to the real function should.
+#[no_gcwb]
+#[no_split]
+#[no_mangle]
+#[linkage = "linkonce"]
+extern "rust-cold" fn rog_morestack_abi() {
+    crate::intrinsics::abort();
 }
+
+/// Prevent compiler from removing it as dead-code.
+#[used]
+static _X: extern "rust-cold" fn() = rog_morestack_abi;
 
 /// Get the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

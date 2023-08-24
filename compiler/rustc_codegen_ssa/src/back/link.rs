@@ -2268,14 +2268,6 @@ fn add_order_independent_options(
 
     add_link_script(cmd, sess, tmpdir, crate_type);
 
-    // Some symbols are implemented in ROG runtime, and are dead-code if not linked with ROG.
-    // So it's OK to ignore those symbols.
-    if sess.target.os == "macos" {
-        cmd.args(["-undefined", "dynamic_lookup"]);
-    } else {
-        cmd.args(["-Wl,--unresolved-symbols=ignore-all"]);
-    }
-
     if sess.target.os == "fuchsia"
         && crate_type == CrateType::Executable
         && !matches!(flavor, LinkerFlavor::Gnu(Cc::Yes, _))

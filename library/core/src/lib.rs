@@ -231,6 +231,7 @@
 #![feature(lang_items)]
 #![feature(let_chains)]
 #![feature(link_llvm_intrinsics)]
+#![feature(linkage)]
 #![feature(macro_metavar_expr)]
 #![feature(min_specialization)]
 #![feature(multiple_supertrait_upcastable)]
