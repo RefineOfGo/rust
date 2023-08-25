@@ -192,8 +192,9 @@ use rustc_target::abi::Size;
 use std::path::PathBuf;
 
 use crate::errors::{
-    ClosureCapturesManagedValue, EncounteredErrorWhileInstantiating, LargeAssignmentsLint,
-    ManagedFieldInUnmanagedAdt, ManagedUnionField, NoOptimizedMir, RecursionLimit, TypeLengthLimit,
+    ClosureCapturesManagedValue, DynTraitPointsToManagedValue, EncounteredErrorWhileInstantiating,
+    LargeAssignmentsLint, ManagedFieldInUnmanagedAdt, ManagedUnionField, NoOptimizedMir,
+    RecursionLimit, TypeLengthLimit,
 };
 
 #[derive(PartialEq)]
@@ -712,48 +713,9 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
-    fn is_managed_self(&mut self, ty: Ty<'tcx>) -> ManagedSelf {
-        fn is_unmanaged_fast(ty: Ty<'_>) -> bool {
-            match ty.kind() {
-                ty::Int(_)
-                | ty::Uint(_)
-                | ty::Float(_)
-                | ty::Bool
-                | ty::Char
-                | ty::Str
-                | ty::Never
-                | ty::FnDef(..)
-                | ty::Error(_)
-                | ty::FnPtr(_)
-                | ty::Foreign(_) => true,
-                ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => is_unmanaged_fast(*ty),
-                ty::Tuple(fields) => fields.iter().all(is_unmanaged_fast),
-                ty::Slice(elem_ty) | ty::Array(elem_ty, _) => is_unmanaged_fast(*elem_ty),
-                ty::Adt(adt, _) => adt.is_union(),
-                // TODO: determain whether these types could possible be `Managed`
-                ty::Bound(..)
-                | ty::Closure(..)
-                | ty::Dynamic(..)
-                | ty::Generator(..)
-                | ty::GeneratorWitness(_)
-                | ty::GeneratorWitnessMIR(..)
-                | ty::Infer(_)
-                | ty::Alias(..)
-                | ty::Param(_)
-                | ty::Placeholder(_) => {
-                    debug!("suspicious type, assuming unmanaged {:#?}", ty);
-                    true
-                }
-            }
-        }
-
-        if is_unmanaged_fast(ty) {
-            ManagedSelf::No
-        } else if self.tcx.is_managed_raw(ParamEnv::reveal_all().and(ty)) {
-            ManagedSelf::Yes
-        } else {
-            ManagedSelf::Unsure
-        }
+    fn is_managed(&mut self, ty: Ty<'tcx>) -> bool {
+        assert!(self.managed_seen.is_empty());
+        self.is_managed_impl(ty)
     }
 
     fn is_managed_impl(&mut self, ty: Ty<'tcx>) -> bool {
@@ -784,6 +746,49 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
         };
         self.managed_cache.insert(ty, is_managed);
         is_managed
+    }
+
+    fn is_managed_self(&mut self, ty: Ty<'tcx>) -> ManagedSelf {
+        fn is_unmanaged_fast(ty: Ty<'_>) -> bool {
+            match ty.kind() {
+                ty::Int(_)
+                | ty::Uint(_)
+                | ty::Float(_)
+                | ty::Bool
+                | ty::Char
+                | ty::Str
+                | ty::Never
+                | ty::FnDef(..)
+                | ty::Error(_)
+                | ty::FnPtr(_)
+                | ty::Foreign(_) => true,
+                ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => is_unmanaged_fast(*ty),
+                ty::Tuple(fields) => fields.iter().all(is_unmanaged_fast),
+                ty::Slice(elem_ty) | ty::Array(elem_ty, _) => is_unmanaged_fast(*elem_ty),
+                ty::Adt(adt, _) => adt.is_union(),
+                // TODO: determain whether these types could possible be `Managed`
+                ty::Bound(..)
+                | ty::Closure(..)
+                | ty::Dynamic(..)
+                | ty::Generator(..)
+                | ty::GeneratorWitness(..)
+                | ty::Infer(_)
+                | ty::Alias(..)
+                | ty::Param(_)
+                | ty::Placeholder(_) => {
+                    debug!("suspicious type, assuming unmanaged {:#?}", ty);
+                    true
+                }
+            }
+        }
+
+        if is_unmanaged_fast(ty) {
+            ManagedSelf::No
+        } else if self.tcx.is_managed_raw(ParamEnv::reveal_all().and(ty)) {
+            ManagedSelf::Yes
+        } else {
+            ManagedSelf::Unsure
+        }
     }
 
     fn find_managed_field(
@@ -905,6 +910,14 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                 if (target_ty.is_trait() && !source_ty.is_trait())
                     || (target_ty.is_dyn_star() && !source_ty.is_dyn_star())
                 {
+                    if self.is_managed(source_ty) {
+                        self.tcx.sess.emit_err(DynTraitPointsToManagedValue {
+                            span,
+                            value_ty: source_ty.to_string(),
+                            target_ty: target_ty.to_string(),
+                            note: (),
+                        });
+                    }
                     create_mono_items_for_vtable_methods(
                         self.tcx,
                         target_ty,

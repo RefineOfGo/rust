@@ -41,6 +41,17 @@ pub(crate) struct ClosureCapturesManagedValue {
 }
 
 #[derive(Diagnostic)]
+#[diag(monomorphize_dyn_trait_points_to_managed_value)]
+pub(crate) struct DynTraitPointsToManagedValue {
+    #[primary_span]
+    pub span: Span,
+    pub value_ty: String,
+    pub target_ty: String,
+    #[note]
+    pub note: (),
+}
+
+#[derive(Diagnostic)]
 #[diag(monomorphize_recursion_limit)]
 pub struct RecursionLimit {
     #[primary_span]
