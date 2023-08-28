@@ -47,7 +47,12 @@ use crate::arch::asm;
 /// register.
 ///
 /// Also natually, this function MUST preserve every register accross the call
-/// except the parameter register, otherwise it may corrupt the program state.
+/// except the register said above, otherwise it may corrupt the program state.
+///
+/// Note that AArch64 does not save return address to stack, instead they use
+/// a special register LR(X30) to store the return address. Branching to
+/// another function clobbers LR. So under AArch64, LR will be saved before
+/// calling this function, and that will be passed as an extra argument in X17.
 ///
 /// As a side-effect of the unusual calling convention, this function MUST
 /// implement in assembly, or at least a wrapper to the real function should.
