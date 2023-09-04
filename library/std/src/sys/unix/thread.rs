@@ -972,7 +972,11 @@ pub mod guard {
                     // Use page size as a fallback.
                     guardsize = PAGE_SIZE.load(Ordering::Relaxed);
                 } else {
-                    panic!("there is no guard page");
+                    // Guard pages don't exist when using explicit stack
+                    // base. Caller is responsible for handling stack
+                    // overflow exceptions.
+                    assert_eq!(libc::pthread_attr_destroy(&mut attr), 0);
+                    return None;
                 }
             }
             let mut stackptr = crate::ptr::null_mut::<libc::c_void>();
