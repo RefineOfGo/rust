@@ -10,7 +10,7 @@ use crate::traits::*;
 use crate::MemFlags;
 use crate::{errors, ptrinfo};
 
-use rustc_middle::mir::interpret::{Allocation, ConstValue};
+use rustc_middle::mir::{interpret::Allocation, ConstValue};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::{sym, Span};
 use rustc_target::abi::{
