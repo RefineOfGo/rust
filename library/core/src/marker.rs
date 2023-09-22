@@ -516,6 +516,14 @@ pub macro Managed($item:item) {
     /* compiler built-in */
 }
 
+// There is a special case implemented directly in the compiler:
+//
+// impl<A, B, C, ...> Managed for (A, B, C, ...)
+//     where (A | B | C | ...): Managed {}
+//
+// ... which says: if any of the tuple element is `Managed`, then
+// the entire tuple becomes `Managed`.
+
 marker_impls! {
     #[cfg(not(bootstrap))]
     #[stable(feature = "rog", since = "1.0.0")]

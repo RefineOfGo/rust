@@ -62,7 +62,7 @@ pub fn expand_deriving_managed(
     let trait_def = TraitDef {
         span,
         path: path_std!(marker::Managed),
-        skip_path_as_bound: false,
+        skip_path_as_bound: true,
         needs_copy_as_bound_if_packed: false,
         additional_bounds: Vec::new(),
         supports_unions: false,

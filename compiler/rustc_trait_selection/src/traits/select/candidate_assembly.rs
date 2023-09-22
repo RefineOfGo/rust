@@ -110,6 +110,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     self.assemble_builtin_bound_candidates(clone_conditions, &mut candidates);
                 }
 
+                if lang_items.managed_trait() == Some(def_id) {
+                    let sized_conditions = self.managed_conditions(obligation);
+                    self.assemble_builtin_bound_candidates(sized_conditions, &mut candidates);
+                }
+
                 if lang_items.gen_trait() == Some(def_id) {
                     self.assemble_generator_candidates(obligation, &mut candidates);
                 } else if lang_items.future_trait() == Some(def_id) {
@@ -888,7 +893,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         candidates: &mut SelectionCandidateSet<'tcx>,
     ) {
         match conditions {
-            BuiltinImplConditions::Where(nested) => {
+            BuiltinImplConditions::Where(nested) | BuiltinImplConditions::Disjunction(nested) => {
                 candidates
                     .vec
                     .push(BuiltinCandidate { has_nested: !nested.skip_binder().is_empty() });
