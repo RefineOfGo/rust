@@ -113,7 +113,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let layout = bx.layout_of(fn_args.type_at(0));
                 let ptrmap = PointerMap::resolve(bx.cx(), layout, None).encode(bx.cx());
                 let alloc = bx.tcx().mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(ptrmap.as_slice()));
-                let val = ConstValue::Slice { data: alloc, start: 0, end: alloc.inner().len() };
+                let val = ConstValue::Slice { data: alloc, meta: alloc.inner().size().bytes() };
                 OperandRef::from_const(bx, val, ret_ty).immediate_or_packed_pair(bx)
             }
             sym::vtable_size | sym::vtable_align => {
