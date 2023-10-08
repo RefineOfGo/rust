@@ -19,6 +19,11 @@ pub struct Enumerate<I> {
     iter: I,
     count: usize,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for Enumerate<I> {}
+
 impl<I> Enumerate<I> {
     pub(in crate::iter) fn new(iter: I) -> Enumerate<I> {
         Enumerate { iter, count: 0 }

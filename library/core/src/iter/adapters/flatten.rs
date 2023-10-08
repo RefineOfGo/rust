@@ -14,6 +14,10 @@ pub struct FlatMap<I, U: IntoIterator, F> {
     inner: FlattenCompat<Map<I, F>, <U as IntoIterator>::IntoIter>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I, U: IntoIterator, F> Managed for FlatMap<I, U, F> where (I, U): Managed {}
+
 impl<I: Iterator, U: IntoIterator, F: FnMut(I::Item) -> U> FlatMap<I, U, F> {
     pub(in crate::iter) fn new(iter: I, f: F) -> FlatMap<I, U, F> {
         FlatMap { inner: FlattenCompat::new(iter.map(f)) }
@@ -157,6 +161,10 @@ where
 pub struct Flatten<I: Iterator<Item: IntoIterator>> {
     inner: FlattenCompat<I, <I::Item as IntoIterator>::IntoIter>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Iterator<Item: IntoIterator> + Managed> Managed for Flatten<I> {}
 
 impl<I: Iterator<Item: IntoIterator>> Flatten<I> {
     pub(in super::super) fn new(iter: I) -> Flatten<I> {
@@ -316,6 +324,11 @@ struct FlattenCompat<I, U> {
     frontiter: Option<U>,
     backiter: Option<U>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I, U> Managed for FlattenCompat<I, U> where (I, U): Managed {}
+
 impl<I, U> FlattenCompat<I, U>
 where
     I: Iterator,

@@ -20,6 +20,11 @@ pub struct Fuse<I> {
     // See rust-lang/rust#85863
     iter: Option<I>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<I: Managed> Managed for Fuse<I> {}
+
 impl<I> Fuse<I> {
     pub(in crate::iter) fn new(iter: I) -> Fuse<I> {
         Fuse { iter: Some(iter) }
