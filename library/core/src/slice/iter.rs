@@ -73,6 +73,10 @@ pub struct Iter<'a, T: 'a> {
     _marker: PhantomData<&'a T>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Iter<'_, T> {}
+
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
 impl<T: fmt::Debug> fmt::Debug for Iter<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -193,6 +197,10 @@ pub struct IterMut<'a, T: 'a> {
     end_or_len: *mut T,
     _marker: PhantomData<&'a mut T>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for IterMut<'_, T> {}
 
 #[stable(feature = "core_impl_debug", since = "1.9.0")]
 impl<T: fmt::Debug> fmt::Debug for IterMut<'_, T> {
@@ -400,6 +408,10 @@ where
     pub(crate) finished: bool,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for Split<'_, T, P> {}
+
 impl<'a, T: 'a, P: FnMut(&T) -> bool> Split<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a [T], pred: P) -> Self {
@@ -543,6 +555,10 @@ where
     finished: bool,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for SplitInclusive<'_, T, P> {}
+
 impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitInclusive<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a [T], pred: P) -> Self {
@@ -663,6 +679,10 @@ where
     pred: P,
     finished: bool,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for SplitMut<'_, T, P> {}
 
 impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitMut<'a, T, P> {
     #[inline]
@@ -793,6 +813,10 @@ where
     finished: bool,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for SplitInclusiveMut<'_, T, P> {}
+
 impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitInclusiveMut<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a mut [T], pred: P) -> Self {
@@ -915,6 +939,10 @@ where
     inner: Split<'a, T, P>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for RSplit<'_, T, P> {}
+
 impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplit<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a [T], pred: P) -> Self {
@@ -1012,6 +1040,10 @@ where
     inner: SplitMut<'a, T, P>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for RSplitMut<'_, T, P> {}
+
 impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitMut<'a, T, P> {
     #[inline]
     pub(super) fn new(slice: &'a mut [T], pred: P) -> Self {
@@ -1084,6 +1116,9 @@ struct GenericSplitN<I> {
     count: usize,
 }
 
+#[cfg(not(bootstrap))]
+impl<I: Managed> Managed for GenericSplitN<I> {}
+
 impl<T, I: SplitIter<Item = T>> Iterator for GenericSplitN<I> {
     type Item = T;
 
@@ -1135,6 +1170,10 @@ where
     inner: GenericSplitN<Split<'a, T, P>>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for SplitN<'_, T, P> {}
+
 impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitN<'a, T, P> {
     #[inline]
     pub(super) fn new(s: Split<'a, T, P>, n: usize) -> Self {
@@ -1176,6 +1215,10 @@ where
     inner: GenericSplitN<RSplit<'a, T, P>>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for RSplitN<'_, T, P> {}
+
 impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitN<'a, T, P> {
     #[inline]
     pub(super) fn new(s: RSplit<'a, T, P>, n: usize) -> Self {
@@ -1215,6 +1258,10 @@ where
 {
     inner: GenericSplitN<SplitMut<'a, T, P>>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for SplitNMut<'_, T, P> {}
 
 impl<'a, T: 'a, P: FnMut(&T) -> bool> SplitNMut<'a, T, P> {
     #[inline]
@@ -1256,6 +1303,10 @@ where
 {
     inner: GenericSplitN<RSplitMut<'a, T, P>>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed, P: FnMut(&T) -> bool> Managed for RSplitNMut<'_, T, P> {}
 
 impl<'a, T: 'a, P: FnMut(&T) -> bool> RSplitNMut<'a, T, P> {
     #[inline]
@@ -1299,6 +1350,10 @@ pub struct Windows<'a, T: 'a> {
     v: &'a [T],
     size: NonZeroUsize,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Windows<'_, T> {}
 
 impl<'a, T: 'a> Windows<'a, T> {
     #[inline]
@@ -1447,6 +1502,10 @@ pub struct Chunks<'a, T: 'a> {
     v: &'a [T],
     chunk_size: usize,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for Chunks<'_, T> {}
 
 impl<'a, T: 'a> Chunks<'a, T> {
     #[inline]
@@ -1638,6 +1697,10 @@ pub struct ChunksMut<'a, T: 'a> {
     _marker: PhantomData<&'a mut T>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for ChunksMut<'_, T> {}
+
 impl<'a, T: 'a> ChunksMut<'a, T> {
     #[inline]
     pub(super) fn new(slice: &'a mut [T], size: usize) -> Self {
@@ -1821,6 +1884,10 @@ pub struct ChunksExact<'a, T: 'a> {
     chunk_size: usize,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for ChunksExact<'_, T> {}
+
 impl<'a, T> ChunksExact<'a, T> {
     #[inline]
     pub(super) fn new(slice: &'a [T], chunk_size: usize) -> Self {
@@ -2000,6 +2067,10 @@ pub struct ChunksExactMut<'a, T: 'a> {
     chunk_size: usize,
     _marker: PhantomData<&'a mut T>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for ChunksExactMut<'_, T> {}
 
 impl<'a, T> ChunksExactMut<'a, T> {
     #[inline]
@@ -2526,6 +2597,10 @@ pub struct RChunks<'a, T: 'a> {
     chunk_size: usize,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for RChunks<'_, T> {}
+
 impl<'a, T: 'a> RChunks<'a, T> {
     #[inline]
     pub(super) fn new(slice: &'a [T], size: usize) -> Self {
@@ -2705,6 +2780,10 @@ pub struct RChunksMut<'a, T: 'a> {
     chunk_size: usize,
     _marker: PhantomData<&'a mut T>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for RChunksMut<'_, T> {}
 
 impl<'a, T: 'a> RChunksMut<'a, T> {
     #[inline]
@@ -2894,6 +2973,10 @@ pub struct RChunksExact<'a, T: 'a> {
     chunk_size: usize,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for RChunksExact<'_, T> {}
+
 impl<'a, T> RChunksExact<'a, T> {
     #[inline]
     pub(super) fn new(slice: &'a [T], chunk_size: usize) -> Self {
@@ -3076,6 +3159,10 @@ pub struct RChunksExactMut<'a, T: 'a> {
     chunk_size: usize,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for RChunksExactMut<'_, T> {}
+
 impl<'a, T> RChunksExactMut<'a, T> {
     #[inline]
     pub(super) fn new(slice: &'a mut [T], chunk_size: usize) -> Self {
@@ -3252,6 +3339,10 @@ pub struct GroupBy<'a, T: 'a, P> {
     predicate: P,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<'a, T: Managed + 'a, P> Managed for GroupBy<'a, T, P> {}
+
 #[unstable(feature = "slice_group_by", issue = "80552")]
 impl<'a, T: 'a, P> GroupBy<'a, T, P> {
     pub(super) fn new(slice: &'a [T], predicate: P) -> Self {
@@ -3338,6 +3429,10 @@ pub struct GroupByMut<'a, T: 'a, P> {
     slice: &'a mut [T],
     predicate: P,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<'a, T: Managed + 'a, P> Managed for GroupByMut<'a, T, P> {}
 
 #[unstable(feature = "slice_group_by", issue = "80552")]
 impl<'a, T: 'a, P> GroupByMut<'a, T, P> {
