@@ -500,7 +500,7 @@ impl<I: Interner> DebugWithInfcx<I> for TyKind<I> {
 
                 write!(f, ">")
             }
-            Foreign(d) => f.debug_tuple_field1_finish("Foreign", d),
+            Foreign(d) => f.debug_tuple("Foreign").field(d).finish(),
             Str => write!(f, "str"),
             Array(t, c) => write!(f, "[{:?}; {:?}]", &this.wrap(t), &this.wrap(c)),
             Slice(t) => write!(f, "[{:?}]", &this.wrap(t)),
@@ -516,7 +516,7 @@ impl<I: Interner> DebugWithInfcx<I> for TyKind<I> {
                 true => write!(f, "&{:?} mut {:?}", &this.wrap(r), &this.wrap(t)),
                 false => write!(f, "&{:?} {:?}", &this.wrap(r), &this.wrap(t)),
             },
-            FnDef(d, s) => f.debug_tuple_field2_finish("FnDef", d, &this.wrap(s)),
+            FnDef(d, s) => f.debug_tuple("FnDef").field(d).field(&this.wrap(s)).finish(),
             FnPtr(s) => write!(f, "{:?}", &this.wrap(s)),
             Dynamic(p, r, repr) => match repr {
                 DynKind::Dyn => write!(f, "dyn {:?} + {:?}", &this.wrap(p), &this.wrap(r)),
@@ -524,10 +524,12 @@ impl<I: Interner> DebugWithInfcx<I> for TyKind<I> {
                     write!(f, "dyn* {:?} + {:?}", &this.wrap(p), &this.wrap(r))
                 }
             },
-            Closure(d, s) => f.debug_tuple_field2_finish("Closure", d, &this.wrap(s)),
-            Generator(d, s, m) => f.debug_tuple_field3_finish("Generator", d, &this.wrap(s), m),
+            Closure(d, s) => f.debug_tuple("Closure").field(d).field(&this.wrap(s)).finish(),
+            Generator(d, s, m) => {
+                f.debug_tuple("Generator").field(d).field(&this.wrap(s)).field(m).finish()
+            }
             GeneratorWitness(d, s) => {
-                f.debug_tuple_field2_finish("GeneratorWitness", d, &this.wrap(s))
+                f.debug_tuple("GeneratorWitness").field(d).field(&this.wrap(s)).finish()
             }
             Never => write!(f, "!"),
             Tuple(t) => {
@@ -546,7 +548,7 @@ impl<I: Interner> DebugWithInfcx<I> for TyKind<I> {
                 }
                 write!(f, ")")
             }
-            Alias(i, a) => f.debug_tuple_field2_finish("Alias", i, &this.wrap(a)),
+            Alias(i, a) => f.debug_tuple("Alias").field(i).field(&this.wrap(a)).finish(),
             Param(p) => write!(f, "{p:?}"),
             Bound(d, b) => crate::debug_bound_var(f, *d, b),
             Placeholder(p) => write!(f, "{p:?}"),

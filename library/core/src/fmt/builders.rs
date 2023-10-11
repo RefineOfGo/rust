@@ -129,30 +129,33 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn field(&mut self, name: &str, value: &dyn fmt::Debug) -> &mut Self {
-        self.result = self.result.and_then(|_| {
-            if self.is_pretty() {
-                if !self.has_fields {
-                    self.fmt.write_str(" {\n")?;
-                }
-                let mut slot = None;
-                let mut state = Default::default();
-                let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut state);
-                writer.write_str(name)?;
-                writer.write_str(": ")?;
-                value.fmt(&mut writer)?;
-                writer.write_str(",\n")
-            } else {
-                let prefix = if self.has_fields { ", " } else { " { " };
-                self.fmt.write_str(prefix)?;
-                self.fmt.write_str(name)?;
-                self.fmt.write_str(": ")?;
-                value.fmt(self.fmt)
-            }
-        });
-
+    pub fn field(&mut self, name: &str, value: &(impl fmt::Debug + ?Sized)) -> &mut Self {
+        if self.result.is_ok() {
+            self.result = self.debug_field(name, value);
+        }
         self.has_fields = true;
         self
+    }
+
+    fn debug_field(&mut self, name: &str, value: &(impl fmt::Debug + ?Sized)) -> fmt::Result {
+        if self.is_pretty() {
+            if !self.has_fields {
+                self.fmt.write_str(" {\n")?;
+            }
+            let mut slot = None;
+            let mut state = Default::default();
+            let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut state);
+            writer.write_str(name)?;
+            writer.write_str(": ")?;
+            value.fmt(&mut writer)?;
+            writer.write_str(",\n")
+        } else {
+            let prefix = if self.has_fields { ", " } else { " { " };
+            self.fmt.write_str(prefix)?;
+            self.fmt.write_str(name)?;
+            self.fmt.write_str(": ")?;
+            value.fmt(self.fmt)
+        }
     }
 
     /// Marks the struct as non-exhaustive, indicating to the reader that there are some other
@@ -314,26 +317,29 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn field(&mut self, value: &dyn fmt::Debug) -> &mut Self {
-        self.result = self.result.and_then(|_| {
-            if self.is_pretty() {
-                if self.fields == 0 {
-                    self.fmt.write_str("(\n")?;
-                }
-                let mut slot = None;
-                let mut state = Default::default();
-                let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut state);
-                value.fmt(&mut writer)?;
-                writer.write_str(",\n")
-            } else {
-                let prefix = if self.fields == 0 { "(" } else { ", " };
-                self.fmt.write_str(prefix)?;
-                value.fmt(self.fmt)
-            }
-        });
-
+    pub fn field(&mut self, value: &(impl fmt::Debug + ?Sized)) -> &mut Self {
+        if self.result.is_ok() {
+            self.result = self.debug_field(value);
+        }
         self.fields += 1;
         self
+    }
+
+    fn debug_field(&mut self, value: &(impl fmt::Debug + ?Sized)) -> fmt::Result {
+        if self.is_pretty() {
+            if self.fields == 0 {
+                self.fmt.write_str("(\n")?;
+            }
+            let mut slot = None;
+            let mut state = Default::default();
+            let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut state);
+            value.fmt(&mut writer)?;
+            writer.write_str(",\n")
+        } else {
+            let prefix = if self.fields == 0 { "(" } else { ", " };
+            self.fmt.write_str(prefix)?;
+            value.fmt(self.fmt)
+        }
     }
 
     /// Finishes output and returns any error encountered.
@@ -385,26 +391,29 @@ struct DebugInner<'a, 'b: 'a> {
 }
 
 impl<'a, 'b: 'a> DebugInner<'a, 'b> {
-    fn entry(&mut self, entry: &dyn fmt::Debug) {
-        self.result = self.result.and_then(|_| {
-            if self.is_pretty() {
-                if !self.has_fields {
-                    self.fmt.write_str("\n")?;
-                }
-                let mut slot = None;
-                let mut state = Default::default();
-                let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut state);
-                entry.fmt(&mut writer)?;
-                writer.write_str(",\n")
-            } else {
-                if self.has_fields {
-                    self.fmt.write_str(", ")?
-                }
-                entry.fmt(self.fmt)
-            }
-        });
-
+    fn entry(&mut self, entry: &(impl fmt::Debug + ?Sized)) {
+        if self.result.is_ok() {
+            self.result = self.debug_entry(entry);
+        }
         self.has_fields = true;
+    }
+
+    fn debug_entry(&mut self, entry: &(impl fmt::Debug + ?Sized)) -> fmt::Result {
+        if self.is_pretty() {
+            if !self.has_fields {
+                self.fmt.write_str("\n")?;
+            }
+            let mut slot = None;
+            let mut state = Default::default();
+            let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut state);
+            entry.fmt(&mut writer)?;
+            writer.write_str(",\n")
+        } else {
+            if self.has_fields {
+                self.fmt.write_str(", ")?
+            }
+            entry.fmt(self.fmt)
+        }
     }
 
     fn is_pretty(&self) -> bool {
@@ -474,7 +483,7 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn entry(&mut self, entry: &dyn fmt::Debug) -> &mut Self {
+    pub fn entry(&mut self, entry: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.inner.entry(entry);
         self
     }
@@ -604,7 +613,7 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn entry(&mut self, entry: &dyn fmt::Debug) -> &mut Self {
+    pub fn entry(&mut self, entry: &(impl fmt::Debug + ?Sized)) -> &mut Self {
         self.inner.entry(entry);
         self
     }
@@ -738,7 +747,11 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_builders", since = "1.2.0")]
-    pub fn entry(&mut self, key: &dyn fmt::Debug, value: &dyn fmt::Debug) -> &mut Self {
+    pub fn entry(
+        &mut self,
+        key: &(impl fmt::Debug + ?Sized),
+        value: &(impl fmt::Debug + ?Sized),
+    ) -> &mut Self {
         self.key(key).value(value)
     }
 
@@ -774,36 +787,38 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_map_key_value", since = "1.42.0")]
-    pub fn key(&mut self, key: &dyn fmt::Debug) -> &mut Self {
-        self.result = self.result.and_then(|_| {
-            assert!(
-                !self.has_key,
-                "attempted to begin a new map entry \
-                                    without completing the previous one"
-            );
-
-            if self.is_pretty() {
-                if !self.has_fields {
-                    self.fmt.write_str("\n")?;
-                }
-                let mut slot = None;
-                self.state = Default::default();
-                let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut self.state);
-                key.fmt(&mut writer)?;
-                writer.write_str(": ")?;
-            } else {
-                if self.has_fields {
-                    self.fmt.write_str(", ")?
-                }
-                key.fmt(self.fmt)?;
-                self.fmt.write_str(": ")?;
-            }
-
-            self.has_key = true;
-            Ok(())
-        });
-
+    pub fn key(&mut self, key: &(impl fmt::Debug + ?Sized)) -> &mut Self {
+        if self.result.is_ok() {
+            self.result = self.debug_key(key);
+        }
         self
+    }
+
+    fn debug_key(&mut self, key: &(impl fmt::Debug + ?Sized)) -> fmt::Result {
+        assert!(
+            !self.has_key,
+            "attempted to begin a new map entry without completing the previous one"
+        );
+
+        if self.is_pretty() {
+            if !self.has_fields {
+                self.fmt.write_str("\n")?;
+            }
+            let mut slot = None;
+            self.state = Default::default();
+            let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut self.state);
+            key.fmt(&mut writer)?;
+            writer.write_str(": ")?;
+        } else {
+            if self.has_fields {
+                self.fmt.write_str(", ")?
+            }
+            key.fmt(self.fmt)?;
+            self.fmt.write_str(": ")?;
+        }
+
+        self.has_key = true;
+        Ok(())
     }
 
     /// Adds the value part of a new entry to the map output.
@@ -838,25 +853,28 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// );
     /// ```
     #[stable(feature = "debug_map_key_value", since = "1.42.0")]
-    pub fn value(&mut self, value: &dyn fmt::Debug) -> &mut Self {
-        self.result = self.result.and_then(|_| {
-            assert!(self.has_key, "attempted to format a map value before its key");
-
-            if self.is_pretty() {
-                let mut slot = None;
-                let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut self.state);
-                value.fmt(&mut writer)?;
-                writer.write_str(",\n")?;
-            } else {
-                value.fmt(self.fmt)?;
-            }
-
-            self.has_key = false;
-            Ok(())
-        });
-
+    pub fn value(&mut self, value: &(impl fmt::Debug + ?Sized)) -> &mut Self {
+        if self.result.is_ok() {
+            self.result = self.debug_value(value);
+        }
         self.has_fields = true;
         self
+    }
+
+    fn debug_value(&mut self, value: &(impl fmt::Debug + ?Sized)) -> fmt::Result {
+        assert!(self.has_key, "attempted to format a map value before its key");
+
+        if self.is_pretty() {
+            let mut slot = None;
+            let mut writer = PadAdapter::wrap(self.fmt, &mut slot, &mut self.state);
+            value.fmt(&mut writer)?;
+            writer.write_str(",\n")?;
+        } else {
+            value.fmt(self.fmt)?;
+        }
+
+        self.has_key = false;
+        Ok(())
     }
 
     /// Adds the contents of an iterator of entries to the map output.
