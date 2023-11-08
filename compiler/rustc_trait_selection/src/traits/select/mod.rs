@@ -643,7 +643,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     where
         I: IntoIterator<Item = PredicateObligation<'tcx>> + std::fmt::Debug,
     {
-        let mut result = EvaluatedToOk;
+        let mut result = if disjunction_logic { EvaluatedToErr } else { EvaluatedToOk };
         for mut obligation in predicates {
             obligation.set_depth_from_parent(stack.depth());
             let eval = self.evaluate_predicate_recursively(stack, obligation.clone())?;
@@ -2275,12 +2275,40 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
     ) -> BuiltinImplConditions<'tcx> {
-        use self::BuiltinImplConditions::{Disjunction, None};
+        use self::BuiltinImplConditions::{Ambiguous, Disjunction, None};
         let self_ty = self.infcx.shallow_resolve(obligation.predicate.skip_binder().self_ty());
-        if let ty::Tuple(tys) = *self_ty.kind() && !tys.is_empty() {
-            Disjunction(obligation.predicate.rebind(tys.iter().collect()))
-        } else {
-            None
+        match *self_ty.kind() {
+            ty::Closure(_, args) => {
+                let ty = args.as_closure().tupled_upvars_ty();
+                if let ty::Infer(ty::TyVar(_)) = self.infcx.shallow_resolve(ty).kind() {
+                    Ambiguous
+                } else {
+                    Disjunction(obligation.predicate.rebind(ty.tuple_fields().to_vec()))
+                }
+            }
+            ty::Coroutine(_, args, _) => {
+                let upvars = self.infcx.shallow_resolve(args.as_coroutine().tupled_upvars_ty());
+                let witness = self.infcx.shallow_resolve(args.as_coroutine().witness());
+                if upvars.is_ty_var() || witness.is_ty_var() {
+                    Ambiguous
+                } else {
+                    Disjunction(
+                        obligation.predicate.rebind(
+                            args.as_coroutine()
+                                .upvar_tys()
+                                .iter()
+                                .chain([args.as_coroutine().witness()])
+                                .collect::<Vec<_>>(),
+                        ),
+                    )
+                }
+            }
+            ty::CoroutineWitness(def_id, args) => {
+                let bound_vars = obligation.predicate.bound_vars();
+                Disjunction(bind_coroutine_hidden_types_above(self.infcx, def_id, args, bound_vars))
+            }
+            ty::Tuple(tys) => Disjunction(obligation.predicate.rebind(tys.iter().collect())),
+            _ => None,
         }
     }
 

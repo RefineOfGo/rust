@@ -26,20 +26,6 @@ pub(crate) struct ManagedFieldInUnmanagedAdt {
 }
 
 #[derive(Diagnostic)]
-#[diag(monomorphize_closure_captures_managed_value)]
-pub(crate) struct ClosureCapturesManagedValue {
-    #[primary_span]
-    pub span: Span,
-    pub value_ty: String,
-    #[label(monomorphize_closure_captures_managed_value_span)]
-    pub value_span: Option<Span>,
-    #[label(monomorphize_closure_captures_managed_capture_span)]
-    pub reference_span: Option<Span>,
-    #[note]
-    pub note: (),
-}
-
-#[derive(Diagnostic)]
 #[diag(monomorphize_dyn_trait_points_to_managed_value)]
 pub(crate) struct DynTraitPointsToManagedValue {
     #[primary_span]

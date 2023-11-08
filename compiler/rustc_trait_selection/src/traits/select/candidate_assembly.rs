@@ -883,7 +883,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
     }
 
     /// Assembles the trait which are built-in to the language itself:
-    /// `Copy`, `Clone` and `Sized`.
+    /// `Copy`, `Clone`, `Sized` and `Managed`.
     #[instrument(level = "debug", skip(self, candidates))]
     fn assemble_builtin_bound_candidates(
         &mut self,
@@ -891,10 +891,15 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         candidates: &mut SelectionCandidateSet<'tcx>,
     ) {
         match conditions {
-            BuiltinImplConditions::Where(nested) | BuiltinImplConditions::Disjunction(nested) => {
+            BuiltinImplConditions::Where(nested) => {
                 candidates
                     .vec
                     .push(BuiltinCandidate { has_nested: !nested.skip_binder().is_empty() });
+            }
+            BuiltinImplConditions::Disjunction(nested) => {
+                if !nested.skip_binder().is_empty() {
+                    candidates.vec.push(BuiltinCandidate { has_nested: true });
+                }
             }
             BuiltinImplConditions::None => {}
             BuiltinImplConditions::Ambiguous => {

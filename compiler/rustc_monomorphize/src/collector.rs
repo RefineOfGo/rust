@@ -179,8 +179,8 @@ use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::print::with_no_trimmed_paths;
 use rustc_middle::ty::{
-    self, AssocKind, GenericParamDefKind, Instance, InstanceDef, List, ParamEnv, Ty, TyCtxt,
-    TypeAndMut, TypeFoldable, TypeVisitableExt, VtblEntry,
+    self, AssocKind, GenericParamDefKind, Instance, InstanceDef, ParamEnv, Ty, TyCtxt, TypeAndMut,
+    TypeFoldable, TypeVisitableExt, VtblEntry,
 };
 use rustc_middle::ty::{GenericArgKind, GenericArgs};
 use rustc_middle::{middle::codegen_fn_attrs::CodegenFnAttrFlags, mir::visit::TyContext};
@@ -194,9 +194,8 @@ use rustc_target::abi::Size;
 use std::path::PathBuf;
 
 use crate::errors::{
-    ClosureCapturesManagedValue, DynTraitPointsToManagedValue, EncounteredErrorWhileInstantiating,
-    LargeAssignmentsLint, ManagedFieldInUnmanagedAdt, ManagedUnionField, NoOptimizedMir,
-    RecursionLimit, TypeLengthLimit,
+    DynTraitPointsToManagedValue, EncounteredErrorWhileInstantiating, LargeAssignmentsLint,
+    ManagedFieldInUnmanagedAdt, ManagedUnionField, NoOptimizedMir, RecursionLimit, TypeLengthLimit,
 };
 
 #[derive(PartialEq)]
@@ -596,12 +595,6 @@ enum ManagedSelf {
     Unsure,
 }
 
-impl ManagedSelf {
-    fn truth(self) -> bool {
-        self == Self::Yes
-    }
-}
-
 struct MirUsedCollector<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     body: &'a mir::Body<'tcx>,
@@ -731,15 +724,36 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
                 if !self.managed_seen.insert(ty) {
                     return false;
                 }
-                let result = match ty.kind() {
-                    ty::Ref(_, ty, _) | ty::RawPtr(ty::TypeAndMut { ty, .. }) => {
-                        self.is_managed_impl(*ty)
+                let result = match *ty.kind() {
+                    ty::Adt(adt, args) => self.find_managed_field_impl(adt, args).is_some(),
+                    ty::Array(elem_ty, _) | ty::Slice(elem_ty) => self.is_managed_impl(elem_ty),
+                    ty::RawPtr(ty::TypeAndMut { ty, .. }) | ty::Ref(_, ty, _) => {
+                        self.is_managed_impl(ty)
+                    }
+                    ty::Closure(_, args) => args
+                        .as_closure()
+                        .upvar_tys()
+                        .iter()
+                        .any(|upvar_ty| self.is_managed_impl(upvar_ty)),
+                    ty::Coroutine(_, args, _) => args
+                        .as_coroutine()
+                        .upvar_tys()
+                        .iter()
+                        .chain([args.as_coroutine().witness()])
+                        .any(|upvar_ty| self.is_managed_impl(upvar_ty)),
+                    ty::CoroutineWitness(def_id, args) => {
+                        let mut seen_tys = FxHashSet::default();
+                        self.tcx
+                            .coroutine_hidden_types(def_id)
+                            .filter(|bty| seen_tys.insert(*bty))
+                            .map(|bty| bty.instantiate(self.tcx, args))
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .any(|bty| self.is_managed_impl(bty))
                     }
                     ty::Tuple(fields) => {
                         fields.iter().any(|field_ty| self.is_managed_impl(field_ty))
                     }
-                    ty::Slice(elem_ty) | ty::Array(elem_ty, _) => self.is_managed_impl(*elem_ty),
-                    ty::Adt(adt, args) => self.find_managed_field_impl(*adt, *args).is_some(),
                     _ => unreachable!("checking trivially unmanaged type in slow path"),
                 };
                 self.managed_seen.remove(&ty);
@@ -753,31 +767,28 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
     fn is_managed_self(&mut self, ty: Ty<'tcx>) -> ManagedSelf {
         fn is_unmanaged_fast(ty: Ty<'_>) -> bool {
             match ty.kind() {
-                ty::Int(_)
+                ty::Bool
+                | ty::Char
+                | ty::Int(_)
                 | ty::Uint(_)
                 | ty::Float(_)
-                | ty::Bool
-                | ty::Char
+                | ty::Foreign(_)
                 | ty::Str
-                | ty::Never
                 | ty::FnDef(..)
-                | ty::Error(_)
                 | ty::FnPtr(_)
-                | ty::Foreign(_) => true,
-                ty::Ref(_, ty, _) | ty::RawPtr(TypeAndMut { ty, .. }) => is_unmanaged_fast(*ty),
-                ty::Tuple(fields) => fields.iter().all(is_unmanaged_fast),
-                ty::Slice(elem_ty) | ty::Array(elem_ty, _) => is_unmanaged_fast(*elem_ty),
-                ty::Adt(adt, _) => adt.is_union(),
-                // TODO: determain whether these types could possible be `Managed`
-                ty::Bound(..)
-                | ty::Closure(..)
                 | ty::Dynamic(..)
-                | ty::Coroutine(..)
-                | ty::CoroutineWitness(..)
-                | ty::Infer(_)
-                | ty::Alias(..)
+                | ty::Never
+                | ty::Error(_) => true,
+                ty::Adt(adt, _) => adt.is_union(),
+                ty::Array(elem_ty, _) | ty::Slice(elem_ty) => is_unmanaged_fast(*elem_ty),
+                ty::RawPtr(TypeAndMut { ty, .. }) | ty::Ref(_, ty, _) => is_unmanaged_fast(*ty),
+                ty::Closure(..) | ty::Coroutine(..) | ty::CoroutineWitness(..) => false,
+                ty::Tuple(fields) => fields.iter().all(is_unmanaged_fast),
+                ty::Alias(..)
                 | ty::Param(_)
-                | ty::Placeholder(_) => {
+                | ty::Bound(..)
+                | ty::Placeholder(_)
+                | ty::Infer(_) => {
                     debug!("suspicious type, assuming unmanaged {:#?}", ty);
                     true
                 }
@@ -821,34 +832,6 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
             })
         }
     }
-
-    fn check_capture(&mut self, def_id: DefId, upvar_tys: &List<Ty<'tcx>>) {
-        if let Some((i, item_ty)) = upvar_tys
-            .into_iter()
-            .enumerate()
-            .find(|(_, item_ty)| self.is_managed_self(*item_ty).truth())
-        {
-            let span = self.tcx.def_span(def_id);
-            let value_ty = item_ty.to_string();
-            let (value_span, reference_span) = {
-                if let Some(local_def_id) = def_id.as_local() {
-                    let refs = self.tcx.closure_captures(local_def_id)[i];
-                    let path_span = refs.get_path_span(self.tcx);
-                    let root_span = self.tcx.hir().span(refs.get_root_variable());
-                    (Some(root_span), Some(path_span))
-                } else {
-                    (None, None)
-                }
-            };
-            self.tcx.sess.emit_err(ClosureCapturesManagedValue {
-                span,
-                value_ty,
-                value_span,
-                reference_span,
-                note: (),
-            });
-        }
-    }
 }
 
 impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
@@ -856,8 +839,8 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
         let ty = self.monomorphize(ty);
         self.super_ty(ty);
 
-        match *ty.kind() {
-            ty::Adt(adt, args) if !self.is_managed_self(ty).truth() => {
+        if let ty::Adt(adt, args) = *ty.kind() {
+            if self.is_managed_self(ty) != ManagedSelf::Yes {
                 if let Some(field) = self.find_managed_field(adt, args) {
                     let field_ty = field.ty(self.tcx, args).to_string();
                     let field_span = self.tcx.def_span(field.did);
@@ -876,13 +859,6 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                     }
                 }
             }
-            ty::Closure(def_id, args) => {
-                self.check_capture(def_id, args.as_closure().upvar_tys());
-            }
-            ty::Coroutine(def_id, args, ..) => {
-                self.check_capture(def_id, args.as_coroutine().upvar_tys());
-            }
-            _ => {}
         }
     }
 
