@@ -318,13 +318,18 @@ pub fn assert_matches_failed<T: fmt::Debug + ?Sized>(
 }
 
 /// Non-generic version of the above functions, to avoid code bloat.
+///
+/// NOTES FROM ROG DEVELOPER:
+///     The statement above is no longer true for ROG, since `dyn Trait` cannot
+///     hold `Managed` values, there is no choice but `impl Debug`. Code
+///     bloating is not a big deal for us.
 #[cfg_attr(not(feature = "panic_immediate_abort"), inline(never), cold)]
 #[cfg_attr(feature = "panic_immediate_abort", inline)]
 #[track_caller]
 fn assert_failed_inner(
     kind: AssertKind,
-    left: &dyn fmt::Debug,
-    right: &dyn fmt::Debug,
+    left: &(impl fmt::Debug + ?Sized),
+    right: &(impl fmt::Debug + ?Sized),
     args: Option<fmt::Arguments<'_>>,
 ) -> ! {
     let op = match kind {
