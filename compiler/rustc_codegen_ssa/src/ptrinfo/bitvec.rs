@@ -1,18 +1,17 @@
 use std::ops::BitOr;
 
-use rustc_target::abi::Size;
+use rustc_target::abi::{Align, Size};
 use smallvec::SmallVec;
 
 use super::Enum;
 
-/// First-byte encodes pointer info for simple types or `sizeof(type)` for
-/// more complex types:
+/// First-byte encodes pointer map type:
 ///     00ww_pppp   Types which contains at most 4 pointer slots and is pointer
 ///                 size aligned, it's size is encoded as `(ww + 1) * sizeof(pointer)`.
 ///                 `pppp` indicates which slot is a pointer. `pppp` == 0 is
 ///                 invalid in this encoding.
-///     1nnn_nnnn   Types with size `varint(nnn_nnnn) + 1` that cannot be encoded with
-///                 the first method. Right after this byte are all the components
+///     1nnn_nnnn   Types with `varint(nnn_nnnn) + 1` components that cannot be encoded
+///                 with the first method. Right after this field are all the components
 ///                 encoded back to back.
 ///
 /// Types that don't have any pointers encode to nothing.
@@ -25,14 +24,16 @@ use super::Enum;
 ///     001x_xxxx   Raw bitmap with 5 bits.
 ///     01xx_xxxx   Raw bitmap with 6 bits.
 ///     10xx_xxxx   Varint encoded number of repeating int bits minus one.
-///     110x_xxxx   Varint encoded number of repeating ptr bits minus one.
+///     110x_xxxx   Varint encoded number of repeating pointer bits minus one.
 ///     1110_xxxx   Varint encoded number of enum cases minus one.
-///     1111_xxxx   Varint encoded number of niche cases minus one.
+///     1111_xxxx   Varint encoded number of niche cases (not including the untagged
+///                 variant) minus one.
 ///
 /// Direct enums are encoded as follows:
 ///     Enum {
 ///         header          Identifier described as above (1110_xxxx).
-///         max_size        Varint encoded maximum size (in bytes) of this enum, minus one.
+///         max_size        Varint encoded size of the enum, in number of pointer slots
+///                         minus one.
 ///         tag_field       Encoded tag field, see below.
 ///         variants ...
 ///     }
@@ -44,8 +45,9 @@ use super::Enum;
 /// Niche enums are encoded as follows (almost the same as direct enum, but with an
 /// extra untagged variant):
 ///     Niche {
-///         header          Identifier described as above (1110_xxxx).
-///         max_size        Varint, maximum size (in bytes) of this enum, minus one.
+///         header          Identifier described as above (1111_xxxx).
+///         max_size        Varint encoded size of the niche enum, in number of pointer
+///                         slots minus one.
 ///         tag_field       Encoded tag field, same as direct enum.
 ///         variants ...
 ///         untagged_variant
@@ -53,15 +55,12 @@ use super::Enum;
 ///
 /// All variants are encoded as follows:
 ///     Variant {
-///         flags_and_tag   Encoded flags and discriminant value, see below.
-///         submap          Optional pointer map for this variant.
+///         discriminant?   Optional varint encoded discriminant value of this variant, the
+///                         untagged variant does not have this field.
+///         submap_size     Varint encoded size of the encoded submap, in bytes, 0 if the
+///                         submap does not exist.
+///         submap?         Optional pointer map for this variant.
 ///     }
-///
-///     `flags_and_tag` is encoded as `sudd_dddd`:
-///         `s..._....`     Set to 1 if it contains a submap, 0 otherwise.
-///         `.u.._....`     Set to 1 if this is the untagged variant, 0 otherwise.
-///         `..dd_dddd`     Varint encoded discriminant value of this variant, must be
-///                         `00_0000` for untagged variant.
 
 pub type BitmapData = SmallVec<[u8; 16]>;
 
@@ -194,20 +193,27 @@ impl CompressedBitVec {
         );
     }
 
+    pub fn add_submap(&mut self, mut submap: CompressedBitVec) {
+        if self.size != 0 {
+            self.commit();
+        }
+        if submap.size != 0 {
+            submap.commit();
+        }
+        self.emit_varint(0, 0, submap.bytes.len());
+        self.bytes.extend_from_slice(&submap.bytes);
+    }
+
     pub fn add_complex(&mut self, len: usize) {
-        assert!(len > 0, "Complex type with zero size");
+        assert!(len > 0, "Complex type with no components");
         self.emit_varint(1, 1, len - 1);
     }
 
-    pub fn add_enum_tag(&mut self, tag: Option<u128>, has_submap: bool) {
-        self.emit_varint(
-            ((has_submap as usize) << 1) | (tag.is_none() as usize),
-            2,
-            tag.unwrap_or(0),
-        );
+    pub fn add_enum_tag(&mut self, tag: u128) {
+        self.emit_varint(0, 0, tag);
     }
 
-    pub fn add_enum_header(&mut self, value: &Enum) {
+    pub fn add_enum_header(&mut self, value: &Enum, align: Align) {
         assert!(!value.variants.is_empty(), "Empty enum");
         assert_ne!(value.max_size, Size::ZERO, "Zero-sized enum");
         assert_ne!(value.tag_size, Size::ZERO, "Zero-sized tag field");
@@ -224,7 +230,8 @@ impl CompressedBitVec {
             self.emit_varint(0b1111, 4, value.variants.len() - 1);
         }
 
-        self.emit_varint(0, 0, value.max_size.bytes() - 1);
+        assert!(value.max_size.is_aligned(align), "Unaligned enum");
+        self.emit_varint(0, 0, value.max_size.bytes() / align.bytes() - 1);
         self.emit_varint(tag_log2 as usize, 3, value.tag_offs.bytes());
     }
 }

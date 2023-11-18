@@ -42,7 +42,8 @@ impl Enum {
         f.field("max_size", &self.max_size.bytes_usize())
             .field("tag_offs", &self.tag_offs.bytes_usize())
             .field("tag_size", &self.tag_size.bytes_usize())
-            .field("variants", &self.variants);
+            .field("variants", &self.variants)
+            .field("untagged_variant", &self.untagged_variant);
     }
 }
 
@@ -94,12 +95,6 @@ impl Debug for Slot {
     }
 }
 
-enum EnumTag {
-    None,
-    Tagged(u128),
-    Untagged,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PointerMap {
     pub size: Size,
@@ -131,7 +126,7 @@ impl PointerMap {
             self.compress();
             self.resizing();
             self.trimming(cx);
-            self.serialize_into(cx, &mut out, Size::ZERO, EnumTag::None);
+            self.serialize_into(cx, &mut out, Size::ZERO);
             out.finish()
         })
     }
@@ -143,17 +138,9 @@ impl PointerMap {
         cx: &Cx,
         out: &mut CompressedBitVec,
         mut offs: Size,
-        enum_tag: EnumTag,
     ) {
         let has_submap = self.has_pointers();
         assert!(has_submap || self.slots.is_empty(), "Untrimmed pointer map");
-
-        /* encode the enum tag, if any */
-        match enum_tag {
-            EnumTag::None => {}
-            EnumTag::Tagged(tag) => out.add_enum_tag(Some(tag), has_submap),
-            EnumTag::Untagged => out.add_enum_tag(None, has_submap),
-        }
 
         /* common case 1: type without pointers encodes into nothing */
         if !has_submap {
@@ -185,8 +172,8 @@ impl PointerMap {
             return;
         }
 
-        /* other more complex types */
-        let len = self.size.bytes_usize();
+        /* other more complex cases */
+        let len = self.slots.len();
         out.add_complex(len);
 
         for slot in self.slots {
@@ -206,14 +193,19 @@ impl PointerMap {
                     offs += size;
                 }
                 Slot::Enum(box value) => {
-                    out.add_enum_header(&value);
+                    out.add_enum_header(&value, ptr_align);
                     value.variants.into_iter().sorted_by_key(|(tag, _)| *tag).for_each(
                         |(tag, map)| {
-                            map.serialize_into(cx, out, offs, EnumTag::Tagged(tag));
+                            let mut buf = CompressedBitVec::default();
+                            map.serialize_into(cx, &mut buf, offs);
+                            out.add_enum_tag(tag);
+                            out.add_submap(buf);
                         },
                     );
                     if let Some(map) = value.untagged_variant {
-                        map.serialize_into(cx, out, offs, EnumTag::Untagged);
+                        let mut buf = CompressedBitVec::default();
+                        map.serialize_into(cx, &mut buf, offs);
+                        out.add_submap(buf);
                     }
                     offs += value.max_size;
                 }
