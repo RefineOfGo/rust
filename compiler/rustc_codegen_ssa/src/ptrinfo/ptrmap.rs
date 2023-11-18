@@ -193,7 +193,8 @@ impl PointerMap {
                     offs += size;
                 }
                 Slot::Enum(box value) => {
-                    out.add_enum_header(&value, ptr_align);
+                    assert!(value.max_size.is_aligned(ptr_align), "Unaligned enum size");
+                    out.add_enum_header(&value);
                     value.variants.into_iter().sorted_by_key(|(tag, _)| *tag).for_each(
                         |(tag, map)| {
                             let mut buf = CompressedBitVec::default();

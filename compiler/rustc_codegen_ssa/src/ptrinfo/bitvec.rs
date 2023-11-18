@@ -1,6 +1,6 @@
 use std::ops::BitOr;
 
-use rustc_target::abi::{Align, Size};
+use rustc_target::abi::Size;
 use smallvec::SmallVec;
 
 use super::Enum;
@@ -32,8 +32,6 @@ use super::Enum;
 /// Direct enums are encoded as follows:
 ///     Enum {
 ///         header          Identifier described as above (1110_xxxx).
-///         max_size        Varint encoded size of the enum, in number of pointer slots
-///                         minus one.
 ///         tag_field       Encoded tag field, see below.
 ///         variants ...
 ///     }
@@ -46,8 +44,6 @@ use super::Enum;
 /// extra untagged variant):
 ///     Niche {
 ///         header          Identifier described as above (1111_xxxx).
-///         max_size        Varint encoded size of the niche enum, in number of pointer
-///                         slots minus one.
 ///         tag_field       Encoded tag field, same as direct enum.
 ///         variants ...
 ///         untagged_variant
@@ -213,7 +209,7 @@ impl CompressedBitVec {
         self.emit_varint(0, 0, tag);
     }
 
-    pub fn add_enum_header(&mut self, value: &Enum, align: Align) {
+    pub fn add_enum_header(&mut self, value: &Enum) {
         assert!(!value.variants.is_empty(), "Empty enum");
         assert_ne!(value.max_size, Size::ZERO, "Zero-sized enum");
         assert_ne!(value.tag_size, Size::ZERO, "Zero-sized tag field");
@@ -224,14 +220,8 @@ impl CompressedBitVec {
         let tag_log2 = tag_size.trailing_zeros();
         assert!(tag_log2 <= 4, "Oversized tag field");
 
-        if value.untagged_variant.is_none() {
-            self.emit_varint(0b1110, 4, value.variants.len() - 1);
-        } else {
-            self.emit_varint(0b1111, 4, value.variants.len() - 1);
-        }
-
-        assert!(value.max_size.is_aligned(align), "Unaligned enum");
-        self.emit_varint(0, 0, value.max_size.bytes() / align.bytes() - 1);
+        let niche_bit = value.untagged_variant.is_some() as usize;
+        self.emit_varint(0b1110 | niche_bit, 4, value.variants.len() - 1);
         self.emit_varint(tag_log2 as usize, 3, value.tag_offs.bytes());
     }
 }
