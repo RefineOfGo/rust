@@ -142,7 +142,7 @@ impl PointerMap {
         let has_submap = self.has_pointers();
         assert!(has_submap || self.slots.is_empty(), "Untrimmed pointer map");
 
-        /* common case 1: type without pointers encodes into nothing */
+        /* simple case: type without pointers encode to nothing */
         if !has_submap {
             return;
         }
@@ -150,32 +150,7 @@ impl PointerMap {
         let ptr_size = cx.data_layout().pointer_size;
         let ptr_align = cx.data_layout().pointer_align.abi;
 
-        /* common case 2: static types that with at most 4 pointer slots and is
-         * pointer-size aligned encodes into a single byte */
-        if self.size <= ptr_size * 4 && self.size.is_aligned(ptr_align) && self.is_static() {
-            assert!(self.slots.len() <= 4, "Uncompressed pointer map");
-            let unit = ptr_size.bytes_usize();
-            let slots: SmallVec<[bool; 4]> = self
-                .slots
-                .into_iter()
-                .map(|slot| -> SmallVec<[bool; 4]> {
-                    match slot {
-                        Slot::Void(_) => bug!("Illegal pointer map with void slots: {:?}", slot),
-                        Slot::Ptr(rep) => smallvec![true; rep],
-                        Slot::Int(size) => smallvec![false; size.bytes_usize() / unit],
-                        Slot::Enum(_) => unreachable!(),
-                    }
-                })
-                .flatten()
-                .collect();
-            out.add_simple(&slots);
-            return;
-        }
-
-        /* other more complex cases */
-        let len = self.slots.len();
-        out.add_complex(len);
-
+        /* complex types */
         for slot in self.slots {
             match slot {
                 Slot::Void(_) => {

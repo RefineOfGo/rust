@@ -1,22 +1,13 @@
-use std::ops::BitOr;
-
 use rustc_target::abi::Size;
 use smallvec::SmallVec;
 
 use super::Enum;
 
-/// First-byte encodes pointer map type:
-///     00ww_pppp   Types which contains at most 4 pointer slots and is pointer
-///                 size aligned, it's size is encoded as `(ww + 1) * sizeof(pointer)`.
-///                 `pppp` indicates which slot is a pointer. `pppp` == 0 is
-///                 invalid in this encoding.
-///     1nnn_nnnn   Types with `varint(nnn_nnnn) + 1` components that cannot be encoded
-///                 with the first method. Right after this field are all the components
-///                 encoded back to back.
-///
-/// Types that don't have any pointers encode to nothing.
+/// Pointer maps are encoded as components back to back, types that don't have any
+/// pointers encode to nothing.
 ///
 /// Encoding for each component:
+///
 ///     0000_001x   Raw bitmap with a single bit.
 ///     0000_01xx   Raw bitmap with 2 bits.
 ///     0000_1xxx   Raw bitmap with 3 bits.
@@ -30,6 +21,7 @@ use super::Enum;
 ///                 variant) minus one.
 ///
 /// Direct enums are encoded as follows:
+///
 ///     Enum {
 ///         header          Identifier described as above (1110_xxxx).
 ///         tag_field       Encoded tag field, see below.
@@ -42,6 +34,7 @@ use super::Enum;
 ///
 /// Niche enums are encoded as follows (almost the same as direct enum, but with an
 /// extra untagged variant):
+///
 ///     Niche {
 ///         header          Identifier described as above (1111_xxxx).
 ///         tag_field       Encoded tag field, same as direct enum.
@@ -50,6 +43,7 @@ use super::Enum;
 ///     }
 ///
 /// All variants are encoded as follows:
+///
 ///     Variant {
 ///         discriminant?   Optional varint encoded discriminant value of this variant, the
 ///                         untagged variant does not have this field.
@@ -57,7 +51,7 @@ use super::Enum;
 ///                         submap does not exist.
 ///         submap?         Optional pointer map for this variant.
 ///     }
-
+///
 pub type BitmapData = SmallVec<[u8; 16]>;
 
 #[derive(Clone, Debug, Default)]
@@ -174,21 +168,6 @@ impl CompressedBitVec {
         self.emit_rep(1, rep);
     }
 
-    pub fn add_simple(&mut self, map: &[bool]) {
-        assert!(map.len() > 0, "Simple type with no slots");
-        assert!(map.len() <= 4, "Too many slots for a simple type");
-        assert!(map.iter().any(|v| *v), "Simple type without pointer slots");
-        if self.size != 0 {
-            self.commit();
-        }
-        self.bytes.push(
-            map.iter()
-                .enumerate()
-                .map(|(i, b)| (*b as usize) << i)
-                .fold((map.len() - 1) << 4, usize::bitor) as u8,
-        );
-    }
-
     pub fn add_submap(&mut self, mut submap: CompressedBitVec) {
         if self.size != 0 {
             self.commit();
@@ -198,11 +177,6 @@ impl CompressedBitVec {
         }
         self.emit_varint(0, 0, submap.bytes.len());
         self.bytes.extend_from_slice(&submap.bytes);
-    }
-
-    pub fn add_complex(&mut self, len: usize) {
-        assert!(len > 0, "Complex type with no components");
-        self.emit_varint(1, 1, len - 1);
     }
 
     pub fn add_enum_tag(&mut self, tag: u128) {
