@@ -1,201 +1,207 @@
-use rustc_target::abi::Size;
-use smallvec::SmallVec;
+use std::{
+    fmt::{Debug, Formatter, Result as FmtResult},
+    ops::RangeInclusive,
+};
 
-use super::Enum;
+use smallvec::{smallvec, SmallVec};
 
-/// Pointer maps are encoded as components back to back, types that don't have any
-/// pointers encode to nothing.
-///
-/// Encoding for each component:
-///
-///     0000_001x   Raw bitmap with a single bit.
-///     0000_01xx   Raw bitmap with 2 bits.
-///     0000_1xxx   Raw bitmap with 3 bits.
-///     0001_xxxx   Raw bitmap with 4 bits.
-///     001x_xxxx   Raw bitmap with 5 bits.
-///     01xx_xxxx   Raw bitmap with 6 bits.
-///     10xx_xxxx   Varint encoded number of repeating int bits minus one.
-///     110x_xxxx   Varint encoded number of repeating pointer bits minus one.
-///     1110_xxxx   Varint encoded number of enum cases minus one.
-///     1111_xxxx   Varint encoded number of niche cases (not including the untagged
-///                 variant) minus one.
-///
-/// Direct enums are encoded as follows:
-///
-///     Enum {
-///         header          Identifier described as above (1110_xxxx).
-///         tag_field       Encoded tag field, see below.
-///         variants ...
-///     }
-///
-///     `tag_field` is encoded as `bbbx_xxxx`:
-///         `bbb._....`     log2(size of the tag field) within range 0..=4.
-///         `...x_xxxx`     Varint encoded offset to the tag field.
-///
-/// Niche enums are encoded as follows (almost the same as direct enum, but with an
-/// extra untagged variant):
-///
-///     Niche {
-///         header          Identifier described as above (1111_xxxx).
-///         tag_field       Encoded tag field, same as direct enum.
-///         variants ...
-///         untagged_variant
-///     }
-///
-/// All variants are encoded as follows:
-///
-///     Variant {
-///         discriminant?   Optional varint encoded discriminant value of this variant, the
-///                         untagged variant does not have this field.
-///         submap_size     Varint encoded size of the encoded submap, in bytes, 0 if the
-///                         submap does not exist.
-///         submap?         Optional pointer map for this variant.
-///     }
-///
 pub type BitmapData = SmallVec<[u8; 16]>;
 
-#[derive(Clone, Debug, Default)]
-pub struct CompressedBitVec {
-    buf: u128,
+#[derive(Clone, PartialEq, Eq)]
+pub struct BitVec {
     size: usize,
-    bytes: BitmapData,
+    bits: BitmapData,
 }
 
-impl CompressedBitVec {
-    fn commit(&mut self) {
-        let mut size = self.size;
-        self.size = 0;
-        assert!(size <= 128, "Bit buffer overflow");
+impl BitVec {
+    pub fn new(size: usize) -> Self {
+        let bits = smallvec![0; (size + 7) / 8 + 1];
+        Self { size, bits }
+    }
+}
 
-        /* right align the buffer */
-        if size != 128 {
-            self.buf >>= 128 - size;
+impl BitVec {
+    pub fn set(&mut self, index: usize) {
+        assert!(index < self.size);
+        self.bits[index / 8] |= 1 << (index % 8);
+    }
+
+    pub fn merge(&mut self, start: usize, other: BitVec) -> Option<RangeInclusive<usize>> {
+        assert!(start + other.size <= self.size);
+        let idx = start / 8;
+        let offs = start % 8;
+
+        /* check for alignment */
+        if offs == 0 {
+            self.merge_aligned(idx, other)
+        } else {
+            self.merge_unaligned(idx, offs, other)
         }
+    }
+}
 
-        /* encode the last few bits with raw bitmap if possible */
-        while size > 6 {
-            let trailing_one = (self.buf.trailing_ones() as usize).min(size);
-            let trailing_zero = (self.buf.trailing_zeros() as usize).min(size);
+impl BitVec {
+    #[inline(always)]
+    fn bytes(&self) -> &[u8] {
+        &self.bits[..self.data_len()]
+    }
 
-            /* lots of ones, encode them as "varint lots of ptr bits" */
-            if trailing_one > 6 {
-                self.emit_varint(0b110, 3, trailing_one - 1);
-                self.buf >>= trailing_one;
-                size -= trailing_one;
+    #[inline(always)]
+    fn indexed_bytes(&self) -> impl Iterator<Item = (usize, u8)> + '_ {
+        self.bits[..self.data_len()].iter().copied().enumerate()
+    }
+}
+
+impl BitVec {
+    fn merge_aligned(&mut self, idx: usize, other: BitVec) -> Option<RangeInclusive<usize>> {
+        let mut low = usize::MAX;
+        let mut high = 0;
+
+        /* scan & merge every bit, word by word */
+        for (i, v) in other.indexed_bytes() {
+            let data = self.bits[idx + i];
+            let diff = data ^ v;
+
+            /* they are the same */
+            if diff == 0 {
                 continue;
             }
 
-            /* lots of zeros, encode them as "varint lots of int bits" */
-            if trailing_zero > 6 {
-                self.emit_varint(0b10, 2, trailing_zero - 1);
-                self.buf >>= trailing_zero;
-                size -= trailing_zero;
+            /* update bits */
+            low = low.min((idx + i) * 8 + diff.trailing_zeros() as usize);
+            high = high.max((idx + i) * 8 + (7 - diff.leading_zeros()) as usize);
+            self.bits[idx + i] |= v;
+        }
+
+        /* create range if valid */
+        if low <= high {
+            Some(low..=high)
+        } else {
+            None
+        }
+    }
+
+    fn merge_unaligned(
+        &mut self,
+        idx: usize,
+        offs: usize,
+        other: BitVec,
+    ) -> Option<RangeInclusive<usize>> {
+        let mut low = usize::MAX;
+        let mut high = 0;
+
+        /* scan & merge every bit */
+        for (i, v) in other.indexed_bytes() {
+            let lsb = v << offs;
+            let msb = v >> (8 - offs);
+            let lsd = lsb ^ (self.bits[idx + i] & !((1 << offs) - 1));
+            let msd = msb ^ (self.bits[idx + i + 1] & ((1 << (8 - offs)) - 1));
+
+            /* merging same bits */
+            if lsd == 0 && msd == 0 {
                 continue;
             }
 
-            /* mixed ones and zeros, encode as sequence of raw bitmaps */
-            self.bytes.push(0x40 | ((self.buf & 0x3f) as u8));
-            self.buf >>= 6;
-            size -= 6;
+            /* merge bits by logical or */
+            self.bits[idx + i] |= lsb;
+            self.bits[idx + i + 1] |= msb;
+
+            /* difference lower bounds */
+            low = low.min(if lsd != 0 {
+                (idx + i) * 8 + lsd.trailing_zeros() as usize
+            } else {
+                (idx + i + 1) * 8 + msd.trailing_zeros() as usize
+            });
+
+            /* difference upper bounds */
+            high = high.max(if msd == 0 {
+                (idx + i) * 8 + (7 - lsd.leading_zeros()) as usize
+            } else {
+                (idx + i + 1) * 8 + (7 - msd.leading_zeros()) as usize
+            });
         }
 
-        /* the remaining bits */
-        if size != 0 {
-            assert!(self.buf < 0x40, "Pointer map size desynced");
-            self.bytes.push(((1 << size) | (self.buf & ((1 << size) - 1))) as u8);
+        /* create range if valid */
+        if low <= high {
+            Some(low..=high)
+        } else {
+            None
         }
-    }
-
-    fn emit_rep(&mut self, bit: u8, mut rep: usize) {
-        assert!((bit & 0xfe) == 0, "Invalid bit value");
-        while rep > 0 {
-            let len = rep.min(128 - self.size);
-            self.buf >>= len;
-
-            if bit != 0 {
-                self.buf |= !((1 << (128 - len)) - 1);
-            }
-
-            rep -= len;
-            self.size += len;
-
-            if self.size >= 128 {
-                self.commit();
-            }
-        }
-    }
-
-    fn emit_varint<T: TryInto<u128>>(&mut self, tag: usize, mut tag_size: usize, value: T) {
-        assert!(tag_size < 7, "Invalid prefix length");
-        if self.size != 0 {
-            self.commit();
-        }
-
-        let mut tag = tag as u128;
-        let mut value: u128 = value.try_into().ok().unwrap();
-
-        while value >= 1 << (7 - tag_size) {
-            let v_tag = tag << (8 - tag_size);
-            let v_flag = 1u128 << (7 - tag_size);
-
-            self.bytes.push((v_tag | v_flag | (value & (v_flag - 1))) as u8);
-            value >>= 7 - tag_size;
-
-            tag_size = 0;
-            tag = 0;
-        }
-
-        let v_tag = tag << (8 - tag_size);
-        self.bytes.push((v_tag | value) as u8);
     }
 }
 
-impl CompressedBitVec {
-    pub fn finish(mut self) -> BitmapData {
-        if self.size != 0 {
-            self.commit();
+impl BitVec {
+    pub fn encode_into(&self, buf: &mut BitmapData) {
+        let mut offs = 0;
+        let mut data = self.size - 1;
+
+        /* encode length as varint */
+        while data >= 0x80 {
+            buf[offs] = 0x80 | (data & 0x7f) as u8;
+            data >>= 7;
+            offs += 1;
         }
-        self.bytes
+
+        /* last bits */
+        buf[offs] = data as u8;
+        offs += 1;
+
+        /* actual bitmap data */
+        let src = self.bytes();
+        let end = self.encoded_len();
+
+        /* copy bitmap data */
+        assert!(offs == self.prefix_len());
+        buf[offs..end].copy_from_slice(src);
     }
 }
 
-impl CompressedBitVec {
-    pub fn add_int(&mut self, rep: usize) {
-        self.emit_rep(0, rep);
+impl BitVec {
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.bits.iter().all(|v| *v == 0)
     }
 
-    pub fn add_ptr(&mut self, rep: usize) {
-        self.emit_rep(1, rep);
+    #[inline(always)]
+    pub fn bits_len(&self) -> usize {
+        self.size
     }
 
-    pub fn add_submap(&mut self, mut submap: CompressedBitVec) {
-        if self.size != 0 {
-            self.commit();
+    #[inline(always)]
+    pub fn data_len(&self) -> usize {
+        (self.size + 7) / 8
+    }
+
+    #[inline(always)]
+    pub fn prefix_len(&self) -> usize {
+        (64 - self.size.leading_zeros() as usize + 6) / 7
+    }
+
+    #[inline(always)]
+    pub fn encoded_len(&self) -> usize {
+        self.data_len() + self.prefix_len()
+    }
+}
+
+impl Debug for BitVec {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        if self.size == 0 {
+            write!(f, "BitVec(0) {{}}")
+        } else {
+            write!(f, "BitVec({}) {{ ", self.size)
+                .and_then(|_| {
+                    (0..self.size)
+                        .rev()
+                        .map(|i| (i, self.bits[i / 8] & (1 << (i % 8)) != 0))
+                        .try_for_each(|(i, b)| {
+                            if i % 8 != 7 || i == self.size - 1 {
+                                write!(f, "{}", b as u8)
+                            } else {
+                                write!(f, "_{}", b as u8)
+                            }
+                        })
+                })
+                .and_then(|_| write!(f, " }}"))
         }
-        if submap.size != 0 {
-            submap.commit();
-        }
-        self.emit_varint(0, 0, submap.bytes.len());
-        self.bytes.extend_from_slice(&submap.bytes);
-    }
-
-    pub fn add_enum_tag(&mut self, tag: u128) {
-        self.emit_varint(0, 0, tag);
-    }
-
-    pub fn add_enum_header(&mut self, value: &Enum) {
-        assert!(!value.variants.is_empty(), "Empty enum");
-        assert_ne!(value.max_size, Size::ZERO, "Zero-sized enum");
-        assert_ne!(value.tag_size, Size::ZERO, "Zero-sized tag field");
-
-        let tag_size = value.tag_size.bytes();
-        assert!(tag_size.is_power_of_two(), "Tag size is not a power of two");
-
-        let tag_log2 = tag_size.trailing_zeros();
-        assert!(tag_log2 <= 4, "Oversized tag field");
-
-        let niche_bit = value.untagged_variant.is_some() as usize;
-        self.emit_varint(0b1110 | niche_bit, 4, value.variants.len() - 1);
-        self.emit_varint(tag_log2 as usize, 3, value.tag_offs.bytes());
     }
 }

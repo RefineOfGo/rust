@@ -107,7 +107,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
             sym::pointer_map_of => {
                 let layout = bx.layout_of(fn_args.type_at(0));
-                let ptrmap = PointerMap::resolve(bx.cx(), layout, None).encode(bx.cx());
+                let ptrmap = PointerMap::resolve(bx.cx(), layout, None).encode();
                 let alloc = bx.tcx().mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(
                     ptrmap.as_slice(),
                 ));
