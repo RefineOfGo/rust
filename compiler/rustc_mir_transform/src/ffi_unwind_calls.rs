@@ -37,7 +37,7 @@ fn abi_can_unwind(abi: Abi) -> bool {
         | RustIntrinsic
         | PlatformIntrinsic
         | Unadjusted => false,
-        Rust | RustCall | RustCold => true,
+        Rust | RustCall | RustCold | RogCold => true,
     }
 }
 
@@ -81,7 +81,7 @@ fn has_ffi_unwind_calls(tcx: TyCtxt<'_>, local_def_id: LocalDefId) -> bool {
         let sig = ty.fn_sig(tcx);
 
         // Rust calls cannot themselves create foreign unwinds.
-        if let Abi::Rust | Abi::RustCall | Abi::RustCold = sig.abi() {
+        if let Abi::Rust | Abi::RustCall | Abi::RustCold | Abi::RogCold = sig.abi() {
             continue;
         };
 

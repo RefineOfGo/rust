@@ -9,7 +9,7 @@ static mut rog_gcwb_switch: u32 = 0;
 #[no_split]
 #[no_mangle]
 #[linkage = "linkonce"]
-extern "rust-cold" fn rog_write_barrier(_slot: *mut usize, _ptr: usize) {
+extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
     crate::intrinsics::abort();
 }
 
@@ -19,17 +19,17 @@ extern "rust-cold" fn rog_write_barrier(_slot: *mut usize, _ptr: usize) {
 #[no_split]
 #[no_mangle]
 #[linkage = "linkonce"]
-extern "rust-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
+extern "rog-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
     crate::intrinsics::abort();
 }
 
 /// Prevent compiler from removing it as dead-code.
 #[used]
-static _X: extern "rust-cold" fn(*mut usize, usize) = rog_write_barrier;
+static _X: extern "rog-cold" fn(usize, usize) = rog_write_barrier;
 
 /// Prevent compiler from removing it as dead-code.
 #[used]
-static _Y: extern "rust-cold" fn(usize, usize, usize) = rog_bulk_write_barrier;
+static _Y: extern "rog-cold" fn(usize, usize, usize) = rog_bulk_write_barrier;
 
 /// Enable ROG write barrier.
 #[no_gcwb]

@@ -237,6 +237,10 @@ fn conv_from_spec_abi(tcx: TyCtxt<'_>, abi: SpecAbi) -> Conv {
         // even SIMD registers, which is generally not a good trade-off.
         RustCold => Conv::PreserveMost,
 
+        // ROG specifically requires `Conv::Cold` for things like stack check
+        // prologue or GC write barriers
+        RogCold => Conv::Cold,
+
         // It's the ABI's job to select this, not ours.
         System { .. } => bug!("system abi should be selected elsewhere"),
         EfiApi => bug!("eficall abi should be selected elsewhere"),

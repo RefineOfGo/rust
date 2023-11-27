@@ -60,13 +60,13 @@ use crate::arch::asm;
 #[no_split]
 #[no_mangle]
 #[linkage = "linkonce"]
-extern "rust-cold" fn rog_morestack_abi() {
+extern "rog-cold" fn rog_morestack_abi() {
     crate::intrinsics::abort();
 }
 
 /// Prevent compiler from removing it as dead-code.
 #[used]
-static _X: extern "rust-cold" fn() = rog_morestack_abi;
+static _X: extern "rog-cold" fn() = rog_morestack_abi;
 
 /// Get the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
