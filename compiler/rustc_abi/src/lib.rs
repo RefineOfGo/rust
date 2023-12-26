@@ -733,6 +733,11 @@ impl Align {
     }
 
     #[inline]
+    pub fn bytes_usize(self) -> usize {
+        1 << self.pow2
+    }
+
+    #[inline]
     pub fn bits(self) -> u64 {
         self.bytes() * 8
     }
