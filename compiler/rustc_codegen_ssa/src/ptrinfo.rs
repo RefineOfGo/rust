@@ -34,6 +34,11 @@ impl PointerMap {
 
 impl PointerMap {
     pub fn encode(self) -> Vec<u8> {
+        if self.size == 0 {
+            return Vec::new();
+        }
+
+        /* allocate space for encoded bitmap */
         let mut len = self.size - 1;
         let mut ret = Vec::with_capacity(self.bits.len() * 2 + 1);
 
@@ -82,14 +87,12 @@ impl PointerMap {
 
 impl PointerMap {
     fn set_zero(&mut self, idx: usize, len: usize) {
-        (idx..idx + len).for_each(|i| self.mask[i] |= self.bits[i]);
+        (idx..idx + len).for_each(|i| self.mask[i] |= self.bits[i] & self.used[i]);
         self.used[idx..idx + len].fill(0xff);
-        self.bits[idx..idx + len].fill(0);
     }
 
     fn set_bits(&mut self, idx: usize, mask: u8, bit: i8) {
-        self.mask[idx] |= (self.bits[idx] ^ (-bit as u8)) & mask;
-        self.bits[idx] &= !mask;
+        self.mask[idx] |= (self.bits[idx] ^ (-bit as u8)) & self.used[idx] & mask;
         self.bits[idx] |= (-bit as u8) & mask;
         self.used[idx] |= mask;
     }
@@ -166,44 +169,39 @@ impl PointerMap {
         offset: Size,
         layout: TyAndLayout<'tcx>,
     ) {
-        match layout.abi {
-            Abi::Uninhabited => self.set_noptr(cx, offset, layout.size),
-            Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
-            Abi::ScalarPair(a, b) => {
-                self.set_scalar(cx, offset, a);
-                self.set_scalar(cx, offset + a.size(cx).align_to(b.align(cx).abi), b);
-            }
-            Abi::Vector { element, count } => {
-                let size = element.size(cx);
-                let align = element.align(cx).abi;
+        match layout.fields {
+            FieldsShape::Primitive => match layout.abi {
+                Abi::Uninhabited => self.set_noptr(cx, offset, layout.size),
+                Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
+                Abi::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
+                Abi::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
+                Abi::Aggregate { .. } => unreachable!("conflict: Primitive & Aggregate"),
+            },
+            FieldsShape::Union(_) => self.set_noptr(cx, offset, layout.size),
+            FieldsShape::Array { count, .. } => {
+                let elem = layout.field(cx, 0);
+                let item_size = elem.size.align_to(elem.align.abi);
                 for i in 0..count {
-                    self.set_scalar(cx, offset + (size * i).align_to(align), element)
+                    self.set_layout(cx, offset + item_size * i, elem);
                 }
             }
-            Abi::Aggregate { .. } => match layout.fields {
-                // Treat unions as opaque data, as described above.
-                FieldsShape::Primitive | FieldsShape::Union(_) => {
-                    self.set_noptr(cx, offset, layout.size);
-                }
-                FieldsShape::Array { count, .. } => {
-                    let elem = layout.field(cx, 0);
-                    for i in 0..count {
-                        self.set_layout(cx, offset + elem.size * i, elem);
+            FieldsShape::Arbitrary { .. } => match layout.variants {
+                Variants::Single { .. } => {
+                    for i in layout.fields.index_by_increasing_offset() {
+                        let offs = offset + layout.fields.offset(i);
+                        self.set_layout(cx, offs, layout.field(cx, i));
                     }
                 }
-                FieldsShape::Arbitrary { .. } => match layout.variants {
-                    Variants::Single { .. } => {
-                        for i in layout.fields.index_by_increasing_offset() {
-                            let offs = offset + layout.fields.offset(i);
-                            self.set_layout(cx, offs, layout.field(cx, i));
-                        }
+                Variants::Multiple { ref variants, .. } => {
+                    let mut min_size = Size::from_bytes(u64::MAX);
+                    for i in variants.indices() {
+                        let variant = layout.for_variant(cx, i);
+                        min_size = min_size.min(variant.size);
+                        self.set_layout(cx, offset, variant);
                     }
-                    Variants::Multiple { ref variants, .. } => {
-                        for i in variants.indices() {
-                            self.set_layout(cx, offset, layout.for_variant(cx, i));
-                        }
-                    }
-                },
+                    assert!(min_size <= layout.size);
+                    self.set_noptr(cx, offset + min_size, layout.size - min_size);
+                }
             },
         }
     }
