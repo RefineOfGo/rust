@@ -2,10 +2,10 @@ use super::place::PlaceRef;
 use super::{FunctionCx, LocalRef};
 
 use crate::base;
+use crate::ptrinfo;
 use crate::size_of_val;
 use crate::traits::*;
 use crate::MemFlags;
-use crate::{base, ptrinfo};
 
 use rustc_middle::mir::interpret::{alloc_range, Pointer, Scalar};
 use rustc_middle::mir::{self, ConstValue};

@@ -1086,7 +1086,7 @@ where
 
 fn check_mono_items(tcx: TyCtxt<'_>, (): ()) {
     collector::collect_crate_mono_items(tcx, MonoItemCollectionMode::Eager);
-    tcx.sess.abort_if_errors();
+    tcx.dcx().abort_if_errors();
 }
 
 fn collect_and_partition_mono_items(tcx: TyCtxt<'_>, (): ()) -> (&DefIdSet, &[CodegenUnit<'_>]) {

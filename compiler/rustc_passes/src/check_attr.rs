@@ -1745,7 +1745,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                 );
             }
             _ => {
-                self.tcx.sess.emit_err(errors::NoGCWB { span });
+                self.tcx.dcx().emit_err(errors::NoGCWB { span });
             }
         }
     }
@@ -1773,7 +1773,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                 );
             }
             _ => {
-                self.tcx.sess.emit_err(errors::NoGCWB { span });
+                self.tcx.dcx().emit_err(errors::NoGCWB { span });
             }
         }
     }

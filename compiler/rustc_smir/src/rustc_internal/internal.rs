@@ -438,6 +438,7 @@ impl<'tcx> RustcInternal<'tcx> for Abi {
             Abi::RustCold => rustc_target::spec::abi::Abi::RustCold,
             Abi::RiscvInterruptM => rustc_target::spec::abi::Abi::RiscvInterruptM,
             Abi::RiscvInterruptS => rustc_target::spec::abi::Abi::RiscvInterruptS,
+            Abi::RogCold => rustc_target::spec::abi::Abi::RogCold,
         }
     }
 }

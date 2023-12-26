@@ -845,13 +845,13 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                     let field_ty = field.ty(self.tcx, args).to_string();
                     let field_span = self.tcx.def_span(field.did);
                     if adt.is_union() {
-                        self.tcx.sess.emit_err(ManagedUnionField {
+                        self.tcx.dcx().emit_err(ManagedUnionField {
                             field_span,
                             field_ty,
                             note: (),
                         });
                     } else {
-                        self.tcx.sess.emit_err(ManagedFieldInUnmanagedAdt {
+                        self.tcx.dcx().emit_err(ManagedFieldInUnmanagedAdt {
                             field_span,
                             field_ty,
                             note: (),
@@ -889,7 +889,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                     || (target_ty.is_dyn_star() && !source_ty.is_dyn_star())
                 {
                     if self.is_managed(source_ty) {
-                        self.tcx.sess.emit_err(DynTraitPointsToManagedValue {
+                        self.tcx.dcx().emit_err(DynTraitPointsToManagedValue {
                             span,
                             value_ty: source_ty.to_string(),
                             target_ty: target_ty.to_string(),
