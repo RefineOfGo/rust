@@ -1,14 +1,13 @@
-use std::fmt::Debug;
+use std::{cell::RefMut, fmt::Debug};
 
 use rustc_middle::ty::layout::TyAndLayout;
-use rustc_target::abi::{Abi, FieldsShape, Primitive, Scalar, Size, VariantIdx, Variants};
+use rustc_target::abi::{Abi, FieldsShape, Primitive, Scalar, Size, Variants};
 use smallvec::{smallvec, SmallVec};
 
 use crate::traits::CodegenMethods;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PointerMap {
-    size: usize,
     used: SmallVec<[u8; 16]>,
     bits: SmallVec<[u8; 16]>,
     mask: SmallVec<[u8; 16]>,
@@ -17,10 +16,9 @@ pub struct PointerMap {
 impl PointerMap {
     fn new(size: usize) -> Self {
         Self {
-            size,
-            used: smallvec![0; Self::bytes(size)],
-            bits: smallvec![0; Self::bytes(size)],
-            mask: smallvec![0; Self::bytes(size)],
+            used: smallvec![0; (size + 7) / 8],
+            bits: smallvec![0; (size + 7) / 8],
+            mask: smallvec![0; (size + 7) / 8],
         }
     }
 }
@@ -33,14 +31,14 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn encode(self) -> Vec<u8> {
-        if self.size == 0 {
+    pub fn encode(&self) -> Vec<u8> {
+        let size = self.bits.iter().rposition(|v| *v != 0).map(|n| n + 1).unwrap_or(0);
+        let bits = size * (u8::BITS as usize);
+
+        /* empty bitmap */
+        if size == 0 {
             return Vec::new();
         }
-
-        /* allocate space for encoded bitmap */
-        let mut len = self.size - 1;
-        let mut ret = Vec::with_capacity(self.bits.len() * 2 + 1);
 
         /* sanity check */
         assert!(
@@ -52,36 +50,28 @@ impl PointerMap {
             "found bits within unused area"
         );
 
+        /* allocate space for encoded bitmap */
+        let mut len = bits - self.bits[size - 1].leading_zeros() as usize - 1;
+        let mut ret = Vec::with_capacity(size * 2 + 1);
+
         /* encode length as varint */
         while len >= 0x80 {
             ret.push(0x80 | (len & 0x7f) as u8);
             len >>= 7;
         }
 
-        /* last bits */
+        /* add the actual bitmap */
         ret.push(len as u8);
-        ret.extend_from_slice(&self.bits);
+        ret.extend_from_slice(&self.bits[..size]);
 
         /* check if the encoding is exact */
-        if self.mask.iter().all(|v| *v == 0) {
+        if self.mask[..size].iter().all(|v| *v == 0) {
             return ret;
         }
 
         /* add the inexact map if any */
-        ret.extend_from_slice(&self.mask);
+        ret.extend_from_slice(&self.mask[..size]);
         ret
-    }
-}
-
-impl PointerMap {
-    #[inline(always)]
-    const fn bytes(bits: usize) -> usize {
-        (bits + 7) / 8
-    }
-
-    #[inline(always)]
-    fn index<'tcx, Cx: CodegenMethods<'tcx>>(cx: &Cx, offset: Size) -> usize {
-        offset.bytes_usize() / cx.data_layout().pointer_align.abi.bytes_usize()
     }
 }
 
@@ -99,7 +89,7 @@ impl PointerMap {
 
     fn set_noptr<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx, offset: Size, size: Size) {
         let start = offset.bytes_usize();
-        let align = cx.data_layout().pointer_align.abi.bytes_usize();
+        let align = cx.data_layout().pointer_size.bytes_usize();
 
         /* empty layout */
         if size == Size::ZERO {
@@ -156,7 +146,7 @@ impl PointerMap {
             Scalar::Initialized { value: Primitive::Pointer(_), .. }
                 if offset.is_aligned(cx.data_layout().pointer_align.abi) =>
             {
-                let pos = Self::index(cx, offset);
+                let pos = offset.bytes_usize() / cx.data_layout().pointer_size.bytes_usize();
                 self.set_bits(pos / 8, 1 << (pos % 8), 1);
             }
             _ => self.set_noptr(cx, offset, scalar.size(cx)),
@@ -208,26 +198,19 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn resolve<'tcx, Cx: CodegenMethods<'tcx>>(
-        cx: &Cx,
+    pub fn resolve<'cx, 'tcx: 'cx, Cx: CodegenMethods<'tcx>>(
+        cx: &'cx Cx,
         layout: TyAndLayout<'tcx>,
-        variant_idx: Option<VariantIdx>,
-    ) -> Self {
-        let ty = layout.ty;
-        let size = layout.size;
-        if let Some(map) = cx.get_pointer_map(ty, variant_idx) {
-            return map;
-        }
-        let layout = match variant_idx {
-            Some(idx) => layout.for_variant(cx, idx),
-            None => layout,
-        };
-        let align = cx.data_layout().pointer_align.abi;
-        let count = size.align_to(align).bytes_usize() / align.bytes_usize();
-        let mut ret = Self::new(count);
-        ret.set_layout(cx, Size::ZERO, layout);
-        cx.add_pointer_map(ty, variant_idx, ret.clone());
-        ret
+    ) -> RefMut<'cx, Self> {
+        RefMut::map(cx.pointer_maps().borrow_mut(), |m| {
+            m.entry(layout.ty).or_insert_with(|| {
+                let unit = cx.data_layout().pointer_size;
+                let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
+                let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
+                ret.set_layout(cx, Size::ZERO, layout);
+                ret
+            })
+        })
     }
 }
 
@@ -235,5 +218,5 @@ pub fn may_contain_heap_ptr<'tcx, Cx: CodegenMethods<'tcx>>(
     cx: &Cx,
     layout: TyAndLayout<'tcx>,
 ) -> bool {
-    PointerMap::resolve(cx, layout, None).has_pointers()
+    PointerMap::resolve(cx, layout).has_pointers()
 }
