@@ -2284,21 +2284,27 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                     WhereAny(obligation.predicate.rebind(args.as_closure().upvar_tys().to_vec()))
                 }
             }
-            ty::Coroutine(_, args, _) => {
-                let upvars = self.infcx.shallow_resolve(args.as_coroutine().tupled_upvars_ty());
-                let witness = self.infcx.shallow_resolve(args.as_coroutine().witness());
-                if upvars.is_ty_var() || witness.is_ty_var() {
-                    Ambiguous
-                } else {
-                    WhereAny(
-                        obligation.predicate.rebind(
-                            args.as_coroutine()
-                                .upvar_tys()
-                                .iter()
-                                .chain([args.as_coroutine().witness()])
-                                .collect::<Vec<_>>(),
-                        ),
-                    )
+            ty::Coroutine(coroutine_def_id, args) => {
+                match self.tcx().coroutine_movability(coroutine_def_id) {
+                    hir::Movability::Static => None,
+                    hir::Movability::Movable => {
+                        let upvars =
+                            self.infcx.shallow_resolve(args.as_coroutine().tupled_upvars_ty());
+                        let witness = self.infcx.shallow_resolve(args.as_coroutine().witness());
+                        if upvars.is_ty_var() || witness.is_ty_var() {
+                            Ambiguous
+                        } else {
+                            WhereAny(
+                                obligation.predicate.rebind(
+                                    args.as_coroutine()
+                                        .upvar_tys()
+                                        .iter()
+                                        .chain([args.as_coroutine().witness()])
+                                        .collect::<Vec<_>>(),
+                                ),
+                            )
+                        }
+                    }
                 }
             }
             ty::CoroutineWitness(def_id, args) => {

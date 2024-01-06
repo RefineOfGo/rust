@@ -1151,7 +1151,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         order: rustc_codegen_ssa::common::AtomicOrdering,
         failure_order: rustc_codegen_ssa::common::AtomicOrdering,
         weak: bool,
-    ) -> &'ll Value {
+    ) -> (&'ll Value, &'ll Value) {
         let ty = self.cx.val_ty(src);
         self.check_scalar(ty);
         let value = unsafe {

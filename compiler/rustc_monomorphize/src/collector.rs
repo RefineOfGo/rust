@@ -762,7 +762,7 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
                         .upvar_tys()
                         .iter()
                         .any(|upvar_ty| self.is_managed_impl(upvar_ty)),
-                    ty::Coroutine(_, args, _) => args
+                    ty::Coroutine(_, args) => args
                         .as_coroutine()
                         .upvar_tys()
                         .iter()
