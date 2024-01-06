@@ -38,6 +38,7 @@ use rustc_infer::traits::TraitObligation;
 use rustc_middle::dep_graph::dep_kinds;
 use rustc_middle::dep_graph::DepNodeIndex;
 use rustc_middle::mir::interpret::ErrorHandled;
+use rustc_middle::traits::ImplSource;
 use rustc_middle::ty::_match::MatchAgainstFreshVars;
 use rustc_middle::ty::abstract_const::NotConstEvaluatable;
 use rustc_middle::ty::fold::BottomUpFolder;
@@ -203,7 +204,7 @@ enum BuiltinImplConditions<'tcx> {
     /// The impl is conditional on `(T1 | T2 | ...): Trait`. This is specifically
     /// designed for ROG implementation of the `Managed` trait, and should not be
     /// used anywhere else.
-    Disjunction(ty::Binder<'tcx, Vec<Ty<'tcx>>>),
+    WhereAny(ty::Binder<'tcx, Vec<Ty<'tcx>>>),
     /// There is no built-in impl. There may be some other
     /// candidate (a where-clause or user-defined impl).
     None,
@@ -338,7 +339,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 Err(SelectionError::Overflow(OverflowError::Canonical))
             }
             Err(e) => Err(e),
-            Ok((candidate, _)) => Ok(Some(candidate)),
+            Ok(candidate) => Ok(Some(candidate)),
         }
     }
 
@@ -642,17 +643,18 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         for mut obligation in predicates {
             obligation.set_depth_from_parent(stack.depth());
             let eval = self.evaluate_predicate_recursively(stack, obligation.clone())?;
-            // fast-path - short circuit for obvious success of errors.
+            // fast-path - short circuit for obvious success or errors.
             if disjunction_logic {
                 if let EvaluatedToOk = eval {
                     return Ok(EvaluatedToOk);
                 }
+                result = cmp::min(result, eval);
             } else {
                 if let EvaluatedToErr = eval {
                     return Ok(EvaluatedToErr);
                 }
+                result = cmp::max(result, eval);
             }
-            result = cmp::max(result, eval);
         }
         Ok(result)
     }
@@ -1285,13 +1287,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         let mut result = self.evaluation_probe(|this| {
             let candidate = (*candidate).clone();
             match this.confirm_candidate(stack.obligation, candidate) {
-                Ok((selection, is_disjunction)) => {
-                    debug!(?selection, ?is_disjunction);
-                    this.evaluate_predicates_recursively(
-                        stack.list(),
-                        selection.nested_obligations().into_iter(),
-                        is_disjunction,
-                    )
+                Ok(selection) => {
+                    debug!(?selection);
+                    let is_builtin_any = matches!(&selection, ImplSource::BuiltinAny(..));
+                    let predicates = selection.nested_obligations().into_iter();
+                    this.evaluate_predicates_recursively(stack.list(), predicates, is_builtin_any)
                 }
                 Err(..) => Ok(EvaluatedToErr),
             }
@@ -2273,15 +2273,15 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
     ) -> BuiltinImplConditions<'tcx> {
-        use self::BuiltinImplConditions::{Ambiguous, Disjunction, None};
+        use self::BuiltinImplConditions::{Ambiguous, None, WhereAny};
         let self_ty = self.infcx.shallow_resolve(obligation.predicate.skip_binder().self_ty());
         match *self_ty.kind() {
             ty::Closure(_, args) => {
-                let ty = args.as_closure().tupled_upvars_ty();
-                if let ty::Infer(ty::TyVar(_)) = self.infcx.shallow_resolve(ty).kind() {
+                let ty = self.infcx.shallow_resolve(args.as_closure().tupled_upvars_ty());
+                if let ty::Infer(ty::TyVar(_)) = ty.kind() {
                     Ambiguous
                 } else {
-                    Disjunction(obligation.predicate.rebind(ty.tuple_fields().to_vec()))
+                    WhereAny(obligation.predicate.rebind(args.as_closure().upvar_tys().to_vec()))
                 }
             }
             ty::Coroutine(_, args, _) => {
@@ -2290,7 +2290,7 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                 if upvars.is_ty_var() || witness.is_ty_var() {
                     Ambiguous
                 } else {
-                    Disjunction(
+                    WhereAny(
                         obligation.predicate.rebind(
                             args.as_coroutine()
                                 .upvar_tys()
@@ -2303,9 +2303,9 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
             }
             ty::CoroutineWitness(def_id, args) => {
                 let bound_vars = obligation.predicate.bound_vars();
-                Disjunction(bind_coroutine_hidden_types_above(self.infcx, def_id, args, bound_vars))
+                WhereAny(bind_coroutine_hidden_types_above(self.infcx, def_id, args, bound_vars))
             }
-            ty::Tuple(tys) => Disjunction(obligation.predicate.rebind(tys.iter().collect())),
+            ty::Tuple(tys) => WhereAny(obligation.predicate.rebind(tys.iter().collect())),
             _ => None,
         }
     }

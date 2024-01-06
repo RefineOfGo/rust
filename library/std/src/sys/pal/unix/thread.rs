@@ -50,7 +50,7 @@ impl Thread {
     // unsafe: see thread::Builder::spawn_unchecked for safety requirements
     pub unsafe fn new(
         stack: usize,
-        stack_base: Option<usize>,
+        #[cfg(not(target_os = "espidf"))] stack_base: Option<usize>,
         p: Box<dyn FnOnce()>,
     ) -> io::Result<Thread> {
         let p = Box::into_raw(Box::new(p));
@@ -62,7 +62,6 @@ impl Thread {
         if stack > 0 {
             // Only set the stack if a non-zero value is passed
             // 0 is used as an indication that the default stack size configured in the ESP-IDF menuconfig system should be used
-            assert!(stack_base.is_none());
             assert_eq!(
                 libc::pthread_attr_setstacksize(&mut attr, cmp::max(stack, min_stack_size(&attr))),
                 0

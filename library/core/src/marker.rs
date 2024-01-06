@@ -513,7 +513,7 @@ impl<T: ?Sized> Copy for &T {}
 #[lang = "managed"]
 #[rustc_unsafe_specialization_marker]
 #[rustc_diagnostic_item = "Managed"]
-pub trait Managed: Sized {
+pub trait Managed {
     // Empty.
 }
 
@@ -530,15 +530,15 @@ pub macro Managed($item:item) {
 // impl<A, B, C, ...> Managed for (A, B, C, ...)
 //     where (A | B | C | ...): Managed {}
 //
-// ... which says: if any of the tuple element is `Managed`, then
-// the entire tuple becomes `Managed`.
+// Which says: if any of the tuple element is `Managed`, then the
+// entire tuple becomes `Managed`. This is also true for closures.
 
 marker_impls! {
     #[cfg(not(bootstrap))]
     #[stable(feature = "rog", since = "1.0.0")]
     Managed for
         {T: Managed, const N: usize} [T; N],
-        {T: Managed} &[T],
+        {T: Managed} [T],
         {T: Managed} &T,
         {T: Managed} &mut T,
         {T: Managed} *const T,

@@ -44,13 +44,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
         candidate: SelectionCandidate<'tcx>,
-    ) -> Result<(Selection<'tcx>, bool), SelectionError<'tcx>> {
-        let mut is_disjunction = false;
+    ) -> Result<Selection<'tcx>, SelectionError<'tcx>> {
         let mut impl_src = match candidate {
             BuiltinCandidate { has_nested } => {
-                let data =
-                    self.confirm_builtin_candidate(obligation, has_nested, &mut is_disjunction);
-                ImplSource::Builtin(BuiltinImplSource::Misc, data)
+                self.confirm_builtin_candidate(obligation, has_nested)
             }
 
             TransmutabilityCandidate => {
@@ -140,7 +137,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             subobligation.set_depth_from_parent(obligation.recursion_depth);
         }
 
-        Ok((impl_src, is_disjunction))
+        Ok(impl_src)
     }
 
     fn confirm_projection_candidate(
@@ -238,11 +235,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
         has_nested: bool,
-        is_disjunction: &mut bool,
-    ) -> Vec<PredicateObligation<'tcx>> {
+    ) -> ImplSource<'tcx, PredicateObligation<'tcx>> {
         debug!(?obligation, ?has_nested, "confirm_builtin_candidate");
 
         let lang_items = self.tcx().lang_items();
+        let mut is_disjunction = false;
         let obligations = if has_nested {
             let trait_def = obligation.predicate.def_id();
             let conditions = if Some(trait_def) == lang_items.sized_trait() {
@@ -257,12 +254,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                 bug!("unexpected builtin trait {:?}", trait_def)
             };
             let nested = match conditions {
-                BuiltinImplConditions::Where(nested) => {
-                    *is_disjunction = false;
-                    nested
-                }
-                BuiltinImplConditions::Disjunction(nested) => {
-                    *is_disjunction = true;
+                BuiltinImplConditions::Where(nested) => nested,
+                BuiltinImplConditions::WhereAny(nested) => {
+                    is_disjunction = true;
                     nested
                 }
                 _ => {
@@ -283,7 +277,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         };
 
         debug!(?obligations, ?is_disjunction);
-        obligations
+        if is_disjunction {
+            ImplSource::BuiltinAny(obligations)
+        } else {
+            ImplSource::Builtin(BuiltinImplSource::Misc, obligations)
+        }
     }
 
     #[instrument(level = "debug", skip(self))]

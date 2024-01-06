@@ -186,7 +186,9 @@ impl Qualif for NeedsNonConstDrop {
 
         if !matches!(
             impl_src,
-            ImplSource::Builtin(BuiltinImplSource::Misc, _) | ImplSource::Param(_)
+            ImplSource::Builtin(BuiltinImplSource::Misc, _)
+                | ImplSource::BuiltinAny(_)
+                | ImplSource::Param(_)
         ) {
             // If our const destruct candidate is not ConstDestruct or implied by the param env,
             // then it's bad

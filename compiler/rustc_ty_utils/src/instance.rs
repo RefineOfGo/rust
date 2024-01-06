@@ -287,7 +287,8 @@ fn resolve_associated_item<'tcx>(
         }
         traits::ImplSource::Param(..)
         | traits::ImplSource::Builtin(BuiltinImplSource::TraitUpcasting { .. }, _)
-        | traits::ImplSource::Builtin(BuiltinImplSource::TupleUnsizing, _) => None,
+        | traits::ImplSource::Builtin(BuiltinImplSource::TupleUnsizing, _)
+        | traits::ImplSource::BuiltinAny(..) => None,
     })
 }
 
