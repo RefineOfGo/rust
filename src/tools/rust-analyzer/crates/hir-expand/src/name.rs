@@ -399,6 +399,7 @@ pub mod known {
         Default,
         Debug,
         Hash,
+        Managed,
         Ord,
         PartialOrd,
         Eq,
