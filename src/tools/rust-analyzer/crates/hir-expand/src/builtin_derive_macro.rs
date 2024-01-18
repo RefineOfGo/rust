@@ -673,7 +673,7 @@ fn self_and_other_patterns(
 ) -> (Vec<tt::Subtree>, Vec<tt::Subtree>) {
     let self_patterns = adt.shape.as_pattern_map(
         name,
-        |it: &::tt::Ident<span::SpanData<span::SyntaxContextId>>| {
+        |it| {
             let t = tt::Ident::new(format!("{}_self", it.text), it.span);
             quote!(span =>#t)
         },
@@ -811,19 +811,13 @@ fn partial_ord_expand(span: Span, tt: &ast::Adt, tm: SpanMapRef<'_>) -> ExpandRe
     })
 }
 
-fn managed_expand(
-    db: &dyn ExpandDatabase,
-    id: MacroCallId,
-    span: Span,
-    tt: &ast::Adt,
-    tm: SpanMapRef<'_>,
-) -> ExpandResult<tt::Subtree> {
-    let krate = find_builtin_crate(db, id, span);
+fn managed_expand(span: Span, tt: &ast::Adt, tm: SpanMapRef<'_>) -> ExpandResult<tt::Subtree> {
+    let krate = dollar_crate(span);
     expand_simple_derive(
         span,
         tt,
         tm,
-        quote! {span => #krate::marker::Managed },
+        quote! { span => #krate::marker::Managed },
         |_| quote! {span =>},
     )
 }
