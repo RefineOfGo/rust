@@ -10,6 +10,7 @@ static mut rog_gcwb_switch: u32 = 0;
 #[no_gcwb]
 #[no_split]
 #[no_mangle]
+#[no_checkpoint]
 #[linkage = "linkonce"]
 extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
     crate::intrinsics::abort();
@@ -20,6 +21,7 @@ extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
 #[no_gcwb]
 #[no_split]
 #[no_mangle]
+#[no_checkpoint]
 #[linkage = "linkonce"]
 extern "rog-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
     crate::intrinsics::abort();
@@ -34,8 +36,6 @@ static _X: extern "rog-cold" fn(usize, usize) = rog_write_barrier;
 static _Y: extern "rog-cold" fn(usize, usize, usize) = rog_bulk_write_barrier;
 
 /// Enable ROG write barrier.
-#[no_gcwb]
-#[no_split]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn enable() {
@@ -45,8 +45,6 @@ pub unsafe fn enable() {
 }
 
 /// Disable ROG write barrier.
-#[no_gcwb]
-#[no_split]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn disable() {
@@ -56,8 +54,6 @@ pub unsafe fn disable() {
 }
 
 /// Check if ROG write barrier was enabled.
-#[no_gcwb]
-#[no_split]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub fn is_enabled() -> bool {

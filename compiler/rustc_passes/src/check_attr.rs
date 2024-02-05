@@ -216,6 +216,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                 sym::no_gcwb => self.check_no_gcwb(hir_id, attr, span, target),
                 sym::no_split => self.check_no_split(hir_id, attr, span, target),
                 sym::no_mangle => self.check_no_mangle(hir_id, attr, span, target),
+                sym::no_checkpoint => self.check_no_checkpoint(hir_id, attr, span, target),
                 sym::deprecated => self.check_deprecated(hir_id, attr, span, target),
                 sym::macro_use | sym::macro_escape => self.check_macro_use(hir_id, attr, target),
                 sym::path => self.check_generic_attr(hir_id, attr, target, Target::Mod),
@@ -1775,7 +1776,35 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                 );
             }
             _ => {
-                self.tcx.dcx().emit_err(errors::NoGCWB { span });
+                self.tcx.dcx().emit_err(errors::NoSplit { span });
+            }
+        }
+    }
+
+    /// Checks if `#[no_checkpoint]` is applied to a function or closure.
+    fn check_no_checkpoint(&self, hir_id: HirId, attr: &Attribute, span: Span, target: Target) {
+        match target {
+            Target::Fn
+            | Target::Closure
+            | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
+            Target::ForeignFn => {
+                self.tcx.emit_node_span_lint(
+                    UNUSED_ATTRIBUTES,
+                    hir_id,
+                    attr.span,
+                    errors::NoCheckPointForeign {
+                        span,
+                        attr_span: attr.span,
+                        foreign_item_kind: match target {
+                            Target::ForeignFn => "function",
+                            Target::ForeignStatic => "static",
+                            _ => unreachable!(),
+                        },
+                    },
+                );
+            }
+            _ => {
+                self.tcx.dcx().emit_err(errors::NoCheckPoint { span });
             }
         }
     }

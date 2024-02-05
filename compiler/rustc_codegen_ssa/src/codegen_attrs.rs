@@ -133,6 +133,7 @@ fn codegen_fn_attrs(tcx: TyCtxt<'_>, did: LocalDefId) -> CodegenFnAttrs {
             }
             sym::no_gcwb => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_GCWB,
             sym::no_split => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_SPLIT,
+            sym::no_checkpoint => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_CHECKPOINT,
             sym::coverage => {
                 let inner = attr.meta_item_list();
                 match inner.as_deref() {

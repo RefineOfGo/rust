@@ -562,6 +562,16 @@ passes_no_split_foreign =
     .note = stack checking is not applicable to symbol names in extern blocks
     .suggestion = remove this attribute
 
+passes_no_checkpoint =
+    attribute should be applied to a free function, impl method or closure
+    .label = not a free function, impl method or closure
+
+passes_no_checkpoint_foreign =
+    `#[no_checkpoint]` has no effect on a foreign {$foreign_item_kind}
+    .label = foreign {$foreign_item_kind}
+    .note = runtime check-point is not applicable to symbol names in extern blocks
+    .suggestion = remove this attribute
+
 passes_no_patterns =
     patterns not allowed in naked function parameters
 

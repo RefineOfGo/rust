@@ -588,6 +588,24 @@ pub struct NoSplitForeign {
 }
 
 #[derive(Diagnostic)]
+#[diag(passes_no_checkpoint)]
+pub struct NoCheckPoint {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(LintDiagnostic)]
+#[diag(passes_no_checkpoint_foreign)]
+#[note]
+pub struct NoCheckPointForeign {
+    #[label]
+    pub span: Span,
+    #[suggestion(code = "", applicability = "machine-applicable")]
+    pub attr_span: Span,
+    pub foreign_item_kind: &'static str,
+}
+
+#[derive(Diagnostic)]
 #[diag(passes_repr_ident, code = E0565)]
 pub struct ReprIdent {
     #[primary_span]
