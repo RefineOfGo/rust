@@ -1731,7 +1731,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
             | Target::Closure
             | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
             Target::ForeignFn => {
-                self.tcx.emit_spanned_lint(
+                self.tcx.emit_node_span_lint(
                     UNUSED_ATTRIBUTES,
                     hir_id,
                     attr.span,
@@ -1759,7 +1759,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
             | Target::Closure
             | Target::Method(MethodKind::Trait { body: true } | MethodKind::Inherent) => {}
             Target::ForeignFn => {
-                self.tcx.emit_spanned_lint(
+                self.tcx.emit_node_span_lint(
                     UNUSED_ATTRIBUTES,
                     hir_id,
                     attr.span,

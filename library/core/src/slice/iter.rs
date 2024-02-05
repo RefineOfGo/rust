@@ -3348,10 +3348,10 @@ pub struct ChunkBy<'a, T: 'a, P> {
 
 #[cfg(not(bootstrap))]
 #[stable(feature = "rog", since = "1.0.0")]
-impl<'a, T: Managed + 'a, P> Managed for GroupBy<'a, T, P> {}
+impl<'a, T: Managed + 'a, P> Managed for ChunkBy<'a, T, P> {}
 
 #[stable(feature = "slice_group_by", since = "CURRENT_RUSTC_VERSION")]
-impl<'a, T: 'a, P> GroupBy<'a, T, P> {
+impl<'a, T: 'a, P> ChunkBy<'a, T, P> {
     pub(super) fn new(slice: &'a [T], predicate: P) -> Self {
         ChunkBy { slice, predicate }
     }
@@ -3439,10 +3439,10 @@ pub struct ChunkByMut<'a, T: 'a, P> {
 
 #[cfg(not(bootstrap))]
 #[stable(feature = "rog", since = "1.0.0")]
-impl<'a, T: Managed + 'a, P> Managed for GroupByMut<'a, T, P> {}
+impl<'a, T: Managed + 'a, P> Managed for ChunkByMut<'a, T, P> {}
 
 #[stable(feature = "slice_group_by", since = "CURRENT_RUSTC_VERSION")]
-impl<'a, T: 'a, P> GroupByMut<'a, T, P> {
+impl<'a, T: 'a, P> ChunkByMut<'a, T, P> {
     pub(super) fn new(slice: &'a mut [T], predicate: P) -> Self {
         ChunkByMut { slice, predicate }
     }

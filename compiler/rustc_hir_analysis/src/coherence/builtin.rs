@@ -132,6 +132,17 @@ fn visit_implementation_of_const_param_ty(
     tcx: TyCtxt<'_>,
     impl_did: LocalDefId,
 ) -> Result<(), ErrorGuaranteed> {
+    let self_type = tcx.type_of(impl_did).instantiate_identity();
+    assert!(!self_type.has_escaping_bound_vars());
+
+    let param_env = tcx.param_env(impl_did);
+
+    let span = match tcx.hir().expect_item(impl_did).expect_impl() {
+        hir::Impl { polarity: hir::ImplPolarity::Negative(_), .. } => return Ok(()),
+        impl_ => impl_.self_ty.span,
+    };
+
+    let cause = traits::ObligationCause::misc(span, impl_did);
     match type_allowed_to_implement_const_param_ty(tcx, param_env, self_type, cause) {
         Ok(()) => Ok(()),
         Err(ConstParamTyImplementationError::InfrigingFields(fields)) => {
