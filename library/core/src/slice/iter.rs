@@ -3351,7 +3351,7 @@ pub struct ChunkBy<'a, T: 'a, P> {
 
 #[cfg(not(bootstrap))]
 #[stable(feature = "rog", since = "1.0.0")]
-impl<'a, T: Managed + 'a, P> Managed for GroupBy<'a, T, P> {}
+impl<'a, T: Managed + 'a, P> Managed for ChunkBy<'a, T, P> {}
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
 impl<'a, T: 'a, P> ChunkBy<'a, T, P> {
@@ -3442,7 +3442,7 @@ pub struct ChunkByMut<'a, T: 'a, P> {
 
 #[cfg(not(bootstrap))]
 #[stable(feature = "rog", since = "1.0.0")]
-impl<'a, T: Managed + 'a, P> Managed for GroupByMut<'a, T, P> {}
+impl<'a, T: Managed + 'a, P> Managed for ChunkByMut<'a, T, P> {}
 
 #[stable(feature = "slice_group_by", since = "1.77.0")]
 impl<'a, T: 'a, P> ChunkByMut<'a, T, P> {
