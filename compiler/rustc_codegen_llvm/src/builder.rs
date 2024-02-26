@@ -1251,12 +1251,18 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     ) -> &'ll Value {
         let ty = self.val_ty(src);
         self.check_scalar(ty);
+
+        let is_ptr = ty == self.type_ptr();
+        let mut needs_gcwb = is_ptr && !self.is_local_frame(dst);
+
         // The only RMW operation that LLVM supports on pointers is compare-exchange.
-        if ty == self.type_ptr() && op != rustc_codegen_ssa::common::AtomicRmwBinOp::AtomicXchg {
+        if is_ptr && op != rustc_codegen_ssa::common::AtomicRmwBinOp::AtomicXchg {
             src = self.ptrtoint(src, self.type_isize());
+            needs_gcwb = false;
         }
+
         unsafe {
-            if self.cx.type_kind(ty) == TypeKind::Pointer && !self.is_local_frame(dst) {
+            if needs_gcwb {
                 let value = self
                     .call_intrinsic("llvm.gcatomic.swap", &[dst, src, self.cx.const_bool(false)]);
                 llvm::AddCallSiteAttributes(
