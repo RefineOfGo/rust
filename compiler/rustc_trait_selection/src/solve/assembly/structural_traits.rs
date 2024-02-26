@@ -229,7 +229,7 @@ pub(in crate::solve) fn instantiate_constituent_tys_for_copy_clone_trait<'tcx>(
 pub(in crate::solve) fn instantiate_constituent_tys_for_managed_trait<'tcx>(
     _ecx: &EvalCtxt<'_, 'tcx>,
     ty: Ty<'tcx>,
-) -> Result<Vec<Ty<'tcx>>, NoSolution> {
+) -> Result<Vec<ty::Binder<'tcx, Ty<'tcx>>>, NoSolution> {
     todo!(
         "`Managed` trait solver is not implemented for `-Z trait-solver=next`, \
         please fallback to classic solver. ty = {:?}",

@@ -915,7 +915,10 @@ impl<'a, 'tcx> MirUsedCollector<'a, 'tcx> {
                 ty::Adt(adt, _) => adt.is_union(),
                 ty::Array(elem_ty, _) | ty::Slice(elem_ty) => is_unmanaged_fast(*elem_ty),
                 ty::RawPtr(TypeAndMut { ty, .. }) | ty::Ref(_, ty, _) => is_unmanaged_fast(*ty),
-                ty::Closure(..) | ty::Coroutine(..) | ty::CoroutineWitness(..) => false,
+                ty::Closure(..)
+                | ty::CoroutineClosure(..)
+                | ty::Coroutine(..)
+                | ty::CoroutineWitness(..) => false,
                 ty::Tuple(fields) => fields.iter().all(is_unmanaged_fast),
                 ty::Alias(..)
                 | ty::Param(_)

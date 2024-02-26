@@ -477,9 +477,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         };
 
                         let ty = fn_args.type_at(0);
-                        if int_type_width_signed(ty, bx.tcx()).is_some()
-                            || (ty.is_unsafe_ptr() && matches!(atom_op, AtomicRmwBinOp::AtomicXchg))
-                        {
+                        if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
                             let ptr = args[0].immediate();
                             let val = args[1].immediate();
                             bx.atomic_rmw(atom_op, ptr, val, parse_ordering(bx, ordering))
