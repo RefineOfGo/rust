@@ -6,12 +6,12 @@ use crate::back::write::{
     submit_post_lto_module_to_llvm, submit_pre_lto_module_to_llvm, ComputedLtoType, OngoingCodegen,
 };
 use crate::common::{IntPredicate, RealPredicate, TypeKind};
+use crate::errors;
 use crate::meth;
 use crate::mir;
 use crate::mir::operand::OperandValue;
 use crate::mir::place::PlaceRef;
 use crate::traits::*;
-use crate::{errors, ptrinfo};
 use crate::{CachedModuleCodegen, CompiledModule, CrateInfo, MemFlags, ModuleCodegen, ModuleKind};
 
 use rustc_ast::expand::allocator::{global_fn_name, AllocatorKind, ALLOCATOR_METHODS};
@@ -30,6 +30,7 @@ use rustc_middle::middle::exported_symbols;
 use rustc_middle::middle::exported_symbols::SymbolExportKind;
 use rustc_middle::middle::lang_items;
 use rustc_middle::mir::mono::{CodegenUnit, CodegenUnitNameBuilder, MonoItem};
+use rustc_middle::ptrinfo;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
@@ -375,7 +376,7 @@ pub fn memcpy_ty<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         let temp = bx.load(bty, src, src_align);
         bx.store(temp, dst, dst_align, layout);
     } else {
-        let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), layout);
+        let has_pointers = ptrinfo::has_pointers(bx.cx(), layout);
         bx.memcpy(dst, dst_align, src, src_align, bx.cx().const_usize(size), flags, has_pointers);
     }
 }

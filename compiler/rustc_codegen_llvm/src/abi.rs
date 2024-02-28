@@ -8,9 +8,10 @@ use crate::value::Value;
 
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::PlaceRef;
+use rustc_codegen_ssa::traits::*;
 use rustc_codegen_ssa::MemFlags;
-use rustc_codegen_ssa::{ptrinfo, traits::*};
 use rustc_middle::bug;
+use rustc_middle::ptrinfo;
 use rustc_middle::ty::layout::LayoutOf;
 pub use rustc_middle::ty::layout::{FAT_PTR_ADDR, FAT_PTR_EXTRA};
 use rustc_middle::ty::Ty;

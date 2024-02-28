@@ -1,10 +1,21 @@
-use std::{cell::RefMut, fmt::Debug};
+use std::fmt::Debug;
 
-use rustc_middle::ty::layout::TyAndLayout;
-use rustc_target::abi::{Abi, FieldsShape, Primitive, Scalar, Size, Variants};
+use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
 use smallvec::{smallvec, SmallVec};
 
-use crate::traits::CodegenMethods;
+use crate::ty::{
+    layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
+    Ty,
+};
+
+pub trait PointerMapMethods<'tcx> {
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
+    ) -> R;
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PointerMap {
@@ -87,7 +98,12 @@ impl PointerMap {
         self.used[idx] |= mask;
     }
 
-    fn set_noptr<'tcx, Cx: CodegenMethods<'tcx>>(&mut self, cx: &Cx, offset: Size, size: Size) {
+    fn set_noptr<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
+        &mut self,
+        cx: &Cx,
+        offset: Size,
+        size: Size,
+    ) {
         let start = offset.bytes_usize();
         let align = cx.data_layout().pointer_size.bytes_usize();
 
@@ -134,7 +150,7 @@ impl PointerMap {
         }
     }
 
-    fn set_scalar<'tcx, Cx: CodegenMethods<'tcx>>(
+    fn set_scalar<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
         &mut self,
         cx: &Cx,
         offset: Size,
@@ -153,7 +169,7 @@ impl PointerMap {
         }
     }
 
-    fn set_layout<'tcx, Cx: CodegenMethods<'tcx>>(
+    fn set_layout<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
         &mut self,
         cx: &Cx,
         offset: Size,
@@ -198,25 +214,44 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn resolve<'cx, 'tcx: 'cx, Cx: CodegenMethods<'tcx>>(
+    pub fn resolve_and<
+        'cx,
+        'tcx: 'cx,
+        R,
+        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+    >(
         cx: &'cx Cx,
         layout: TyAndLayout<'tcx>,
-    ) -> RefMut<'cx, Self> {
-        RefMut::map(cx.pointer_maps().borrow_mut(), |m| {
-            m.entry(layout.ty).or_insert_with(|| {
-                let unit = cx.data_layout().pointer_size;
-                let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
-                let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
-                ret.set_layout(cx, Size::ZERO, layout);
-                ret
-            })
+        map_fn: impl FnOnce(&Self) -> R,
+    ) -> R {
+        cx.compute_pointer_map(layout.ty, map_fn, move || {
+            let unit = cx.data_layout().pointer_size;
+            let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
+            let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
+            ret.set_layout(cx, Size::ZERO, layout);
+            ret
         })
     }
 }
 
-pub fn may_contain_heap_ptr<'tcx, Cx: CodegenMethods<'tcx>>(
-    cx: &Cx,
+pub fn encode<
+    'cx,
+    'tcx: 'cx,
+    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+>(
+    cx: &'cx Cx,
+    layout: TyAndLayout<'tcx>,
+) -> Vec<u8> {
+    PointerMap::resolve_and(cx, layout, PointerMap::encode)
+}
+
+pub fn has_pointers<
+    'cx,
+    'tcx: 'cx,
+    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+>(
+    cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
 ) -> bool {
-    PointerMap::resolve(cx, layout).has_pointers()
+    PointerMap::resolve_and(cx, layout, PointerMap::has_pointers)
 }

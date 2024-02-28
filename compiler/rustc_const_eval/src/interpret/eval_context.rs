@@ -1,9 +1,10 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::{fmt, mem};
 
 use either::{Either, Left, Right};
 
 use hir::CRATE_HIR_ID;
+use rustc_data_structures::fx::FxHashMap;
 use rustc_errors::DiagCtxt;
 use rustc_hir::{self as hir, def_id::DefId, definitions::DefPathData};
 use rustc_index::IndexVec;
@@ -11,6 +12,7 @@ use rustc_middle::mir;
 use rustc_middle::mir::interpret::{
     CtfeProvenance, ErrorHandled, InvalidMetaKind, ReportedErrorInfo,
 };
+use rustc_middle::ptrinfo::{PointerMap, PointerMapMethods};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::layout::{
     self, FnAbiError, FnAbiOfHelpers, FnAbiRequest, LayoutError, LayoutOf, LayoutOfHelpers,
@@ -50,6 +52,9 @@ pub struct InterpCx<'mir, 'tcx, M: Machine<'mir, 'tcx>> {
 
     /// The recursion limit (cached from `tcx.recursion_limit(())`)
     pub recursion_limit: Limit,
+
+    /// Cached pointer maps for each type.
+    pub pointer_maps: RefCell<FxHashMap<Ty<'tcx>, PointerMap>>,
 }
 
 // The Phantomdata exists to prevent this type from being `Send`. If it were sent across a thread
@@ -368,6 +373,21 @@ where
     }
 }
 
+impl<'mir, 'tcx, M> PointerMapMethods<'tcx> for InterpCx<'mir, 'tcx, M>
+where
+    M: Machine<'mir, 'tcx>,
+{
+    #[inline]
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
+    ) -> R {
+        map_fn(self.pointer_maps.borrow_mut().entry(ty).or_insert_with(compute_fn))
+    }
+}
+
 impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> LayoutOfHelpers<'tcx> for InterpCx<'mir, 'tcx, M> {
     type LayoutOfResult = InterpResult<'tcx, TyAndLayout<'tcx>>;
 
@@ -494,6 +514,7 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
             param_env,
             memory: Memory::new(),
             recursion_limit: tcx.recursion_limit(),
+            pointer_maps: Default::default(),
         }
     }
 

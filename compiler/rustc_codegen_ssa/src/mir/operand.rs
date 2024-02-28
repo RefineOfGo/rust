@@ -2,13 +2,13 @@ use super::place::PlaceRef;
 use super::{FunctionCx, LocalRef};
 
 use crate::base;
-use crate::ptrinfo;
 use crate::size_of_val;
 use crate::traits::*;
 use crate::MemFlags;
 
 use rustc_middle::mir::interpret::{alloc_range, Pointer, Scalar};
 use rustc_middle::mir::{self, ConstValue};
+use rustc_middle::ptrinfo;
 use rustc_middle::ty::layout::{LayoutOf, TyAndLayout};
 use rustc_middle::ty::Ty;
 use rustc_target::abi::{self, Abi, Align, Size};
@@ -415,7 +415,7 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
             OperandValue::Ref(r, None, source_align) => {
                 assert!(dest.layout.is_sized(), "cannot directly store unsized values");
                 if flags.contains(MemFlags::NONTEMPORAL)
-                    && !ptrinfo::may_contain_heap_ptr(bx.cx(), dest.layout)
+                    && !ptrinfo::has_pointers(bx.cx(), dest.layout)
                 {
                     // HACK(nox): This is inefficient but there is no nontemporal memcpy.
                     let ty = bx.backend_type(dest.layout);

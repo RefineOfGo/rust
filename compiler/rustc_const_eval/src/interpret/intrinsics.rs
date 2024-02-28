@@ -3,6 +3,7 @@
 //! and miri.
 
 use rustc_hir::def_id::DefId;
+use rustc_middle::ptrinfo;
 use rustc_middle::ty;
 use rustc_middle::ty::layout::{LayoutOf as _, ValidityRequirement};
 use rustc_middle::ty::GenericArgsRef;
@@ -138,6 +139,24 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                 };
 
                 self.write_scalar(Scalar::from_target_usize(result, self), dest)?;
+            }
+
+            sym::pointer_map_of => {
+                let ty = instance_args.type_at(0);
+                ensure_monomorphic_enough(self.tcx.tcx, ty)?;
+                let layout = self
+                    .tcx
+                    .layout_of(self.param_env.and(ty))
+                    .map_err(|e| err_inval!(Layout(*e)))?;
+                let ptrmap = ptrinfo::encode(self, layout);
+                let alloc =
+                    self.tcx.mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(ptrmap));
+                let val = self.const_val_to_op(
+                    ConstValue::Slice { data: alloc, meta: alloc.inner().size().bytes() },
+                    Ty::new_static_bytes(self.tcx.tcx),
+                    Some(dest.layout),
+                )?;
+                self.copy_op(&val, dest)?;
             }
 
             sym::pref_align_of

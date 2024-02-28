@@ -5,13 +5,12 @@ use crate::common::IntPredicate;
 use crate::errors;
 use crate::errors::InvalidMonomorphization;
 use crate::meth;
-use crate::ptrinfo::PointerMap;
 use crate::size_of_val;
 use crate::traits::*;
 use crate::MemFlags;
-use crate::{errors, ptrinfo};
 
 use rustc_middle::mir::{interpret::Allocation, ConstValue};
+use rustc_middle::ptrinfo;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_session::config::OptLevel;
 use rustc_span::{sym, Span};
@@ -34,7 +33,7 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), layout);
+    let has_pointers = ptrinfo::has_pointers(bx.cx(), layout);
 
     if allow_overlap {
         bx.memmove(dst, align, src, align, size, flags, has_pointers);
@@ -56,7 +55,7 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), layout);
+    let has_pointers = ptrinfo::has_pointers(bx.cx(), layout);
     bx.memset(dst, val, size, align, flags, has_pointers);
 }
 
@@ -133,10 +132,9 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
             sym::pointer_map_of => {
                 let layout = bx.layout_of(fn_args.type_at(0));
-                let ptrmap = PointerMap::resolve(bx.cx(), layout).encode();
-                let alloc = bx.tcx().mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(
-                    ptrmap.as_slice(),
-                ));
+                let ptrmap = ptrinfo::encode(bx.cx(), layout);
+                let alloc =
+                    bx.tcx().mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(ptrmap));
                 let val = ConstValue::Slice { data: alloc, meta: alloc.inner().size().bytes() };
                 OperandRef::from_const(bx, val, ret_ty).immediate_or_packed_pair(bx)
             }

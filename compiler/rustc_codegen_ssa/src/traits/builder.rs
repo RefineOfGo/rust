@@ -14,9 +14,10 @@ use crate::common::{
 use crate::mir::operand::{OperandRef, OperandValue};
 use crate::mir::place::PlaceRef;
 use crate::traits::{ConstMethods, LayoutTypeMethods};
-use crate::{ptrinfo, MemFlags};
+use crate::MemFlags;
 
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs;
+use rustc_middle::ptrinfo;
 use rustc_middle::ty::layout::{HasParamEnv, TyAndLayout};
 use rustc_middle::ty::{Instance, Ty};
 use rustc_session::config::OptLevel;
@@ -204,7 +205,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         flags: MemFlags,
         layout: TyAndLayout<'tcx>,
     ) {
-        if ptrinfo::may_contain_heap_ptr(self.cx(), layout) && !self.is_local_frame(ptr) {
+        if ptrinfo::has_pointers(self.cx(), layout) && !self.is_local_frame(ptr) {
             assert!(
                 align >= self.data_layout().pointer_align.abi,
                 "invalid pointer alignment: {:?}",
@@ -242,7 +243,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         order: AtomicOrdering,
         layout: TyAndLayout<'tcx>,
     ) {
-        if ptrinfo::may_contain_heap_ptr(self.cx(), layout) {
+        if ptrinfo::has_pointers(self.cx(), layout) {
             assert_eq!(layout.size, self.data_layout().pointer_size);
             self.atomic_store_ptr(val, ptr, order);
         } else {

@@ -10,13 +10,14 @@ use crate::value::Value;
 
 use rustc_codegen_ssa::base::{wants_msvc_seh, wants_wasm_eh};
 use rustc_codegen_ssa::errors as ssa_errors;
-use rustc_codegen_ssa::ptrinfo::PointerMap;
 use rustc_codegen_ssa::traits::*;
 use rustc_data_structures::base_n;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::small_c_str::SmallCStr;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::mono::CodegenUnit;
+use rustc_middle::ptrinfo::PointerMap;
+use rustc_middle::ptrinfo::PointerMapMethods;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, LayoutError, LayoutOfHelpers,
     TyAndLayout,
@@ -575,10 +576,6 @@ impl<'ll, 'tcx> MiscMethods<'tcx> for CodegenCx<'ll, 'tcx> {
         self.codegen_unit
     }
 
-    fn pointer_maps(&self) -> &RefCell<FxHashMap<Ty<'tcx>, PointerMap>> {
-        &self.pointer_maps
-    }
-
     fn set_frame_pointer_type(&self, llfn: &'ll Value) {
         if let Some(attr) = attributes::frame_pointer_type_attr(self) {
             attributes::apply_to_llfn(llfn, llvm::AttributePlace::Function, &[attr]);
@@ -607,6 +604,18 @@ impl<'ll, 'tcx> MiscMethods<'tcx> for CodegenCx<'ll, 'tcx> {
             // instead of #[start]
             None
         }
+    }
+}
+
+impl<'ll, 'tcx> PointerMapMethods<'tcx> for CodegenCx<'ll, 'tcx> {
+    #[inline]
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
+    ) -> R {
+        map_fn(self.pointer_maps.borrow_mut().entry(ty).or_insert_with(compute_fn))
     }
 }
 

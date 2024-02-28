@@ -1,10 +1,10 @@
 use rustc_middle::mir;
 use rustc_middle::mir::NonDivergingIntrinsic;
+use rustc_middle::ptrinfo;
 use rustc_session::config::OptLevel;
 
 use super::FunctionCx;
 use super::LocalRef;
-use crate::ptrinfo;
 use crate::traits::*;
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
@@ -89,7 +89,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let align = pointee_layout.align;
                 let dst = dst_val.immediate();
                 let src = src_val.immediate();
-                let has_pointers = ptrinfo::may_contain_heap_ptr(bx.cx(), dst_val.layout);
+                let has_pointers = ptrinfo::has_pointers(bx.cx(), dst_val.layout);
                 bx.memcpy(dst, align, src, align, bytes, crate::MemFlags::empty(), has_pointers);
             }
             mir::StatementKind::FakeRead(..)

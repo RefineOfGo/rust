@@ -1,13 +1,12 @@
-use crate::ptrinfo::PointerMap;
-
 use super::BackendTypes;
 use rustc_data_structures::fx::FxHashMap;
 use rustc_middle::mir::mono::CodegenUnit;
+use rustc_middle::ptrinfo::PointerMapMethods;
 use rustc_middle::ty::{self, Instance, Ty};
 use rustc_session::Session;
 use std::cell::RefCell;
 
-pub trait MiscMethods<'tcx>: BackendTypes {
+pub trait MiscMethods<'tcx>: BackendTypes + PointerMapMethods<'tcx> {
     fn vtables(
         &self,
     ) -> &RefCell<FxHashMap<(Ty<'tcx>, Option<ty::PolyExistentialTraitRef<'tcx>>), Self::Value>>;
@@ -17,7 +16,6 @@ pub trait MiscMethods<'tcx>: BackendTypes {
     fn eh_personality(&self) -> Self::Value;
     fn sess(&self) -> &Session;
     fn codegen_unit(&self) -> &'tcx CodegenUnit<'tcx>;
-    fn pointer_maps(&self) -> &RefCell<FxHashMap<Ty<'tcx>, PointerMap>>;
     fn set_frame_pointer_type(&self, llfn: Self::Function);
     fn apply_target_cpu_attr(&self, llfn: Self::Function);
     /// Declares the extern "C" main function for the entry point. Returns None if the symbol already exists.
