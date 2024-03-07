@@ -89,6 +89,7 @@ pub mod hir;
 pub mod hooks;
 pub mod infer;
 pub mod lint;
+pub mod managed;
 pub mod metadata;
 pub mod middle;
 pub mod mir;

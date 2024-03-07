@@ -3,9 +3,12 @@ use std::fmt::Debug;
 use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
 use smallvec::{smallvec, SmallVec};
 
-use crate::ty::{
-    layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
-    Ty,
+use crate::{
+    managed::{ManagedChecker, ManagedSelf},
+    ty::{
+        layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
+        Ty,
+    },
 };
 
 pub trait PointerMapMethods<'tcx> {
@@ -225,11 +228,15 @@ impl PointerMap {
         map_fn: impl FnOnce(&Self) -> R,
     ) -> R {
         cx.compute_pointer_map(layout.ty, map_fn, move || {
-            let unit = cx.data_layout().pointer_size;
-            let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
-            let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
-            ret.set_layout(cx, Size::ZERO, layout);
-            ret
+            if ManagedChecker::new(cx.tcx()).is_managed_self(layout.ty) != ManagedSelf::Yes {
+                Self::new(0)
+            } else {
+                let unit = cx.data_layout().pointer_size;
+                let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
+                let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
+                ret.set_layout(cx, Size::ZERO, layout);
+                ret
+            }
         })
     }
 }
