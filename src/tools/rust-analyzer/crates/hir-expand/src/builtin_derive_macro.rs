@@ -830,13 +830,12 @@ fn partial_ord_expand(span: Span, tt: &tt::Subtree) -> ExpandResult<tt::Subtree>
     })
 }
 
-fn managed_expand(span: Span, tt: &ast::Adt, tm: SpanMapRef<'_>) -> ExpandResult<tt::Subtree> {
+fn managed_expand(span: Span, tt: &tt::Subtree) -> ExpandResult<tt::Subtree> {
     let krate = dollar_crate(span);
     expand_simple_derive(
         span,
         tt,
-        tm,
         quote! { span => #krate::marker::Managed },
-        |_| quote! {span =>},
+        |_| quote! { span => },
     )
 }
