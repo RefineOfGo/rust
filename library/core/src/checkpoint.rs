@@ -12,13 +12,13 @@ static mut rog_checkpoint_switch: u32 = 0;
 #[no_mangle]
 #[no_checkpoint]
 #[linkage = "linkonce"]
-extern "C" fn rog_checkpoint_abi() {
+extern "rog-cold" fn rog_checkpoint_abi() {
     crate::intrinsics::abort();
 }
 
 /// Prevent compiler from removing it as dead-code.
 #[used]
-static _X: extern "C" fn() = rog_checkpoint_abi;
+static _X: extern "rog-cold" fn() = rog_checkpoint_abi;
 
 /// Enable ROG runtime check-point.
 #[inline(always)]
