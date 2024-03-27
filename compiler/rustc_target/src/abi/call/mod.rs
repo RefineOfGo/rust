@@ -710,6 +710,7 @@ pub enum Conv {
     // should have its own backend (e.g. LLVM) support.
     C,
     Rust,
+    Rog,
 
     Cold,
     PreserveMost,
@@ -901,6 +902,8 @@ impl FromStr for Conv {
         match s {
             "C" => Ok(Conv::C),
             "Rust" => Ok(Conv::Rust),
+            "Rog" => Ok(Conv::Rog),
+            "Cold" => Ok(Conv::Cold),
             "RustCold" => Ok(Conv::Rust),
             "ArmAapcs" => Ok(Conv::ArmAapcs),
             "CCmseNonSecureCall" => Ok(Conv::CCmseNonSecureCall),

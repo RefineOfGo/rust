@@ -605,9 +605,8 @@ impl<'tcx> AbiBuilderMethods<'tcx> for Builder<'_, '_, 'tcx> {
 impl From<Conv> for llvm::CallConv {
     fn from(conv: Conv) -> Self {
         match conv {
-            Conv::C | Conv::Rust | Conv::CCmseNonSecureCall | Conv::RiscvInterrupt { .. } => {
-                llvm::CCallConv
-            }
+            Conv::Rust | Conv::Rog => llvm::ROGCallConv,
+            Conv::C | Conv::CCmseNonSecureCall | Conv::RiscvInterrupt { .. } => llvm::CCallConv,
             Conv::Cold => llvm::ColdCallConv,
             Conv::PreserveMost => llvm::PreserveMost,
             Conv::PreserveAll => llvm::PreserveAll,

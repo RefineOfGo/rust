@@ -937,6 +937,7 @@ pub enum Abi {
     RustCold,
     RiscvInterruptM,
     RiscvInterruptS,
+    Rog,
     RogCold,
 }
 

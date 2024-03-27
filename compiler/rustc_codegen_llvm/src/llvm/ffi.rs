@@ -95,6 +95,7 @@ pub enum CallConv {
     PreserveMost = 14,
     PreserveAll = 15,
     Tail = 18,
+    ROGCallConv = 21,
     X86StdcallCallConv = 64,
     X86FastcallCallConv = 65,
     ArmAapcsCallConv = 67,

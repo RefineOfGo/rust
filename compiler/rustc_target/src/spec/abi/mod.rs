@@ -61,9 +61,12 @@ pub enum Abi {
     RustCold,
     RiscvInterruptM,
     RiscvInterruptS,
+    /// ROG-specific ABI for bridging ROG Go user-code & Rust runtime.
+    /// This ABI is guaranteed to be mapped into LLVM's "rogcc".
+    Rog,
     /// ROG-specific ABI that is very unlikely to be called, like `rog_write_barrier`,
     /// `rog_bulk_write_barrier` or `rog_morestack_abi`.
-    /// This ABI is guranteed to be mapped into LLVM's "coldcc".
+    /// This ABI is guaranteed to be mapped into LLVM's "coldcc".
     RogCold,
 }
 
@@ -136,6 +139,7 @@ const AbiDatas: &[AbiData] = &[
     AbiData { abi: Abi::RustCold, name: "rust-cold" },
     AbiData { abi: Abi::RiscvInterruptM, name: "riscv-interrupt-m" },
     AbiData { abi: Abi::RiscvInterruptS, name: "riscv-interrupt-s" },
+    AbiData { abi: Abi::Rog, name: "rog" },
     AbiData { abi: Abi::RogCold, name: "rog-cold" },
 ];
 
@@ -197,7 +201,7 @@ pub fn is_stable(name: &str) -> Result<(), AbiDisabled> {
         "Rust" | "C" | "C-unwind" | "cdecl" | "cdecl-unwind" | "stdcall" | "stdcall-unwind"
         | "fastcall" | "fastcall-unwind" | "aapcs" | "aapcs-unwind" | "win64" | "win64-unwind"
         | "sysv64" | "sysv64-unwind" | "system" | "system-unwind" | "efiapi" | "thiscall"
-        | "thiscall-unwind" | "rog-cold" => Ok(()),
+        | "thiscall-unwind" | "rog" | "rog-cold" => Ok(()),
         "rust-intrinsic" => Err(AbiDisabled::Unstable {
             feature: sym::intrinsics,
             explain: "intrinsics are subject to change",
@@ -302,7 +306,8 @@ impl Abi {
             RustCold => 32,
             RiscvInterruptM => 33,
             RiscvInterruptS => 34,
-            RogCold => 35,
+            Rog => 35,
+            RogCold => 36,
         };
         debug_assert!(
             AbiDatas
