@@ -1087,7 +1087,7 @@ where
 }
 
 fn check_mono_items(tcx: TyCtxt<'_>, (): ()) {
-    collector::collect_crate_mono_items(tcx, MonoItemCollectionMode::Eager);
+    collector::collect_crate_mono_items(tcx, MonoItemCollectionStrategy::Eager);
     tcx.dcx().abort_if_errors();
 }
 

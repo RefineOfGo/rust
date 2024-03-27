@@ -84,7 +84,6 @@ pub struct CodegenCx<'ll, 'tcx> {
     pub scalar_lltypes: RefCell<FxHashMap<Ty<'tcx>, &'ll Type>>,
 
     pub pointer_maps: RefCell<FxHashMap<Ty<'tcx>, PointerMap>>,
-    pub pointee_infos: RefCell<FxHashMap<(Ty<'tcx>, Size), Option<PointeeInfo>>>,
     pub isize_ty: &'ll Type,
 
     pub coverage_cx: Option<coverageinfo::CrateCoverageContext<'ll, 'tcx>>,
@@ -452,7 +451,6 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             type_lowering: Default::default(),
             scalar_lltypes: Default::default(),
             pointer_maps: Default::default(),
-            pointee_infos: Default::default(),
             isize_ty,
             coverage_cx,
             dbg_cx,

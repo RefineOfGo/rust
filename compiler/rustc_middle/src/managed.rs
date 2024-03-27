@@ -1,6 +1,6 @@
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 
-use crate::ty::{self, AdtDef, FieldDef, GenericArg, List, ParamEnv, Ty, TyCtxt, TypeAndMut};
+use crate::ty::{self, AdtDef, FieldDef, GenericArg, List, ParamEnv, Ty, TyCtxt};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ManagedSelf {

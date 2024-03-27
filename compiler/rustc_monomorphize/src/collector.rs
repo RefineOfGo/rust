@@ -215,14 +215,14 @@ use rustc_middle::managed::{ManagedChecker, ManagedSelf};
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::mir::interpret::{AllocId, ErrorHandled, GlobalAlloc, Scalar};
 use rustc_middle::mir::mono::{InstantiationMode, MonoItem};
-use rustc_middle::mir::visit::Visitor as MirVisitor;
+use rustc_middle::mir::visit::{TyContext, Visitor as MirVisitor};
 use rustc_middle::mir::{self, Location, MentionedItem};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::print::with_no_trimmed_paths;
 use rustc_middle::ty::{
-    self, AssocKind, GenericParamDefKind, Instance, InstanceDef, ParamEnv, Ty, TyCtxt, TypeAndMut,
+    self, AssocKind, GenericParamDefKind, Instance, InstanceDef, ParamEnv, Ty, TyCtxt,
     TypeFoldable, TypeVisitableExt, VtblEntry,
 };
 use rustc_middle::ty::{GenericArgKind, GenericArgs};

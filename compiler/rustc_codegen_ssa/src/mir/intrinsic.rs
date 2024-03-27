@@ -1,7 +1,6 @@
 use super::operand::{OperandRef, OperandValue};
 use super::place::PlaceRef;
 use super::FunctionCx;
-use crate::common::IntPredicate;
 use crate::errors;
 use crate::errors::InvalidMonomorphization;
 use crate::meth;
@@ -431,10 +430,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     "store" => {
                         let ty = fn_args.type_at(0);
                         if int_type_width_signed(ty, bx.tcx()).is_some() || ty.is_unsafe_ptr() {
-                            let size = bx.layout_of(ty).size;
+                            let layout = bx.layout_of(ty);
                             let val = args[1].immediate();
                             let ptr = args[0].immediate();
-                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), size);
+                            bx.atomic_store(val, ptr, parse_ordering(bx, ordering), layout);
                         } else {
                             invalid_monomorphization(ty);
                         }

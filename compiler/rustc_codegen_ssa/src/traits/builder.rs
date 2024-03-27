@@ -13,7 +13,6 @@ use crate::common::{
 };
 use crate::mir::operand::{OperandRef, OperandValue};
 use crate::mir::place::PlaceRef;
-use crate::traits::{ConstMethods, LayoutTypeMethods};
 use crate::MemFlags;
 
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs;
@@ -359,7 +358,16 @@ pub trait BuilderMethods<'a, 'tcx>:
             temp.val.store(self, dst);
         } else if !dst.layout.is_zst() {
             let bytes = self.const_usize(dst.layout.size.bytes());
-            self.memcpy(dst.llval, dst.align, src.llval, src.align, bytes, MemFlags::empty());
+            let has_pointers = ptrinfo::has_pointers(self.cx(), dst.layout);
+            self.memcpy(
+                dst.llval,
+                dst.align,
+                src.llval,
+                src.align,
+                bytes,
+                MemFlags::empty(),
+                has_pointers,
+            );
         }
     }
 
