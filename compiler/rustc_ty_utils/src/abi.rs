@@ -16,6 +16,9 @@ use rustc_target::spec::abi::Abi as SpecAbi;
 
 use std::iter;
 
+const ROG_MAX_ARG_REGS: u64 = 8;
+const ROG_MAX_RET_REGS: u64 = 8;
+
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers { fn_abi_of_fn_ptr, fn_abi_of_instance, ..*providers };
 }
@@ -522,8 +525,16 @@ fn fn_abi_sanity_check<'tcx>(
                     // (See issue: https://github.com/rust-lang/rust/issues/117271)
                     assert!(
                         matches!(&*cx.tcx.sess.target.arch, "wasm32" | "wasm64")
-                            || matches!(spec_abi, SpecAbi::PtxKernel | SpecAbi::Unadjusted),
-                        r#"`PassMode::Direct` for aggregates only allowed for "unadjusted" and "ptx-kernel" functions and on wasm\nProblematic type: {:#?}"#,
+                            || matches!(
+                                spec_abi,
+                                SpecAbi::Rog
+                                    | SpecAbi::Rust
+                                    | SpecAbi::RustCall
+                                    | SpecAbi::RustIntrinsic
+                                    | SpecAbi::PtxKernel
+                                    | SpecAbi::Unadjusted
+                            ),
+                        r#"`PassMode::Direct` for aggregates only allowed for "rog", "rust-call", "rust-intrinsic", "unadjusted" and "ptx-kernel" functions and on wasm\nProblematic type: {:#?}"#,
                         arg.layout,
                     );
                 }
@@ -729,7 +740,11 @@ fn fn_abi_adjust_for_abi<'tcx>(
         return Ok(());
     }
 
-    if abi == SpecAbi::Rust || abi == SpecAbi::RustCall || abi == SpecAbi::RustIntrinsic {
+    if abi == SpecAbi::Rog
+        || abi == SpecAbi::Rust
+        || abi == SpecAbi::RustCall
+        || abi == SpecAbi::RustIntrinsic
+    {
         // Look up the deduced parameter attributes for this function, if we have its def ID and
         // we're optimizing in non-incremental mode. We'll tag its parameters with those attributes
         // as appropriate.
@@ -741,11 +756,15 @@ fn fn_abi_adjust_for_abi<'tcx>(
             &[]
         };
 
-        let fixup = |arg: &mut ArgAbi<'tcx, Ty<'tcx>>, arg_idx: Option<usize>| {
+        let fixup = |arg: &mut ArgAbi<'tcx, Ty<'tcx>>,
+                     total_size: &mut Size,
+                     max_size: Size,
+                     arg_idx: Option<usize>| {
             if arg.is_ignore() {
                 return;
             }
 
+            let size = arg.layout.size;
             match arg.layout.abi {
                 Abi::Aggregate { .. } => {}
 
@@ -775,7 +794,12 @@ fn fn_abi_adjust_for_abi<'tcx>(
                     return;
                 }
 
-                _ => return,
+                _ => {
+                    if !arg.is_indirect() {
+                        *total_size += size;
+                    }
+                    return;
+                }
             }
             // Compute `Aggregate` ABI.
 
@@ -783,7 +807,6 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 matches!(arg.mode, PassMode::Indirect { on_stack: false, .. });
             assert!(is_indirect_not_on_stack, "{:?}", arg);
 
-            let size = arg.layout.size;
             if !arg.layout.is_unsized() && size <= Pointer(AddressSpace::DATA).size(cx) {
                 // We want to pass small aggregates as immediates, but using
                 // an LLVM aggregate type for this leads to bad optimizations,
@@ -791,29 +814,41 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 arg.cast_to(Reg { kind: RegKind::Integer, size });
             }
 
-            // If we deduced that this parameter was read-only, add that to the attribute list now.
-            //
-            // The `readonly` parameter only applies to pointers, so we can only do this if the
-            // argument was passed indirectly. (If the argument is passed directly, it's an SSA
-            // value, so it's implicitly immutable.)
-            if let (Some(arg_idx), &mut PassMode::Indirect { ref mut attrs, .. }) =
-                (arg_idx, &mut arg.mode)
-            {
-                // The `deduced_param_attrs` list could be empty if this is a type of function
-                // we can't deduce any parameters for, so make sure the argument index is in
-                // bounds.
-                if let Some(deduced_param_attrs) = deduced_param_attrs.get(arg_idx) {
-                    if deduced_param_attrs.read_only {
-                        attrs.regular.insert(ArgAttribute::ReadOnly);
-                        debug!("added deduced read-only attribute");
+            if let Some(arg_idx) = arg_idx {
+                // If we deduced that this parameter was read-only, add that to the attribute list now.
+                //
+                // The `readonly` parameter only applies to pointers, so we can only do this if the
+                // argument was passed indirectly. (If the argument is passed directly, it's an SSA
+                // value, so it's implicitly immutable.)
+                if let PassMode::Indirect { ref mut attrs, .. } = arg.mode {
+                    // The `deduced_param_attrs` list could be empty if this is a type of function
+                    // we can't deduce any parameters for, so make sure the argument index is in
+                    // bounds.
+                    if let Some(deduced_param_attrs) = deduced_param_attrs.get(arg_idx) {
+                        if deduced_param_attrs.read_only {
+                            attrs.regular.insert(ArgAttribute::ReadOnly);
+                            debug!("added deduced read-only attribute");
+                        }
                     }
                 }
             }
+
+            if arg.is_indirect() && *total_size + size <= max_size {
+                assert!(arg.layout.abi.is_sized(), "unsized aggregate");
+                arg.make_direct_deprecated();
+                *total_size += size;
+            }
         };
 
-        fixup(&mut fn_abi.ret, None);
+        let mut max_size = Pointer(AddressSpace::DATA).size(cx) * ROG_MAX_RET_REGS;
+        let mut total_size = Size::ZERO;
+
+        fixup(&mut fn_abi.ret, &mut total_size, max_size, None);
+        max_size = Pointer(AddressSpace::DATA).size(cx) * ROG_MAX_ARG_REGS;
+        total_size = Size::ZERO;
+
         for (arg_idx, arg) in fn_abi.args.iter_mut().enumerate() {
-            fixup(arg, Some(arg_idx));
+            fixup(arg, &mut total_size, max_size, Some(arg_idx));
         }
     } else {
         fn_abi
