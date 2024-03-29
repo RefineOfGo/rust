@@ -836,6 +836,9 @@ fn fn_abi_adjust_for_abi<'tcx>(
             if arg.is_indirect() && *total_size + size <= max_size {
                 assert!(arg.layout.abi.is_sized(), "unsized aggregate");
                 arg.make_direct_deprecated();
+            }
+
+            if !arg.is_indirect() {
                 *total_size += size;
             }
         };

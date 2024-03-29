@@ -22,6 +22,7 @@ use itertools::Itertools;
 use llvm::ROG_GC_NAME;
 use rustc_codegen_ssa::traits::TypeMembershipMethods;
 use rustc_data_structures::fx::FxIndexSet;
+use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::ty::{Instance, Ty};
 use rustc_symbol_mangling::typeid::{
     kcfi_typeid_for_fnabi, kcfi_typeid_for_instance, typeid_for_fnabi, typeid_for_instance,
@@ -146,6 +147,13 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
     ) -> &'ll Value {
         debug!("declare_rust_fn(name={:?}, fn_abi={:?})", name, fn_abi);
 
+        let gc_name = if let Some(ref inst) = instance {
+            let flags = self.tcx.codegen_fn_attrs(inst.def_id()).flags;
+            if flags.contains(CodegenFnAttrFlags::NO_GCWB) { None } else { Some(ROG_GC_NAME) }
+        } else {
+            None
+        };
+
         // Function addresses in Rust are never significant, allowing functions to
         // be merged.
         let llfn = declare_raw_fn(
@@ -155,15 +163,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             llvm::UnnamedAddr::Global,
             llvm::Visibility::Default,
             fn_abi.llvm_type(self),
-            instance
-                .filter(|inst| {
-                    !self
-                        .tcx
-                        .codegen_fn_attrs(inst.def_id())
-                        .flags
-                        .contains(CodegenFnAttrFlags::NO_GCWB)
-                })
-                .map(|_| ROG_GC_NAME),
+            gc_name,
         );
         fn_abi.apply_attrs_llfn(self, llfn);
 
