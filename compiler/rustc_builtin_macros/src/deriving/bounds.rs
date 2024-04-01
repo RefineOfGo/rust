@@ -52,7 +52,7 @@ pub fn expand_deriving_const_param_ty(
 }
 
 pub fn expand_deriving_managed(
-    cx: &mut ExtCtxt<'_>,
+    cx: &ExtCtxt<'_>,
     span: Span,
     mitem: &MetaItem,
     item: &Annotatable,

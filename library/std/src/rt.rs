@@ -166,14 +166,15 @@ fn lang_start<T: crate::process::Termination + 'static>(
 ) -> isize {
     #[cfg(not(bootstrap))]
     unsafe {
+        core::checkpoint::disable();
         core::gcwb::disable();
         core::stack::set_stack_limit(0);
     }
-    let Ok(v) = lang_start_internal(
+    lang_start_internal(
         &move || crate::sys_common::backtrace::__rust_begin_short_backtrace(main).report().to_i32(),
         argc,
         argv,
         sigpipe,
-    );
-    v
+    )
+    .unwrap()
 }
