@@ -12,7 +12,7 @@ use rustc_middle::mir;
 use rustc_middle::mir::interpret::{
     CtfeProvenance, ErrorHandled, InvalidMetaKind, ReportedErrorInfo,
 };
-use rustc_middle::ptrinfo::{PointerMap, PointerMapMethods};
+use rustc_middle::ptrinfo::{PointerMap, PointerMapKind, PointerMapMethods};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::layout::{
     self, FnAbiError, FnAbiOfHelpers, FnAbiRequest, LayoutError, LayoutOf, LayoutOfHelpers,
@@ -54,7 +54,7 @@ pub struct InterpCx<'mir, 'tcx, M: Machine<'mir, 'tcx>> {
     pub recursion_limit: Limit,
 
     /// Cached pointer maps for each type.
-    pub pointer_maps: RefCell<FxHashMap<Ty<'tcx>, PointerMap>>,
+    pub pointer_maps: RefCell<FxHashMap<(Ty<'tcx>, PointerMapKind), PointerMap>>,
 }
 
 // The Phantomdata exists to prevent this type from being `Send`. If it were sent across a thread
@@ -381,10 +381,11 @@ where
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
+        kind: PointerMapKind,
         map_fn: impl FnOnce(&PointerMap) -> R,
         compute_fn: impl FnOnce() -> PointerMap,
     ) -> R {
-        map_fn(self.pointer_maps.borrow_mut().entry(ty).or_insert_with(compute_fn))
+        map_fn(self.pointer_maps.borrow_mut().entry((ty, kind)).or_insert_with(compute_fn))
     }
 }
 

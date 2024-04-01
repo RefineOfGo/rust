@@ -11,10 +11,43 @@ use crate::{
     },
 };
 
+struct BitIter {
+    i: usize,
+    b: u8,
+}
+
+impl Iterator for BitIter {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<usize> {
+        if self.b == 0 {
+            None
+        } else {
+            let p = self.b.trailing_zeros() as usize;
+            self.b &= !(1 << p);
+            Some(self.i * 8 + p)
+        }
+    }
+}
+
+impl From<(usize, ((u8, u8), u8))> for BitIter {
+    fn from((i, ((b, m), u)): (usize, ((u8, u8), u8))) -> Self {
+        let b = b & !m & u;
+        BitIter { i, b }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PointerMapKind {
+    Full,
+    Partial,
+}
+
 pub trait PointerMapMethods<'tcx> {
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
+        kind: PointerMapKind,
         map_fn: impl FnOnce(&PointerMap) -> R,
         compute_fn: impl FnOnce() -> PointerMap,
     ) -> R;
@@ -86,6 +119,17 @@ impl PointerMap {
         /* add the inexact map if any */
         ret.extend_from_slice(&self.mask[..size]);
         ret
+    }
+
+    pub fn exact_pointer_slots(&self) -> SmallVec<[usize; 16]> {
+        self.bits
+            .iter()
+            .copied()
+            .zip(self.mask.iter().copied())
+            .zip(self.used.iter().copied())
+            .enumerate()
+            .flat_map(BitIter::from)
+            .collect()
     }
 }
 
@@ -217,6 +261,32 @@ impl PointerMap {
 }
 
 impl PointerMap {
+    fn should_resolve<
+        'cx,
+        'tcx: 'cx,
+        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+    >(
+        cx: &'cx Cx,
+        kind: PointerMapKind,
+        layout: TyAndLayout<'tcx>,
+    ) -> bool {
+        kind == PointerMapKind::Full
+            || ManagedChecker::new(cx.tcx()).is_managed_self(layout.ty) == ManagedSelf::Yes
+    }
+}
+
+impl PointerMap {
+    pub fn resolve<'cx, 'tcx: 'cx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
+        cx: &'cx Cx,
+        layout: TyAndLayout<'tcx>,
+    ) -> Self {
+        let unit = cx.data_layout().pointer_size;
+        let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
+        let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
+        ret.set_layout(cx, Size::ZERO, layout);
+        ret
+    }
+
     pub fn resolve_and<
         'cx,
         'tcx: 'cx,
@@ -224,18 +294,15 @@ impl PointerMap {
         Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
     >(
         cx: &'cx Cx,
+        kind: PointerMapKind,
         layout: TyAndLayout<'tcx>,
         map_fn: impl FnOnce(&Self) -> R,
     ) -> R {
-        cx.compute_pointer_map(layout.ty, map_fn, move || {
-            if ManagedChecker::new(cx.tcx()).is_managed_self(layout.ty) != ManagedSelf::Yes {
-                Self::new(0)
+        cx.compute_pointer_map(layout.ty, kind, map_fn, move || {
+            if Self::should_resolve(cx, kind, layout) {
+                Self::resolve(cx, layout)
             } else {
-                let unit = cx.data_layout().pointer_size;
-                let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
-                let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
-                ret.set_layout(cx, Size::ZERO, layout);
-                ret
+                Self::new(0)
             }
         })
     }
@@ -249,7 +316,7 @@ pub fn encode<
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
 ) -> Vec<u8> {
-    PointerMap::resolve_and(cx, layout, PointerMap::encode)
+    PointerMap::resolve_and(cx, PointerMapKind::Partial, layout, PointerMap::encode)
 }
 
 pub fn has_pointers<
@@ -260,5 +327,16 @@ pub fn has_pointers<
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
 ) -> bool {
-    PointerMap::resolve_and(cx, layout, PointerMap::has_pointers)
+    PointerMap::resolve_and(cx, PointerMapKind::Partial, layout, PointerMap::has_pointers)
+}
+
+pub fn exact_pointer_slots<
+    'cx,
+    'tcx: 'cx,
+    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+>(
+    cx: &'cx Cx,
+    layout: TyAndLayout<'tcx>,
+) -> SmallVec<[usize; 16]> {
+    PointerMap::resolve_and(cx, PointerMapKind::Full, layout, PointerMap::exact_pointer_slots)
 }

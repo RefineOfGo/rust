@@ -7,6 +7,7 @@ use crate::base;
 use crate::common::{self, IntPredicate};
 use crate::errors::CompilerBuiltinsCannotCall;
 use crate::meth;
+use crate::pass_by_val::should_pass_by_value;
 use crate::traits::*;
 use crate::MemFlags;
 
@@ -448,13 +449,26 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             return;
         }
         let llval = match &self.fn_abi.ret.mode {
+            PassMode::Indirect { meta_attrs: None, on_stack: false, .. }
+                if should_pass_by_value(bx, self.fn_abi.conv, self.fn_abi.ret.layout) =>
+            {
+                let place = mir::Place::return_place().as_ref();
+                let op = self.codegen_consume(bx, place);
+                if let Ref(llval, _, align) = op.val {
+                    bx.load(bx.flattened_type(op.layout), llval, align)
+                } else {
+                    bug!("pass-by-value indirect return value while not ref: {op:#?}")
+                }
+            }
+
             PassMode::Ignore | PassMode::Indirect { .. } => {
                 bx.ret_void();
                 return;
             }
 
             PassMode::Direct(_) | PassMode::Pair(..) => {
-                let op = self.codegen_consume(bx, mir::Place::return_place().as_ref());
+                let place = mir::Place::return_place().as_ref();
+                let op = self.codegen_consume(bx, place);
                 if let Ref(llval, _, align) = op.val {
                     bx.load(bx.backend_type(op.layout), llval, align)
                 } else {
@@ -1427,6 +1441,16 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 }
                 _ => bug!("codegen_argument: {:?} invalid for pair argument", op),
             },
+            PassMode::Indirect { attrs: _, meta_attrs: None, on_stack: false } => match op.val {
+                Ref(val, None, _) => {
+                    if should_pass_by_value(bx, arg.conv, arg.layout) {
+                        let dest_ty = bx.flattened_type(arg.layout);
+                        llargs.push(bx.load(dest_ty, val, arg.layout.align.abi));
+                        return;
+                    }
+                }
+                _ => bug!("codegen_argument: {:?} invalid for pass-by-val indirect argument", op),
+            },
             PassMode::Indirect { attrs: _, meta_attrs: Some(_), on_stack: _ } => match op.val {
                 Ref(a, Some(b), _) => {
                     llargs.push(a);
@@ -1783,7 +1807,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
         } else {
             self.codegen_place(bx, mir::PlaceRef { local: dest.local, projection: dest.projection })
         };
-        if fn_ret.is_indirect() {
+        if fn_ret.is_indirect() && !should_pass_by_value(bx, fn_ret.conv, fn_ret.layout) {
             if dest.align < dest.layout.align.abi {
                 // Currently, MIR code generation does not create calls
                 // that store directly to fields of packed structs (in

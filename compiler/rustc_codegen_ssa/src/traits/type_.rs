@@ -156,6 +156,9 @@ pub trait LayoutTypeMethods<'tcx>: Backend<'tcx> {
         let _ = layout;
         None
     }
+
+    /// A type that can be passed in registers.
+    fn flattened_type(&self, layout: TyAndLayout<'tcx>) -> Self::Type;
 }
 
 // For backends that support CFI using type membership (i.e., testing whether a given pointer is

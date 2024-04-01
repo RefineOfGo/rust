@@ -16,9 +16,6 @@ use rustc_target::spec::abi::Abi as SpecAbi;
 
 use std::iter;
 
-const ROG_MAX_ARG_REGS: u64 = 8;
-const ROG_MAX_RET_REGS: u64 = 8;
-
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers { fn_abi_of_fn_ptr, fn_abi_of_instance, ..*providers };
 }
@@ -525,16 +522,8 @@ fn fn_abi_sanity_check<'tcx>(
                     // (See issue: https://github.com/rust-lang/rust/issues/117271)
                     assert!(
                         matches!(&*cx.tcx.sess.target.arch, "wasm32" | "wasm64")
-                            || matches!(
-                                spec_abi,
-                                SpecAbi::Rog
-                                    | SpecAbi::Rust
-                                    | SpecAbi::RustCall
-                                    | SpecAbi::RustIntrinsic
-                                    | SpecAbi::PtxKernel
-                                    | SpecAbi::Unadjusted
-                            ),
-                        r#"`PassMode::Direct` for aggregates only allowed for "rog", "rust-call", "rust-intrinsic", "unadjusted" and "ptx-kernel" functions and on wasm\nProblematic type: {:#?}"#,
+                            || matches!(spec_abi, SpecAbi::PtxKernel | SpecAbi::Unadjusted),
+                        r#"`PassMode::Direct` for aggregates only allowed for "unadjusted" and "ptx-kernel" functions and on wasm\nProblematic type: {:#?}"#,
                         arg.layout,
                     );
                 }
@@ -658,7 +647,7 @@ fn fn_abi_new_uncached<'tcx>(
             layout
         };
 
-        let mut arg = ArgAbi::new(cx, layout, |layout, scalar, offset| {
+        let mut arg = ArgAbi::new(cx, conv, layout, |layout, scalar, offset| {
             let mut attrs = ArgAttributes::new();
             adjust_for_rust_scalar(
                 *cx,
@@ -756,15 +745,11 @@ fn fn_abi_adjust_for_abi<'tcx>(
             &[]
         };
 
-        let fixup = |arg: &mut ArgAbi<'tcx, Ty<'tcx>>,
-                     total_size: &mut Size,
-                     max_size: Size,
-                     arg_idx: Option<usize>| {
+        let fixup = |arg: &mut ArgAbi<'tcx, Ty<'tcx>>, arg_idx: Option<usize>| {
             if arg.is_ignore() {
                 return;
             }
 
-            let size = arg.layout.size;
             match arg.layout.abi {
                 Abi::Aggregate { .. } => {}
 
@@ -787,19 +772,17 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 // Note that the intrinsic ABI is exempt here as
                 // that's how we connect up to LLVM and it's unstable
                 // anyway, we control all calls to it in libstd.
-                Abi::Vector { .. }
-                    if abi != SpecAbi::RustIntrinsic && cx.tcx.sess.target.simd_types_indirect =>
-                {
-                    arg.make_indirect();
+                //
+                // Note: ROG Rust does not support this.
+                Abi::Vector { .. } if abi != SpecAbi::RustIntrinsic => {
+                    assert!(
+                        !cx.tcx.sess.target.simd_types_indirect,
+                        "ROG Rust does not support indirect SIMD types"
+                    );
                     return;
                 }
 
-                _ => {
-                    if !arg.is_indirect() {
-                        *total_size += size;
-                    }
-                    return;
-                }
+                _ => return,
             }
             // Compute `Aggregate` ABI.
 
@@ -807,6 +790,7 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 matches!(arg.mode, PassMode::Indirect { on_stack: false, .. });
             assert!(is_indirect_not_on_stack, "{:?}", arg);
 
+            let size = arg.layout.size;
             if !arg.layout.is_unsized() && size <= Pointer(AddressSpace::DATA).size(cx) {
                 // We want to pass small aggregates as immediates, but using
                 // an LLVM aggregate type for this leads to bad optimizations,
@@ -832,26 +816,11 @@ fn fn_abi_adjust_for_abi<'tcx>(
                     }
                 }
             }
-
-            if arg.is_indirect() && *total_size + size <= max_size {
-                assert!(arg.layout.abi.is_sized(), "unsized aggregate");
-                arg.make_direct_deprecated();
-            }
-
-            if !arg.is_indirect() {
-                *total_size += size;
-            }
         };
 
-        let mut max_size = Pointer(AddressSpace::DATA).size(cx) * ROG_MAX_RET_REGS;
-        let mut total_size = Size::ZERO;
-
-        fixup(&mut fn_abi.ret, &mut total_size, max_size, None);
-        max_size = Pointer(AddressSpace::DATA).size(cx) * ROG_MAX_ARG_REGS;
-        total_size = Size::ZERO;
-
+        fixup(&mut fn_abi.ret, None);
         for (arg_idx, arg) in fn_abi.args.iter_mut().enumerate() {
-            fixup(arg, &mut total_size, max_size, Some(arg_idx));
+            fixup(arg, Some(arg_idx));
         }
     } else {
         fn_abi

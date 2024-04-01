@@ -542,13 +542,17 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
 pub struct ArgAbi<'a, Ty> {
     pub layout: TyAndLayout<'a, Ty>,
     pub mode: PassMode,
+    pub conv: Conv,
 }
 
 // Needs to be a custom impl because of the bounds on the `TyAndLayout` debug impl.
 impl<'a, Ty: fmt::Display> fmt::Debug for ArgAbi<'a, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ArgAbi { layout, mode } = self;
-        f.debug_struct("ArgAbi").field("layout", layout).field("mode", mode).finish()
+        f.debug_struct("ArgAbi")
+            .field("layout", &self.layout)
+            .field("mode", &self.mode)
+            .field("conv", &self.conv)
+            .finish()
     }
 }
 
@@ -556,6 +560,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
     /// This defines the "default ABI" for that type, that is then later adjusted in `fn_abi_adjust_for_abi`.
     pub fn new(
         cx: &impl HasDataLayout,
+        conv: Conv,
         layout: TyAndLayout<'a, Ty>,
         scalar_attrs: impl Fn(&TyAndLayout<'a, Ty>, abi::Scalar, Size) -> ArgAttributes,
     ) -> Self {
@@ -569,7 +574,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
             Abi::Vector { .. } => PassMode::Direct(ArgAttributes::new()),
             Abi::Aggregate { .. } => Self::indirect_pass_mode(&layout),
         };
-        ArgAbi { layout, mode }
+        ArgAbi { layout, mode, conv }
     }
 
     fn indirect_pass_mode(layout: &TyAndLayout<'a, Ty>) -> PassMode {

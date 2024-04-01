@@ -17,6 +17,7 @@ use rustc_data_structures::small_c_str::SmallCStr;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::mono::CodegenUnit;
 use rustc_middle::ptrinfo::PointerMap;
+use rustc_middle::ptrinfo::PointerMapKind;
 use rustc_middle::ptrinfo::PointerMapMethods;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, LayoutError, LayoutOfHelpers,
@@ -83,7 +84,10 @@ pub struct CodegenCx<'ll, 'tcx> {
     /// Mapping of scalar types to llvm types.
     pub scalar_lltypes: RefCell<FxHashMap<Ty<'tcx>, &'ll Type>>,
 
-    pub pointer_maps: RefCell<FxHashMap<Ty<'tcx>, PointerMap>>,
+    /// Mapping of scalar types to flattened llvm types.
+    pub flattened_lltypes: RefCell<FxHashMap<(Ty<'tcx>, Option<VariantIdx>), &'ll Type>>,
+
+    pub pointer_maps: RefCell<FxHashMap<(Ty<'tcx>, PointerMapKind), PointerMap>>,
     pub isize_ty: &'ll Type,
 
     pub coverage_cx: Option<coverageinfo::CrateCoverageContext<'ll, 'tcx>>,
@@ -450,6 +454,7 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
             compiler_used_statics: RefCell::new(Vec::new()),
             type_lowering: Default::default(),
             scalar_lltypes: Default::default(),
+            flattened_lltypes: Default::default(),
             pointer_maps: Default::default(),
             isize_ty,
             coverage_cx,
@@ -610,10 +615,11 @@ impl<'ll, 'tcx> PointerMapMethods<'tcx> for CodegenCx<'ll, 'tcx> {
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
+        kind: PointerMapKind,
         map_fn: impl FnOnce(&PointerMap) -> R,
         compute_fn: impl FnOnce() -> PointerMap,
     ) -> R {
-        map_fn(self.pointer_maps.borrow_mut().entry(ty).or_insert_with(compute_fn))
+        map_fn(self.pointer_maps.borrow_mut().entry((ty, kind)).or_insert_with(compute_fn))
     }
 }
 
