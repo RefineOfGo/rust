@@ -322,13 +322,8 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             if self.c_variadic { &self.args[..self.fixed_count as usize] } else { &self.args };
 
         // This capacity calculation is approximate.
-        let mut llargument_tys = Vec::with_capacity(
-            if self.ret.is_indirect() && !should_pass_by_value(cx, self.conv, self.ret.layout) {
-                self.args.len() + 1
-            } else {
-                self.args.len()
-            },
-        );
+        let mut llargument_tys =
+            Vec::with_capacity(self.args.len() + (self.ret.is_indirect() as usize));
 
         let llreturn_ty = match &self.ret.mode {
             PassMode::Ignore => cx.type_void(),

@@ -930,8 +930,13 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     target,
                 );
                 let dest = match ret_dest {
-                    _ if fn_abi.ret.is_indirect() => llargs[0],
-                    ReturnDest::Nothing => bx.const_undef(bx.type_ptr()),
+                    ReturnDest::Nothing => {
+                        if fn_abi.ret.is_indirect() {
+                            llargs[0]
+                        } else {
+                            bx.const_undef(bx.type_ptr())
+                        }
+                    }
                     ReturnDest::IndirectOperand(dst, _) | ReturnDest::Store(dst) => dst.llval,
                     ReturnDest::DirectOperand(_) => {
                         bug!("Cannot use direct operand with an intrinsic call")
