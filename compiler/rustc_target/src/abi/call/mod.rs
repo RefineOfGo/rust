@@ -335,7 +335,7 @@ impl CastTarget {
 
         assert!(regs.len() <= 9);
         let (tail, head) = regs.split_last().expect("cast into no registers");
-        head.into_iter().copied().enumerate().for_each(|(i, r)| prefix[i] = Some(r));
+        head.iter().copied().enumerate().for_each(|(i, r)| prefix[i] = Some(r));
 
         CastTarget {
             prefix,
