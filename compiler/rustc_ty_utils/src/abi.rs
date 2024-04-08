@@ -1,5 +1,6 @@
 use rustc_hir as hir;
 use rustc_hir::lang_items::LangItem;
+use rustc_middle::ptrinfo::exact_pointer_slots;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{
     fn_can_unwind, FnAbiError, HasParamEnv, HasTyCtxt, LayoutCx, LayoutOf, TyAndLayout,
@@ -8,8 +9,8 @@ use rustc_middle::ty::{self, InstanceDef, Ty, TyCtxt};
 use rustc_session::config::OptLevel;
 use rustc_span::def_id::DefId;
 use rustc_target::abi::call::{
-    ArgAbi, ArgAttribute, ArgAttributes, ArgExtension, Conv, FnAbi, PassMode, Reg, RegKind,
-    RiscvInterruptKind,
+    ArgAbi, ArgAttribute, ArgAttributes, ArgExtension, CastTarget, Conv, FnAbi, PassMode, Reg,
+    RegKind, RiscvInterruptKind,
 };
 use rustc_target::abi::*;
 use rustc_target::spec::abi::Abi as SpecAbi;
@@ -647,7 +648,7 @@ fn fn_abi_new_uncached<'tcx>(
             layout
         };
 
-        let mut arg = ArgAbi::new(cx, conv, layout, |layout, scalar, offset| {
+        let mut arg = ArgAbi::new(cx, layout, |layout, scalar, offset| {
             let mut attrs = ArgAttributes::new();
             adjust_for_rust_scalar(
                 *cx,
@@ -773,7 +774,7 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 // that's how we connect up to LLVM and it's unstable
                 // anyway, we control all calls to it in libstd.
                 //
-                // Note: ROG Rust does not support this.
+                // ROG Rust does not support this.
                 Abi::Vector { .. } if abi != SpecAbi::RustIntrinsic => {
                     assert!(
                         !cx.tcx.sess.target.simd_types_indirect,
@@ -791,11 +792,28 @@ fn fn_abi_adjust_for_abi<'tcx>(
             assert!(is_indirect_not_on_stack, "{:?}", arg);
 
             let size = arg.layout.size;
-            if !arg.layout.is_unsized() && size <= Pointer(AddressSpace::DATA).size(cx) {
+            let ptr_size = Pointer(AddressSpace::DATA).size(cx);
+
+            if !arg.layout.is_unsized() && size <= ptr_size * 8 {
+                let size_bytes = size.bytes_usize();
+                let ptr_size_bytes = ptr_size.bytes_usize();
+                let mut regs = vec![Reg::i64(); size_bytes / ptr_size_bytes];
+
+                // Mark pointer slots
+                for slot_idx in exact_pointer_slots(cx, arg.layout) {
+                    regs[slot_idx] = Reg::ptr(cx);
+                }
+
+                // Not an exact multiple of pointers.
+                let remains = size_bytes % ptr_size_bytes;
+                if remains != 0 {
+                    regs.push(Reg { kind: RegKind::Integer, size: Size::from_bytes(remains) });
+                }
+
                 // We want to pass small aggregates as immediates, but using
                 // an LLVM aggregate type for this leads to bad optimizations,
-                // so we pick an appropriately sized integer type instead.
-                arg.cast_to(Reg { kind: RegKind::Integer, size });
+                // so we pick an appropriately sized register instead.
+                arg.cast_to(CastTarget::immediate(regs));
             }
 
             if let Some(arg_idx) = arg_idx {

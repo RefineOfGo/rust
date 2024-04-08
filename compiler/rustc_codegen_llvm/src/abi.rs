@@ -8,7 +8,6 @@ use crate::value::Value;
 
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::PlaceRef;
-use rustc_codegen_ssa::pass_by_val::should_pass_by_value;
 use rustc_codegen_ssa::traits::*;
 use rustc_codegen_ssa::MemFlags;
 use rustc_middle::bug;
@@ -18,7 +17,7 @@ pub use rustc_middle::ty::layout::{FAT_PTR_ADDR, FAT_PTR_EXTRA};
 use rustc_middle::ty::Ty;
 use rustc_session::config;
 pub use rustc_target::abi::call::*;
-use rustc_target::abi::{self, HasDataLayout, Int, Size, TyAndLayout};
+use rustc_target::abi::{self, HasDataLayout, Int, Size};
 pub use rustc_target::spec::abi::Abi;
 use rustc_target::spec::SanitizerSet;
 
@@ -121,6 +120,10 @@ impl LlvmType for Reg {
     fn llvm_type<'ll>(&self, cx: &CodegenCx<'ll, '_>) -> &'ll Type {
         match self.kind {
             RegKind::Integer => cx.type_ix(self.size.bits()),
+            RegKind::Pointer => {
+                assert_eq!(self.size, cx.data_layout().pointer_size, "invalid pointer size");
+                cx.type_ptr()
+            }
             RegKind::Float => match self.size.bits() {
                 32 => cx.type_f32(),
                 64 => cx.type_f64(),
@@ -205,14 +208,8 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
             PassMode::Ignore => {}
             // Sized indirect arguments
             PassMode::Indirect { attrs, meta_attrs: None, on_stack: _ } => {
-                if should_pass_by_value(bx, self.conv, self.layout) {
-                    OperandRef::from_immediate_or_packed_pair(bx, val, self.layout)
-                        .val
-                        .store(bx, dst);
-                } else {
-                    let align = attrs.pointee_align.unwrap_or(self.layout.align.abi);
-                    OperandValue::Ref(val, None, align).store(bx, dst);
-                }
+                let align = attrs.pointee_align.unwrap_or(self.layout.align.abi);
+                OperandValue::Ref(val, None, align).store(bx, dst);
             }
             // Unsized indirect qrguments
             PassMode::Indirect { attrs: _, meta_attrs: Some(_), on_stack: _ } => {
@@ -330,12 +327,8 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             PassMode::Direct(_) | PassMode::Pair(..) => self.ret.layout.immediate_llvm_type(cx),
             PassMode::Cast { cast, pad_i32: _ } => cast.llvm_type(cx),
             PassMode::Indirect { .. } => {
-                if should_pass_by_value(cx, self.conv, self.ret.layout) {
-                    self.ret.layout.flattened_type(cx)
-                } else {
-                    llargument_tys.push(cx.type_ptr());
-                    cx.type_void()
-                }
+                llargument_tys.push(cx.type_ptr());
+                cx.type_void()
             }
         };
 
@@ -370,13 +363,7 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                     llargument_tys.push(ptr_layout.scalar_pair_element_llvm_type(cx, 1, true));
                     continue;
                 }
-                PassMode::Indirect { attrs: _, meta_attrs: None, on_stack: _ } => {
-                    if should_pass_by_value(cx, self.conv, arg.layout) {
-                        arg.layout.flattened_type(cx)
-                    } else {
-                        cx.type_ptr()
-                    }
-                }
+                PassMode::Indirect { attrs: _, meta_attrs: None, on_stack: _ } => cx.type_ptr(),
                 PassMode::Cast { cast, pad_i32 } => {
                     // add padding
                     if *pad_i32 {
@@ -424,21 +411,10 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             i += 1;
             i - 1
         };
-        let adjust_attrs = |attrs: &ArgAttributes, layout: TyAndLayout<'tcx, Ty<'tcx>>| {
-            let mut attrs = attrs.clone();
-            if should_pass_by_value(cx, self.conv, layout) {
-                attrs.regular = ArgAttribute::empty();
-                attrs.pointee_size = abi::Size::ZERO;
-                attrs.pointee_align = None;
-            }
-            attrs
-        };
         match &self.ret.mode {
             PassMode::Direct(attrs) => {
                 attrs.apply_attrs_to_llfn(llvm::AttributePlace::ReturnValue, cx, llfn);
             }
-            PassMode::Indirect { attrs: _, meta_attrs: None, on_stack: false }
-                if should_pass_by_value(cx, self.conv, self.ret.layout) => {}
             PassMode::Indirect { attrs, meta_attrs: _, on_stack } => {
                 assert!(!on_stack);
                 let i = apply(attrs);
@@ -464,12 +440,9 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                     );
                     attributes::apply_to_llfn(llfn, llvm::AttributePlace::Argument(i), &[byval]);
                 }
-                PassMode::Direct(attrs) => {
+                PassMode::Direct(attrs)
+                | PassMode::Indirect { attrs, meta_attrs: None, on_stack: false } => {
                     apply(attrs);
-                }
-                PassMode::Indirect { attrs, meta_attrs: None, on_stack: false } => {
-                    let new_attrs = adjust_attrs(attrs, arg.layout);
-                    apply(&new_attrs);
                 }
                 PassMode::Indirect { attrs, meta_attrs: Some(meta_attrs), on_stack } => {
                     assert!(!on_stack);
@@ -506,23 +479,10 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             i += 1;
             i - 1
         };
-        let adjust_attrs = |bx: &mut Builder<'_, 'll, 'tcx>,
-                            attrs: &ArgAttributes,
-                            layout: TyAndLayout<'tcx, Ty<'tcx>>| {
-            let mut attrs = attrs.clone();
-            if should_pass_by_value(bx, self.conv, layout) {
-                attrs.regular = ArgAttribute::empty();
-                attrs.pointee_size = abi::Size::ZERO;
-                attrs.pointee_align = None;
-            }
-            attrs
-        };
         match &self.ret.mode {
             PassMode::Direct(attrs) => {
                 attrs.apply_attrs_to_callsite(llvm::AttributePlace::ReturnValue, bx.cx, callsite);
             }
-            PassMode::Indirect { attrs: _, meta_attrs: None, on_stack: false }
-                if should_pass_by_value(bx.cx, self.conv, self.ret.layout) => {}
             PassMode::Indirect { attrs, meta_attrs: _, on_stack } => {
                 assert!(!on_stack);
                 let i = apply(bx.cx, attrs);
@@ -566,12 +526,9 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
                         &[byval],
                     );
                 }
-                PassMode::Direct(attrs) => {
+                PassMode::Direct(attrs)
+                | PassMode::Indirect { attrs, meta_attrs: None, on_stack: false } => {
                     apply(bx.cx, attrs);
-                }
-                PassMode::Indirect { attrs, meta_attrs: None, on_stack: false } => {
-                    let new_attrs = adjust_attrs(bx, attrs, arg.layout);
-                    apply(bx.cx, &new_attrs);
                 }
                 PassMode::Indirect { attrs, meta_attrs: Some(meta_attrs), on_stack: _ } => {
                     apply(bx.cx, attrs);

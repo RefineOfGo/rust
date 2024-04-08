@@ -1,5 +1,4 @@
 use crate::base;
-use crate::pass_by_val::should_pass_by_value;
 use crate::traits::*;
 use rustc_index::bit_set::BitSet;
 use rustc_index::IndexVec;
@@ -221,8 +220,7 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
 
     // Allocate variable and temp allocas
     let local_values = {
-        let ret_by_val = should_pass_by_value(&start_bx, fx.fn_abi.conv, fx.fn_abi.ret.layout);
-        let args = arg_local_refs(&mut start_bx, &mut fx, &memory_locals, ret_by_val);
+        let args = arg_local_refs(&mut start_bx, &mut fx, &memory_locals);
 
         let mut allocate_local = |local| {
             let decl = &mir.local_decls[local];
@@ -230,13 +228,8 @@ pub fn codegen_mir<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             assert!(!layout.ty.has_erasable_regions());
 
             if local == mir::RETURN_PLACE && fx.fn_abi.ret.is_indirect() {
-                if ret_by_val {
-                    debug!("alloc: {:?} (return place, by value) -> place", local);
-                    return LocalRef::Place(PlaceRef::alloca(&mut start_bx, layout));
-                } else {
-                    debug!("alloc: {:?} (return place) -> place", local);
-                    return LocalRef::Place(PlaceRef::new_sized(start_bx.get_param(0), layout));
-                }
+                debug!("alloc: {:?} (return place) -> place", local);
+                return LocalRef::Place(PlaceRef::new_sized(start_bx.get_param(0), layout));
             }
 
             if memory_locals.contains(local) {
@@ -289,16 +282,11 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     bx: &mut Bx,
     fx: &mut FunctionCx<'a, 'tcx, Bx>,
     memory_locals: &BitSet<mir::Local>,
-    ret_by_val: bool,
 ) -> Vec<LocalRef<'tcx, Bx::Value>> {
     let mir = fx.mir;
     let mut idx = 0;
-    let mut llarg_idx = 0;
+    let mut llarg_idx = fx.fn_abi.ret.is_indirect() as usize;
     let mut num_untupled = None;
-
-    if !ret_by_val && fx.fn_abi.ret.is_indirect() {
-        llarg_idx = 1;
-    }
 
     let args = mir
         .args_iter()
@@ -390,18 +378,13 @@ fn arg_local_refs<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             match arg.mode {
                 // Sized indirect arguments
                 PassMode::Indirect { attrs, meta_attrs: None, on_stack: _ } => {
-                    let mut store_copy = false;
-                    if should_pass_by_value(bx, fx.fn_abi.conv, arg.layout) {
-                        store_copy = true;
-                    } else if let Some(pointee_align) = attrs.pointee_align {
-                        // Don't copy an indirect argument to an alloca, the caller already put it
-                        // in a temporary alloca and gave it up.
-                        // FIXME: lifetimes
-                        store_copy = pointee_align < arg.layout.align.abi;
-                    }
-                    if store_copy {
-                        // ...unless the argument is underaligned or flattened, then we need to copy
-                        // it to a higher-aligned alloca.
+                    // Don't copy an indirect argument to an alloca, the caller already put it
+                    // in a temporary alloca and gave it up.
+                    // FIXME: lifetimes
+                    if let Some(pointee_align) = attrs.pointee_align
+                        && pointee_align < arg.layout.align.abi
+                    {
+                        // ...unless the argument is underaligned, then we need to copy it to a higher-aligned alloca.
                         let tmp = PlaceRef::alloca(bx, arg.layout);
                         bx.store_fn_arg(arg, &mut llarg_idx, tmp);
                         LocalRef::Place(tmp)

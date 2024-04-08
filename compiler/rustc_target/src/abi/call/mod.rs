@@ -190,6 +190,7 @@ impl ArgAttributes {
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]
 pub enum RegKind {
     Integer,
+    Pointer,
     Float,
     Vector,
 }
@@ -220,6 +221,12 @@ impl Reg {
 }
 
 impl Reg {
+    pub fn ptr<C: HasDataLayout>(cx: &C) -> Reg {
+        Reg { kind: RegKind::Pointer, size: cx.data_layout().pointer_size }
+    }
+}
+
+impl Reg {
     pub fn align<C: HasDataLayout>(&self, cx: &C) -> Align {
         let dl = cx.data_layout();
         match self.kind {
@@ -232,6 +239,10 @@ impl Reg {
                 65..=128 => dl.i128_align.abi,
                 _ => panic!("unsupported integer: {self:?}"),
             },
+            RegKind::Pointer => {
+                assert_eq!(self.size, dl.pointer_size, "invalid pointer size");
+                dl.pointer_align.abi
+            }
             RegKind::Float => match self.size.bits() {
                 32 => dl.f32_align.abi,
                 64 => dl.f64_align.abi,
@@ -318,6 +329,28 @@ impl CastTarget {
         }
     }
 
+    pub fn immediate<R: AsRef<[Reg]>>(regs: R) -> CastTarget {
+        let regs = regs.as_ref();
+        let mut prefix = [None; 8];
+
+        assert!(regs.len() <= 9);
+        let (tail, head) = regs.split_last().expect("cast into no registers");
+        head.into_iter().copied().enumerate().for_each(|(i, r)| prefix[i] = Some(r));
+
+        CastTarget {
+            prefix,
+            rest: Uniform::from(*tail),
+            attrs: ArgAttributes {
+                regular: ArgAttribute::default(),
+                arg_ext: ArgExtension::None,
+                pointee_size: Size::ZERO,
+                pointee_align: None,
+            },
+        }
+    }
+}
+
+impl CastTarget {
     pub fn size<C: HasDataLayout>(&self, _cx: &C) -> Size {
         // Prefix arguments are passed in specific designated registers
         let prefix_size = self
@@ -545,17 +578,12 @@ impl<'a, Ty> TyAndLayout<'a, Ty> {
 pub struct ArgAbi<'a, Ty> {
     pub layout: TyAndLayout<'a, Ty>,
     pub mode: PassMode,
-    pub conv: Conv,
 }
 
 // Needs to be a custom impl because of the bounds on the `TyAndLayout` debug impl.
 impl<'a, Ty: fmt::Display> fmt::Debug for ArgAbi<'a, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ArgAbi")
-            .field("layout", &self.layout)
-            .field("mode", &self.mode)
-            .field("conv", &self.conv)
-            .finish()
+        f.debug_struct("ArgAbi").field("layout", &self.layout).field("mode", &self.mode).finish()
     }
 }
 
@@ -563,7 +591,6 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
     /// This defines the "default ABI" for that type, that is then later adjusted in `fn_abi_adjust_for_abi`.
     pub fn new(
         cx: &impl HasDataLayout,
-        conv: Conv,
         layout: TyAndLayout<'a, Ty>,
         scalar_attrs: impl Fn(&TyAndLayout<'a, Ty>, abi::Scalar, Size) -> ArgAttributes,
     ) -> Self {
@@ -577,7 +604,7 @@ impl<'a, Ty> ArgAbi<'a, Ty> {
             Abi::Vector { .. } => PassMode::Direct(ArgAttributes::new()),
             Abi::Aggregate { .. } => Self::indirect_pass_mode(&layout),
         };
-        ArgAbi { layout, mode, conv }
+        ArgAbi { layout, mode }
     }
 
     fn indirect_pass_mode(layout: &TyAndLayout<'a, Ty>) -> PassMode {
@@ -745,6 +772,13 @@ pub enum Conv {
     AvrNonBlockingInterrupt,
 
     RiscvInterrupt { kind: RiscvInterruptKind },
+}
+
+impl Conv {
+    #[inline(always)]
+    pub fn use_rogcc(self) -> bool {
+        matches!(self, Conv::Rog | Conv::Rust)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]

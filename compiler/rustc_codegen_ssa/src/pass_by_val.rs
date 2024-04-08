@@ -1,5 +1,5 @@
 use rustc_middle::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
-use rustc_target::abi::{call::Conv, Abi, AbiAndPrefAlign, HasDataLayout, Size, Variants};
+use rustc_target::abi::{Abi, AbiAndPrefAlign, HasDataLayout, Size, Variants};
 
 pub fn can_pass_by_value<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
     cx: &Cx,
@@ -34,12 +34,4 @@ pub fn can_pass_by_value<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv
             }
         },
     }
-}
-
-pub fn should_pass_by_value<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
-    cx: &Cx,
-    conv: Conv,
-    layout: TyAndLayout<'tcx>,
-) -> bool {
-    matches!(conv, Conv::Rog | Conv::Rust) && can_pass_by_value(cx, layout)
 }

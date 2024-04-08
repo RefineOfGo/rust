@@ -7,7 +7,7 @@ use crate::{
     managed::{ManagedChecker, ManagedSelf},
     ty::{
         layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
-        Ty,
+        Ty, TyCtxt,
     },
 };
 
@@ -43,7 +43,7 @@ pub enum PointerMapKind {
     Partial,
 }
 
-pub trait PointerMapMethods<'tcx> {
+pub trait HasPointerMap<'tcx> {
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
@@ -51,6 +51,18 @@ pub trait PointerMapMethods<'tcx> {
         map_fn: impl FnOnce(&PointerMap) -> R,
         compute_fn: impl FnOnce() -> PointerMap,
     ) -> R;
+}
+
+impl<'tcx> HasPointerMap<'tcx> for TyCtxt<'tcx> {
+    fn compute_pointer_map<R>(
+        &self,
+        ty: Ty<'tcx>,
+        kind: PointerMapKind,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
+    ) -> R {
+        map_fn(self.pointer_maps.borrow_mut().entry((ty, kind)).or_insert_with(compute_fn))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -264,7 +276,7 @@ impl PointerMap {
     fn should_resolve<
         'cx,
         'tcx: 'cx,
-        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
     >(
         cx: &'cx Cx,
         kind: PointerMapKind,
@@ -291,7 +303,7 @@ impl PointerMap {
         'cx,
         'tcx: 'cx,
         R,
-        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
     >(
         cx: &'cx Cx,
         kind: PointerMapKind,
@@ -311,7 +323,7 @@ impl PointerMap {
 pub fn encode<
     'cx,
     'tcx: 'cx,
-    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
 >(
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
@@ -322,7 +334,7 @@ pub fn encode<
 pub fn has_pointers<
     'cx,
     'tcx: 'cx,
-    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
 >(
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
@@ -333,7 +345,7 @@ pub fn has_pointers<
 pub fn exact_pointer_slots<
     'cx,
     'tcx: 'cx,
-    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + PointerMapMethods<'tcx>,
+    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
 >(
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,

@@ -1732,7 +1732,9 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             let obligation = stack.obligation.with(this.tcx(), ty::Binder::dummy(p));
             *outer_universe = self.infcx.universe();
             match this.match_where_clause_trait_ref(&obligation, where_clause_trait_ref) {
-                Ok(obligations) => this.evaluate_predicates_recursively(stack.list(), obligations),
+                Ok(obligations) => {
+                    this.evaluate_predicates_recursively(stack.list(), obligations, false)
+                }
                 Err(()) => Ok(EvaluatedToErr),
             }
         })
