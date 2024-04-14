@@ -466,13 +466,13 @@ pub const fn align_of<T>() -> usize {
     intrinsics::min_align_of::<T>()
 }
 
-/// Returns the compressed ROG pointer-map of a type.
+/// Returns the encoded ROG pointer-map of a type.
 #[cfg(not(bootstrap))]
 #[inline(always)]
 #[must_use]
 #[stable(feature = "rog", since = "1.0.0")]
 #[rustc_const_stable(feature = "rog", since = "1.0.0")]
-pub const fn pointer_map_of<T>() -> &'static [u8] {
+pub const fn pointer_map_of<T>() -> &'static [u64] {
     intrinsics::pointer_map_of::<T>()
 }
 

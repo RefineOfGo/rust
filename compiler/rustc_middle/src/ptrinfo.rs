@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
 use smallvec::{smallvec, SmallVec};
@@ -13,7 +13,7 @@ use crate::{
 
 struct BitIter {
     i: usize,
-    b: u8,
+    b: u64,
 }
 
 impl Iterator for BitIter {
@@ -25,13 +25,13 @@ impl Iterator for BitIter {
         } else {
             let p = self.b.trailing_zeros() as usize;
             self.b &= !(1 << p);
-            Some(self.i * 8 + p)
+            Some(self.i * 64 + p)
         }
     }
 }
 
-impl From<(usize, ((u8, u8), u8))> for BitIter {
-    fn from((i, ((b, m), u)): (usize, ((u8, u8), u8))) -> Self {
+impl From<(usize, ((u64, u64), u64))> for BitIter {
+    fn from((i, ((b, m), u)): (usize, ((u64, u64), u64))) -> Self {
         let b = b & !m & u;
         BitIter { i, b }
     }
@@ -65,19 +65,38 @@ impl<'tcx> HasPointerMap<'tcx> for TyCtxt<'tcx> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct EncodedPointerMap(Box<[u64]>);
+
+impl EncodedPointerMap {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl From<EncodedPointerMap> for Cow<'_, [u8]> {
+    fn from(value: EncodedPointerMap) -> Self {
+        unsafe {
+            let len = value.0.len() * 8;
+            let ptr = Box::into_raw(value.0);
+            Cow::Owned(Vec::from_raw_parts(ptr as *mut u8, len, len))
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PointerMap {
-    used: SmallVec<[u8; 16]>,
-    bits: SmallVec<[u8; 16]>,
-    mask: SmallVec<[u8; 16]>,
+    used: SmallVec<[u64; 4]>,
+    bits: SmallVec<[u64; 4]>,
+    mask: SmallVec<[u64; 4]>,
 }
 
 impl PointerMap {
     fn new(size: usize) -> Self {
         Self {
-            used: smallvec![0; (size + 7) / 8],
-            bits: smallvec![0; (size + 7) / 8],
-            mask: smallvec![0; (size + 7) / 8],
+            used: smallvec![0; (size + 63) / 64],
+            bits: smallvec![0; (size + 63) / 64],
+            mask: smallvec![0; (size + 63) / 64],
         }
     }
 }
@@ -90,13 +109,13 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn encode(&self) -> Vec<u8> {
-        let size = self.bits.iter().rposition(|v| *v != 0).map(|n| n + 1).unwrap_or(0);
-        let bits = size * (u8::BITS as usize);
+    pub fn encode(&self) -> EncodedPointerMap {
+        let size = self.bits.iter().rposition(|v| *v != 0).map_or(0, |n| n + 1);
+        let bits = size * (u64::BITS as usize);
 
         /* empty bitmap */
         if size == 0 {
-            return Vec::new();
+            return EncodedPointerMap(vec![].into_boxed_slice());
         }
 
         /* sanity check */
@@ -110,27 +129,22 @@ impl PointerMap {
         );
 
         /* allocate space for encoded bitmap */
-        let mut len = bits - self.bits[size - 1].leading_zeros() as usize - 1;
-        let mut ret = Vec::with_capacity(size * 2 + 1);
+        let tail = self.bits[size - 1].leading_zeros() as usize;
+        let mult = self.mask[..size].iter().any(|v| *v != 0) as usize;
+        let mut ret = Vec::with_capacity((size << mult) + 1);
 
-        /* encode length as varint */
-        while len >= 0x80 {
-            ret.push(0x80 | (len & 0x7f) as u8);
-            len >>= 7;
-        }
-
-        /* add the actual bitmap */
-        ret.push(len as u8);
+        /* encode length and bitmap */
+        ret.push((bits - tail) as u64);
         ret.extend_from_slice(&self.bits[..size]);
 
         /* check if the encoding is exact */
-        if self.mask[..size].iter().all(|v| *v == 0) {
-            return ret;
+        if mult == 0 {
+            return EncodedPointerMap(ret.into_boxed_slice());
         }
 
         /* add the inexact map if any */
         ret.extend_from_slice(&self.mask[..size]);
-        ret
+        EncodedPointerMap(ret.into_boxed_slice())
     }
 
     pub fn exact_pointer_slots(&self) -> SmallVec<[usize; 16]> {
@@ -148,12 +162,12 @@ impl PointerMap {
 impl PointerMap {
     fn set_zero(&mut self, idx: usize, len: usize) {
         (idx..idx + len).for_each(|i| self.mask[i] |= self.bits[i] & self.used[i]);
-        self.used[idx..idx + len].fill(0xff);
+        self.used[idx..idx + len].fill(u64::MAX);
     }
 
-    fn set_bits(&mut self, idx: usize, mask: u8, bit: i8) {
-        self.mask[idx] |= (self.bits[idx] ^ (-bit as u8)) & self.used[idx] & mask;
-        self.bits[idx] |= (-bit as u8) & mask;
+    fn set_bits(&mut self, idx: usize, mask: u64, bit: i64) {
+        self.mask[idx] |= (self.bits[idx] ^ (-bit as u64)) & self.used[idx] & mask;
+        self.bits[idx] |= (-bit as u64) & mask;
         self.used[idx] |= mask;
     }
 
@@ -177,7 +191,7 @@ impl PointerMap {
 
         /* slot count & bitmap offset */
         let mut len = end - pos + 1;
-        let (mut idx, offs) = (pos / 8, pos % 8);
+        let (mut idx, offs) = (pos / 64, pos % 64);
 
         /* fast-path: a single bit */
         if len == 1 {
@@ -187,19 +201,19 @@ impl PointerMap {
 
         /* unaligned leading bits */
         if offs != 0 {
-            let rem = (8 - offs).min(len);
+            let rem = (64 - offs).min(len);
             let mask = ((1 << rem) - 1) << offs;
             self.set_bits(idx, mask, 0);
             len -= rem;
             idx += 1;
         }
 
-        /* consecutive 8-bit groups */
-        if len >= 8 {
-            let num = len / 8;
+        /* consecutive 64-bit groups */
+        if len >= 64 {
+            let num = len / 64;
             self.set_zero(idx, num);
             idx += num;
-            len %= 8;
+            len %= 64;
         }
 
         /* remaining bits */
@@ -222,7 +236,7 @@ impl PointerMap {
                 if offset.is_aligned(cx.data_layout().pointer_align.abi) =>
             {
                 let pos = offset.bytes_usize() / cx.data_layout().pointer_size.bytes_usize();
-                self.set_bits(pos / 8, 1 << (pos % 8), 1);
+                self.set_bits(pos / 64, 1 << (pos % 64), 1);
             }
             _ => self.set_noptr(cx, offset, scalar.size(cx)),
         }
@@ -327,7 +341,7 @@ pub fn encode<
 >(
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
-) -> Vec<u8> {
+) -> EncodedPointerMap {
     PointerMap::resolve_and(cx, PointerMapKind::Partial, layout, PointerMap::encode)
 }
 

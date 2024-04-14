@@ -245,7 +245,7 @@ pub fn check_intrinsic_type(
                 (1, 0, vec![Ty::new_imm_ptr(tcx, param(0)), tcx.types.i32], Ty::new_unit(tcx))
             }
             sym::needs_drop => (1, 0, vec![], tcx.types.bool),
-            sym::pointer_map_of => (1, 0, vec![], Ty::new_static_bytes(tcx)),
+            sym::pointer_map_of => (1, 0, vec![], Ty::new_static_u64_slice(tcx)),
             sym::type_name => (1, 0, vec![], Ty::new_static_str(tcx)),
             sym::type_id => (1, 0, vec![], tcx.types.u128),
             sym::offset => (2, 0, vec![param(0), param(1)], param(0)),

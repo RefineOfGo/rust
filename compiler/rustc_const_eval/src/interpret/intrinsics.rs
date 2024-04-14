@@ -149,11 +149,16 @@ impl<'mir, 'tcx: 'mir, M: Machine<'mir, 'tcx>> InterpCx<'mir, 'tcx, M> {
                     .layout_of(self.param_env.and(ty))
                     .map_err(|e| err_inval!(Layout(*e)))?;
                 let ptrmap = ptrinfo::encode(self, layout);
-                let alloc =
-                    self.tcx.mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(ptrmap));
                 let val = self.const_val_to_op(
-                    ConstValue::Slice { data: alloc, meta: alloc.inner().size().bytes() },
-                    Ty::new_static_bytes(self.tcx.tcx),
+                    ConstValue::Slice {
+                        meta: ptrmap.len() as u64,
+                        data: self.tcx.mk_const_alloc(Allocation::from_bytes(
+                            ptrmap,
+                            self.tcx.data_layout.pointer_align.abi,
+                            ty::Mutability::Not,
+                        )),
+                    },
+                    Ty::new_static_u64_slice(self.tcx.tcx),
                     Some(dest.layout),
                 )?;
                 self.copy_op(&val, dest)?;

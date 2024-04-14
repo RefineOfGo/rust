@@ -132,9 +132,14 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             sym::pointer_map_of => {
                 let layout = bx.layout_of(fn_args.type_at(0));
                 let ptrmap = ptrinfo::encode(bx.cx(), layout);
-                let alloc =
-                    bx.tcx().mk_const_alloc(Allocation::from_bytes_byte_aligned_immutable(ptrmap));
-                let val = ConstValue::Slice { data: alloc, meta: alloc.inner().size().bytes() };
+                let val = ConstValue::Slice {
+                    meta: ptrmap.len() as u64,
+                    data: bx.tcx().mk_const_alloc(Allocation::from_bytes(
+                        ptrmap,
+                        bx.data_layout().pointer_align.abi,
+                        ty::Mutability::Not,
+                    )),
+                };
                 OperandRef::from_const(bx, val, ret_ty).immediate_or_packed_pair(bx)
             }
             sym::vtable_size | sym::vtable_align => {
