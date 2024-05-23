@@ -15,7 +15,7 @@ use crate::arch::asm;
 ///
 /// 1. It cannot be any of the parameter registers:
 ///
-///     * For x86_64 they are %rdi, %rsi, %rdx, %rcx, %r8, %r9
+///     * For x86_64 they are %rdi, %rsi, %rdx, %rcx, %r8, %r9, %r10, %rax
 ///     * For aarch64 they are X0-X7, and X8 for struct results
 ///
 /// 2. It cannot be any of the callee-saved registers, otherwise it may
@@ -30,13 +30,12 @@ use crate::arch::asm;
 /// So... There are only a few registers available for us to choose from,
 /// let's see what we've got:
 ///
-///     * x86_64  : %rax, %r10, %r11
+///     * x86_64  : %r11
 ///     * aarch64 : X9-X15, IP0(X16), IP1(X17)
 ///
-/// For x86_64, %rax seems to be a good choice, since it's the default
-/// register to store return values, so it will be clobbered anyway. It also
-/// have the benifit of saving a few bytes because some instructions have
-/// shorter encodings when %rax is one of its operand.
+/// There is only one choice left for x86_64, which is %r11. This is the
+/// default "scratch register" defined in LLVM, and LLVM uses it to store
+/// temporary values as well.
 ///
 /// AArch64 provided us with two registers IP0 and IP1 specifically for this
 /// kind of usage (actually it was intended to give the linker some free
