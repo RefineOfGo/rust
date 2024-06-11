@@ -3,12 +3,9 @@ use std::{borrow::Cow, fmt::Debug};
 use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
 use smallvec::{smallvec, SmallVec};
 
-use crate::{
-    managed::{ManagedChecker, ManagedSelf},
-    ty::{
-        layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
-        Ty, TyCtxt,
-    },
+use crate::ty::{
+    layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
+    Ty, TyCtxt,
 };
 
 struct BitIter {
@@ -47,7 +44,6 @@ pub trait HasPointerMap<'tcx> {
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
-        kind: PointerMapKind,
         map_fn: impl FnOnce(&PointerMap) -> R,
         compute_fn: impl FnOnce() -> PointerMap,
     ) -> R;
@@ -57,11 +53,10 @@ impl<'tcx> HasPointerMap<'tcx> for TyCtxt<'tcx> {
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
-        kind: PointerMapKind,
         map_fn: impl FnOnce(&PointerMap) -> R,
         compute_fn: impl FnOnce() -> PointerMap,
     ) -> R {
-        map_fn(self.pointer_maps.borrow_mut().entry((ty, kind)).or_insert_with(compute_fn))
+        map_fn(self.pointer_maps.borrow_mut().entry(ty).or_insert_with(compute_fn))
     }
 }
 
@@ -287,21 +282,6 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    fn should_resolve<
-        'cx,
-        'tcx: 'cx,
-        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
-    >(
-        cx: &'cx Cx,
-        kind: PointerMapKind,
-        layout: TyAndLayout<'tcx>,
-    ) -> bool {
-        kind == PointerMapKind::Full
-            || ManagedChecker::new(cx.tcx()).is_managed_self(layout.ty) == ManagedSelf::Yes
-    }
-}
-
-impl PointerMap {
     pub fn resolve<'cx, 'tcx: 'cx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
         cx: &'cx Cx,
         layout: TyAndLayout<'tcx>,
@@ -320,17 +300,10 @@ impl PointerMap {
         Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
     >(
         cx: &'cx Cx,
-        kind: PointerMapKind,
         layout: TyAndLayout<'tcx>,
         map_fn: impl FnOnce(&Self) -> R,
     ) -> R {
-        cx.compute_pointer_map(layout.ty, kind, map_fn, move || {
-            if Self::should_resolve(cx, kind, layout) {
-                Self::resolve(cx, layout)
-            } else {
-                Self::new(0)
-            }
-        })
+        cx.compute_pointer_map(layout.ty, map_fn, move || Self::resolve(cx, layout))
     }
 }
 
@@ -342,7 +315,7 @@ pub fn encode<
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
 ) -> EncodedPointerMap {
-    PointerMap::resolve_and(cx, PointerMapKind::Partial, layout, PointerMap::encode)
+    PointerMap::resolve_and(cx, layout, PointerMap::encode)
 }
 
 pub fn has_pointers<
@@ -353,7 +326,7 @@ pub fn has_pointers<
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
 ) -> bool {
-    PointerMap::resolve_and(cx, PointerMapKind::Partial, layout, PointerMap::has_pointers)
+    PointerMap::resolve_and(cx, layout, PointerMap::has_pointers)
 }
 
 pub fn exact_pointer_slots<
@@ -364,5 +337,5 @@ pub fn exact_pointer_slots<
     cx: &'cx Cx,
     layout: TyAndLayout<'tcx>,
 ) -> SmallVec<[usize; 16]> {
-    PointerMap::resolve_and(cx, PointerMapKind::Full, layout, PointerMap::exact_pointer_slots)
+    PointerMap::resolve_and(cx, layout, PointerMap::exact_pointer_slots)
 }

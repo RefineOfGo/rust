@@ -249,11 +249,15 @@ where
     }
 }
 
-pub(in crate::solve) fn instantiate_constituent_tys_for_managed_trait<'tcx>(
-    _ecx: &EvalCtxt<'_, InferCtxt<'tcx>>,
-    ty: Ty<'tcx>,
-) -> Result<Vec<ty::Binder<'tcx, Ty<'tcx>>>, NoSolution> {
-    todo!(
+pub(in crate::solve) fn instantiate_constituent_tys_for_managed_trait<D, I>(
+    _ecx: &EvalCtxt<'_, D>,
+    ty: I::Ty,
+) -> Result<Vec<ty::Binder<I, I::Ty>>, NoSolution>
+where
+    D: SolverDelegate<Interner = I>,
+    I: Interner,
+{
+    unimplemented!(
         "`Managed` trait solver is not implemented for `-Z trait-solver=next`, \
         please fallback to classic solver. ty = {:?}",
         ty,

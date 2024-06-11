@@ -14,7 +14,6 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::mir::mono::CodegenUnit;
 use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ptrinfo::PointerMap;
-use rustc_middle::ptrinfo::PointerMapKind;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, LayoutError, LayoutOfHelpers,
     TyAndLayout,
@@ -682,11 +681,10 @@ impl<'ll, 'tcx> HasPointerMap<'tcx> for CodegenCx<'ll, 'tcx> {
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
-        kind: PointerMapKind,
         map_fn: impl FnOnce(&PointerMap) -> R,
         compute_fn: impl FnOnce() -> PointerMap,
     ) -> R {
-        self.tcx.compute_pointer_map(ty, kind, map_fn, compute_fn)
+        self.tcx.compute_pointer_map(ty, map_fn, compute_fn)
     }
 }
 

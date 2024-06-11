@@ -23,7 +23,7 @@ use tracing::debug;
 
 use crate::error::UnsupportedFnAbi;
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
-use crate::ptrinfo::HasPointerMap;
+use crate::ptrinfo::{HasPointerMap, PointerMap};
 use crate::query::TyCtxtAt;
 use crate::ty::normalize_erasing_regions::NormalizationError;
 use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt, TypeVisitableExt};
@@ -603,11 +603,10 @@ impl<'tcx, T: HasPointerMap<'tcx>> HasPointerMap<'tcx> for LayoutCx<'tcx, T> {
     fn compute_pointer_map<R>(
         &self,
         ty: Ty<'tcx>,
-        kind: crate::ptrinfo::PointerMapKind,
-        map_fn: impl FnOnce(&crate::ptrinfo::PointerMap) -> R,
-        compute_fn: impl FnOnce() -> crate::ptrinfo::PointerMap,
+        map_fn: impl FnOnce(&PointerMap) -> R,
+        compute_fn: impl FnOnce() -> PointerMap,
     ) -> R {
-        self.tcx.compute_pointer_map(ty, kind, map_fn, compute_fn)
+        self.tcx.compute_pointer_map(ty, map_fn, compute_fn)
     }
 }
 

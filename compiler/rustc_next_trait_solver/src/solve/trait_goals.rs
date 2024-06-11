@@ -226,9 +226,9 @@ where
     }
 
     fn consider_builtin_managed_candidate(
-        ecx: &mut EvalCtxt<'_, InferCtxt<'tcx>>,
-        goal: Goal<'tcx, Self>,
-    ) -> Result<Candidate<'tcx>, NoSolution> {
+        ecx: &mut EvalCtxt<'_, D>,
+        goal: Goal<I, Self>,
+    ) -> Result<Candidate<I>, NoSolution> {
         if goal.predicate.polarity != ty::PredicatePolarity::Positive {
             return Err(NoSolution);
         }

@@ -59,7 +59,7 @@ use rustc_type_ir::{search_graph, CollectAndApply, Interner, TypeFlags, WithCach
 use tracing::{debug, instrument};
 
 use crate::arena::Arena;
-use crate::dep_graph::{DepGraph, DepKindStruct, DepKindStruct};
+use crate::dep_graph::{DepGraph, DepKindStruct};
 use crate::infer::canonical::{CanonicalParamEnvCache, CanonicalVarInfo, CanonicalVarInfos};
 use crate::lint::lint_level;
 use crate::metadata::ModChild;
@@ -1304,7 +1304,7 @@ pub struct GlobalCtxt<'tcx> {
     pub data_layout: TargetDataLayout,
 
     /// Caches the result of Pointer map calculation for each Ty and PointerMapKind.
-    pub pointer_maps: Lock<FxHashMap<(Ty<'tcx>, PointerMapKind), PointerMap>>,
+    pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
 
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: Lock<interpret::AllocMap<'tcx>>,
