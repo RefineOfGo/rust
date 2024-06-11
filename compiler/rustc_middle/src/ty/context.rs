@@ -16,7 +16,7 @@ use crate::middle::resolve_bound_vars;
 use crate::middle::stability;
 use crate::mir::interpret::{self, Allocation, ConstAllocation};
 use crate::mir::{Body, Local, Place, PlaceElem, ProjectionKind, Promoted};
-use crate::ptrinfo::{PointerMap, PointerMapKind};
+use crate::ptrinfo::PointerMap;
 use crate::query::plumbing::QuerySystem;
 use crate::query::LocalCrate;
 use crate::query::Providers;
@@ -1261,7 +1261,7 @@ pub struct GlobalCtxt<'tcx> {
     pub data_layout: TargetDataLayout,
 
     /// Caches the result of Pointer map calculation for each Ty and PointerMapKind.
-    pub pointer_maps: Lock<FxHashMap<(Ty<'tcx>, PointerMapKind), PointerMap>>,
+    pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
 
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: Lock<interpret::AllocMap<'tcx>>,
