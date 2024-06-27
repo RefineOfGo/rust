@@ -3,7 +3,7 @@
 //! and miri.
 
 use rustc_hir::def_id::DefId;
-use rustc_middle::ptrinfo;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty;
 use rustc_middle::ty::layout::{LayoutOf as _, ValidityRequirement};
 use rustc_middle::ty::GenericArgsRef;
@@ -146,7 +146,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     .tcx
                     .layout_of(self.param_env.and(ty))
                     .map_err(|e| err_inval!(Layout(*e)))?;
-                let ptrmap = ptrinfo::encode(self, layout);
+                let ptrmap = self.encoded_pointer_map(layout);
                 let val = self.const_val_to_op(
                     ConstValue::Slice {
                         meta: ptrmap.len() as u64,

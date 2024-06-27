@@ -8,7 +8,7 @@ use crate::traits::*;
 use crate::MemFlags;
 
 use rustc_middle::mir;
-use rustc_middle::ptrinfo;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::cast::{CastTy, IntTy};
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, adjustment::PointerCoercion, Instance, Ty, TyCtxt};
@@ -99,7 +99,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 if let OperandValue::Immediate(v) = cg_elem.val {
                     let start = dest.val.llval;
                     let size = bx.const_usize(dest.layout.size.bytes());
-                    let has_pointers = ptrinfo::has_pointers(bx.cx(), dest.layout);
+                    let has_pointers = bx.pointer_map(dest.layout).has_pointers();
 
                     // Use llvm.memset.p0i8.* to initialize all zero arrays
                     if bx.cx().const_to_opt_u128(v, false) == Some(0) {
