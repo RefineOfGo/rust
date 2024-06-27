@@ -1,11 +1,11 @@
-use std::{borrow::Cow, fmt::Debug};
+use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
 use smallvec::{smallvec, SmallVec};
 
-use crate::ty::{
-    layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
-    Ty, TyCtxt,
+use crate::{
+    managed::ManagedChecker,
+    ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
 };
 
 struct BitIter {
@@ -34,59 +34,14 @@ impl From<(usize, ((u64, u64), u64))> for BitIter {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PointerMapKind {
-    Full,
-    Partial,
-}
-
-pub trait HasPointerMap<'tcx> {
-    fn compute_pointer_map<R>(
-        &self,
-        ty: Ty<'tcx>,
-        map_fn: impl FnOnce(&PointerMap) -> R,
-        compute_fn: impl FnOnce() -> PointerMap,
-    ) -> R;
-}
-
-impl<'tcx> HasPointerMap<'tcx> for TyCtxt<'tcx> {
-    fn compute_pointer_map<R>(
-        &self,
-        ty: Ty<'tcx>,
-        map_fn: impl FnOnce(&PointerMap) -> R,
-        compute_fn: impl FnOnce() -> PointerMap,
-    ) -> R {
-        map_fn(self.pointer_maps.borrow_mut().entry(ty).or_insert_with(compute_fn))
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct EncodedPointerMap(Box<[u64]>);
-
-impl EncodedPointerMap {
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-}
-
-impl From<EncodedPointerMap> for Cow<'_, [u8]> {
-    fn from(value: EncodedPointerMap) -> Self {
-        unsafe {
-            let len = value.0.len() * 8;
-            let ptr = Box::into_raw(value.0);
-            Cow::Owned(Vec::from_raw_parts(ptr as *mut u8, len, len))
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PointerMap {
+#[derive(Debug, PartialEq, Eq)]
+struct PointerMapData {
     used: SmallVec<[u64; 4]>,
     bits: SmallVec<[u64; 4]>,
     mask: SmallVec<[u64; 4]>,
 }
 
-impl PointerMap {
+impl PointerMapData {
     fn new(size: usize) -> Self {
         Self {
             used: smallvec![0; (size + 63) / 64],
@@ -96,65 +51,7 @@ impl PointerMap {
     }
 }
 
-impl PointerMap {
-    #[inline(always)]
-    pub fn has_pointers(&self) -> bool {
-        self.bits.iter().any(|v| *v != 0)
-    }
-}
-
-impl PointerMap {
-    pub fn encode(&self) -> EncodedPointerMap {
-        let size = self.bits.iter().rposition(|v| *v != 0).map_or(0, |n| n + 1);
-        let bits = size * (u64::BITS as usize);
-
-        /* empty bitmap */
-        if size == 0 {
-            return EncodedPointerMap(vec![].into_boxed_slice());
-        }
-
-        /* sanity check */
-        assert!(
-            self.bits
-                .iter()
-                .zip(self.mask.iter())
-                .zip(self.used.iter())
-                .all(|((b, m), u)| (*b | *m) & !*u == 0),
-            "found bits within unused area"
-        );
-
-        /* allocate space for encoded bitmap */
-        let tail = self.bits[size - 1].leading_zeros() as usize;
-        let mult = self.mask[..size].iter().any(|v| *v != 0) as usize;
-        let mut ret = Vec::with_capacity((size << mult) + 1);
-
-        /* encode length and bitmap */
-        ret.push((bits - tail) as u64);
-        ret.extend_from_slice(&self.bits[..size]);
-
-        /* check if the encoding is exact */
-        if mult == 0 {
-            return EncodedPointerMap(ret.into_boxed_slice());
-        }
-
-        /* add the inexact map if any */
-        ret.extend_from_slice(&self.mask[..size]);
-        EncodedPointerMap(ret.into_boxed_slice())
-    }
-
-    pub fn exact_pointer_slots(&self) -> SmallVec<[usize; 16]> {
-        self.bits
-            .iter()
-            .copied()
-            .zip(self.mask.iter().copied())
-            .zip(self.used.iter().copied())
-            .enumerate()
-            .flat_map(BitIter::from)
-            .collect()
-    }
-}
-
-impl PointerMap {
+impl PointerMapData {
     fn set_zero(&mut self, idx: usize, len: usize) {
         (idx..idx + len).for_each(|i| self.mask[i] |= self.bits[i] & self.used[i]);
         self.used[idx..idx + len].fill(u64::MAX);
@@ -281,6 +178,98 @@ impl PointerMap {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct EncodedPointerMap(Box<[u64]>);
+
+impl EncodedPointerMap {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl From<EncodedPointerMap> for Cow<'_, [u8]> {
+    fn from(value: EncodedPointerMap) -> Self {
+        unsafe {
+            let len = value.0.len() * 8;
+            let ptr = Box::into_raw(value.0);
+            Cow::Owned(Vec::from_raw_parts(ptr as *mut u8, len, len))
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PointerMap {
+    data: Arc<PointerMapData>,
+}
+
+impl PointerMap {
+    #[inline(always)]
+    pub fn has_pointers(&self) -> bool {
+        self.data.bits.iter().any(|v| *v != 0)
+    }
+}
+
+impl PointerMap {
+    pub fn encode(&self, force_inexact: bool) -> EncodedPointerMap {
+        let size = self.data.bits.iter().rposition(|v| *v != 0).map_or(0, |n| n + 1);
+        let total = size * (u64::BITS as usize);
+
+        /* empty bitmap */
+        if size == 0 {
+            return EncodedPointerMap(vec![].into_boxed_slice());
+        }
+
+        /* sanity check */
+        assert!(
+            self.data
+                .bits
+                .iter()
+                .zip(self.data.mask.iter())
+                .zip(self.data.used.iter())
+                .all(|((b, m), u)| (*b | *m) & !*u == 0),
+            "found bits within unused area"
+        );
+
+        /* figure out if the bitmap is exact */
+        let inexact = self.data.mask[..size].iter().any(|v| *v != 0) || force_inexact;
+        let overflow = self.data.bits[size - 1].leading_zeros() as usize;
+
+        /* allocate space for encoded bitmap */
+        let mut mask = &self.data.mask[..size];
+        let mut rbuf = Vec::with_capacity((size << (inexact as usize)) + 1);
+
+        /* encode length and bitmap */
+        rbuf.push((total - overflow) as u64);
+        rbuf.extend_from_slice(&self.data.bits[..size]);
+
+        /* check if the encoding is exact */
+        if !inexact {
+            return EncodedPointerMap(rbuf.into_boxed_slice());
+        }
+
+        /* mark all pointer bits as inexact if forced */
+        if force_inexact {
+            mask = &self.data.bits[..size];
+        }
+
+        /* add the inexact map if any */
+        rbuf.extend_from_slice(mask);
+        EncodedPointerMap(rbuf.into_boxed_slice())
+    }
+
+    pub fn exact_pointer_slots(&self) -> SmallVec<[usize; 16]> {
+        self.data
+            .bits
+            .iter()
+            .copied()
+            .zip(self.data.mask.iter().copied())
+            .zip(self.data.used.iter().copied())
+            .enumerate()
+            .flat_map(BitIter::from)
+            .collect()
+    }
+}
+
 impl PointerMap {
     pub fn resolve<'cx, 'tcx: 'cx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
         cx: &'cx Cx,
@@ -288,54 +277,28 @@ impl PointerMap {
     ) -> Self {
         let unit = cx.data_layout().pointer_size;
         let size = layout.size.align_to(cx.data_layout().pointer_align.abi);
-        let mut ret = Self::new(size.bytes_usize() / unit.bytes_usize());
-        ret.set_layout(cx, Size::ZERO, layout);
-        ret
-    }
-
-    pub fn resolve_and<
-        'cx,
-        'tcx: 'cx,
-        R,
-        Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
-    >(
-        cx: &'cx Cx,
-        layout: TyAndLayout<'tcx>,
-        map_fn: impl FnOnce(&Self) -> R,
-    ) -> R {
-        cx.compute_pointer_map(layout.ty, map_fn, move || Self::resolve(cx, layout))
+        let mut data = PointerMapData::new(size.bytes_usize() / unit.bytes_usize());
+        data.set_layout(cx, Size::ZERO, layout);
+        Self { data: Arc::new(data) }
     }
 }
 
-pub fn encode<
-    'cx,
-    'tcx: 'cx,
-    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
->(
-    cx: &'cx Cx,
-    layout: TyAndLayout<'tcx>,
-) -> EncodedPointerMap {
-    PointerMap::resolve_and(cx, layout, PointerMap::encode)
+pub trait HasPointerMap<'tcx> {
+    fn pointer_map(&self, layout: TyAndLayout<'tcx>) -> PointerMap;
+    fn encoded_pointer_map(&self, layout: TyAndLayout<'tcx>) -> EncodedPointerMap;
 }
 
-pub fn has_pointers<
-    'cx,
-    'tcx: 'cx,
-    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
->(
-    cx: &'cx Cx,
-    layout: TyAndLayout<'tcx>,
-) -> bool {
-    PointerMap::resolve_and(cx, layout, PointerMap::has_pointers)
-}
+impl<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>> HasPointerMap<'tcx> for Cx {
+    fn pointer_map(&self, layout: TyAndLayout<'tcx>) -> PointerMap {
+        self.tcx()
+            .pointer_maps
+            .borrow_mut()
+            .entry(layout.ty)
+            .or_insert_with(|| PointerMap::resolve(self, layout))
+            .clone()
+    }
 
-pub fn exact_pointer_slots<
-    'cx,
-    'tcx: 'cx,
-    Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx> + HasPointerMap<'tcx>,
->(
-    cx: &'cx Cx,
-    layout: TyAndLayout<'tcx>,
-) -> SmallVec<[usize; 16]> {
-    PointerMap::resolve_and(cx, layout, PointerMap::exact_pointer_slots)
+    fn encoded_pointer_map(&self, layout: TyAndLayout<'tcx>) -> EncodedPointerMap {
+        self.pointer_map(layout).encode(!ManagedChecker::new(self.tcx()).is_managed(layout.ty))
+    }
 }

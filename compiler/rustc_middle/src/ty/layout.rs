@@ -599,17 +599,6 @@ impl<'tcx, T: HasTyCtxt<'tcx>> HasTyCtxt<'tcx> for LayoutCx<'tcx, T> {
     }
 }
 
-impl<'tcx, T: HasPointerMap<'tcx>> HasPointerMap<'tcx> for LayoutCx<'tcx, T> {
-    fn compute_pointer_map<R>(
-        &self,
-        ty: Ty<'tcx>,
-        map_fn: impl FnOnce(&PointerMap) -> R,
-        compute_fn: impl FnOnce() -> PointerMap,
-    ) -> R {
-        self.tcx.compute_pointer_map(ty, map_fn, compute_fn)
-    }
-}
-
 pub trait MaybeResult<T> {
     type Error;
 

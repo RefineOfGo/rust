@@ -610,7 +610,6 @@ struct MirUsedCollector<'a, 'tcx> {
     instance: Instance<'tcx>,
     visiting_call_terminator: bool,
     move_check: move_check::MoveCheckState,
-    /// Set of functions for which it is OK to move large data into.
     mc: ManagedChecker<'tcx>,
 }
 

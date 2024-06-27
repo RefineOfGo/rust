@@ -1,5 +1,5 @@
 use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs;
-use rustc_middle::ptrinfo;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::layout::{HasParamEnv, TyAndLayout};
 use rustc_middle::ty::{Instance, Ty};
 use rustc_session::config::OptLevel;
@@ -230,7 +230,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         flags: MemFlags,
         layout: TyAndLayout<'tcx>,
     ) {
-        if ptrinfo::has_pointers(self.cx(), layout) && !self.is_local_frame(ptr) {
+        if self.pointer_map(layout).has_pointers() && !self.is_local_frame(ptr) {
             assert!(
                 align >= self.data_layout().pointer_align.abi,
                 "invalid pointer alignment: {:?}",
@@ -278,7 +278,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         order: AtomicOrdering,
         layout: TyAndLayout<'tcx>,
     ) {
-        if ptrinfo::has_pointers(self.cx(), layout) {
+        if self.pointer_map(layout).has_pointers() {
             assert_eq!(layout.size, self.data_layout().pointer_size);
             self.atomic_store_ptr(val, ptr, order);
         } else {
@@ -413,7 +413,7 @@ pub trait BuilderMethods<'a, 'tcx>:
             temp.val.store_with_flags(self, dst.with_type(layout), flags);
         } else if !layout.is_zst() {
             let bytes = self.const_usize(layout.size.bytes());
-            let has_pointers = ptrinfo::has_pointers(self.cx(), layout);
+            let has_pointers = self.pointer_map(layout).has_pointers();
             self.memcpy(dst.llval, dst.align, src.llval, src.align, bytes, flags, has_pointers);
         }
     }

@@ -6,7 +6,7 @@ use rustc_codegen_ssa::mir::place::{PlaceRef, PlaceValue};
 use rustc_codegen_ssa::traits::*;
 use rustc_codegen_ssa::MemFlags;
 use rustc_middle::bug;
-use rustc_middle::ptrinfo;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::layout::LayoutOf;
 pub use rustc_middle::ty::layout::{FAT_PTR_ADDR, FAT_PTR_EXTRA};
 use rustc_middle::ty::Ty;
@@ -235,7 +235,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     cmp::min(cast.unaligned_size(bx).bytes(), self.layout.size.bytes());
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
-                let has_pointers = ptrinfo::has_pointers(bx.cx(), dst.layout);
+                let has_pointers = bx.pointer_map(dst.layout).has_pointers();
                 bx.lifetime_start(llscratch, scratch_size);
                 // ...store the value...
                 bx.store_noptr(val, llscratch, scratch_align);

@@ -1,5 +1,6 @@
 use rustc_middle::mir::interpret::Allocation;
 use rustc_middle::mir::ConstValue;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_middle::{bug, ptrinfo, span_bug};
 use rustc_session::config::OptLevel;
@@ -28,7 +29,7 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = ptrinfo::has_pointers(bx.cx(), layout);
+    let has_pointers = bx.pointer_map(layout).has_pointers();
 
     if allow_overlap {
         bx.memmove(dst, align, src, align, size, flags, has_pointers);
@@ -50,7 +51,7 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = ptrinfo::has_pointers(bx.cx(), layout);
+    let has_pointers = bx.pointer_map(layout).has_pointers();
     bx.memset(dst, val, size, align, flags, has_pointers);
 }
 
@@ -126,7 +127,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
             sym::pointer_map_of => {
                 let layout = bx.layout_of(fn_args.type_at(0));
-                let ptrmap = ptrinfo::encode(bx.cx(), layout);
+                let ptrmap = bx.encoded_pointer_map(layout);
                 let val = ConstValue::Slice {
                     meta: ptrmap.len() as u64,
                     data: bx.tcx().mk_const_alloc(Allocation::from_bytes(

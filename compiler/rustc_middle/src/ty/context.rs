@@ -1305,6 +1305,7 @@ pub struct GlobalCtxt<'tcx> {
 
     /// Caches the result of Pointer map calculation for each Ty and PointerMapKind.
     pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
+    pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
 
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: Lock<interpret::AllocMap<'tcx>>,
@@ -1540,6 +1541,7 @@ impl<'tcx> TyCtxt<'tcx> {
             data_layout,
             alloc_map: Lock::new(interpret::AllocMap::new()),
             pointer_maps: Default::default(),
+            managed_cache: Default::default(),
             current_gcx,
         }
     }

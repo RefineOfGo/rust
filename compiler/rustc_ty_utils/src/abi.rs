@@ -3,7 +3,7 @@ use std::iter;
 use rustc_hir as hir;
 use rustc_hir::lang_items::LangItem;
 use rustc_middle::bug;
-use rustc_middle::ptrinfo::exact_pointer_slots;
+use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{
     fn_can_unwind, FnAbiError, HasParamEnv, HasTyCtxt, LayoutCx, LayoutOf, TyAndLayout,
@@ -836,7 +836,7 @@ fn fn_abi_adjust_for_abi<'tcx>(
                 let mut regs = vec![Reg::i64(); size_bytes / ptr_size_bytes];
 
                 // Mark pointer slots
-                for slot_idx in exact_pointer_slots(cx, arg.layout) {
+                for slot_idx in cx.pointer_map(arg.layout).exact_pointer_slots() {
                     regs[slot_idx] = Reg::ptr(cx);
                 }
 

@@ -12,8 +12,6 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::small_c_str::SmallCStr;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::mono::CodegenUnit;
-use rustc_middle::ptrinfo::HasPointerMap;
-use rustc_middle::ptrinfo::PointerMap;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasParamEnv, LayoutError, LayoutOfHelpers,
     TyAndLayout,
@@ -673,18 +671,6 @@ impl<'ll, 'tcx> MiscMethods<'tcx> for CodegenCx<'ll, 'tcx> {
             // instead of #[start]
             None
         }
-    }
-}
-
-impl<'ll, 'tcx> HasPointerMap<'tcx> for CodegenCx<'ll, 'tcx> {
-    #[inline]
-    fn compute_pointer_map<R>(
-        &self,
-        ty: Ty<'tcx>,
-        map_fn: impl FnOnce(&PointerMap) -> R,
-        compute_fn: impl FnOnce() -> PointerMap,
-    ) -> R {
-        self.tcx.compute_pointer_map(ty, map_fn, compute_fn)
     }
 }
 
