@@ -127,7 +127,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
             }
             sym::pointer_map_of => {
                 let layout = bx.layout_of(fn_args.type_at(0));
-                let ptrmap = bx.encoded_pointer_map(layout);
+                let ptrmap = bx.pointer_map(layout).encode();
                 let val = ConstValue::Slice {
                     meta: ptrmap.len() as u64,
                     data: bx.tcx().mk_const_alloc(Allocation::from_bytes(

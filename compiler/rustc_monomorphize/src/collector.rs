@@ -710,7 +710,7 @@ impl<'a, 'tcx> MirVisitor<'tcx> for MirUsedCollector<'a, 'tcx> {
                     || (target_ty.is_dyn_star() && !source_ty.is_dyn_star())
                 {
                     if self.mc.is_managed(source_ty) {
-                        self.tcx.dcx().emit_err(DynTraitPointsToManagedValue {
+                        self.tcx.dcx().emit_err(errors::DynTraitPointsToManagedValue {
                             span,
                             value_ty: source_ty.to_string(),
                             target_ty: target_ty.to_string(),
@@ -1505,7 +1505,7 @@ impl<'v> RootCollector<'_, 'v> {
         };
 
         let Some(start_def_id) = self.tcx.lang_items().start_fn() else {
-            self.tcx.dcx().emit_fatal(StartNotFound);
+            self.tcx.dcx().emit_fatal(errors::StartNotFound);
         };
         let main_ret_ty = self.tcx.fn_sig(main_def_id).no_bound_vars().unwrap().output();
 

@@ -141,7 +141,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                     .tcx
                     .layout_of(self.param_env.and(ty))
                     .map_err(|e| err_inval!(Layout(*e)))?;
-                let ptrmap = self.encoded_pointer_map(layout);
+                let ptrmap = self.pointer_map(layout).encode();
                 let val = self.const_val_to_op(
                     ConstValue::Slice {
                         meta: ptrmap.len() as u64,
