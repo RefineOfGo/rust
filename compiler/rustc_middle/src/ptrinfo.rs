@@ -5,7 +5,10 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::{
     managed::ManagedChecker,
-    ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
+    ty::{
+        self,
+        layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
+    },
 };
 
 struct BitIter {
@@ -120,17 +123,26 @@ impl PointerMapData {
         cx: &Cx,
         offset: Size,
         scalar: Scalar,
+        layout: TyAndLayout<'tcx>,
     ) {
-        /* unions don't have deterministic runtime type information, user must
-         * take care of their pointer variants, ROG GC won't handle those pointers. */
         match scalar {
-            Scalar::Initialized { value: Primitive::Pointer(_), .. }
+            Scalar::Union { value: Primitive::Pointer(_) }
+            | Scalar::Initialized { value: Primitive::Pointer(_), .. }
                 if offset.is_aligned(cx.data_layout().pointer_align.abi) =>
             {
                 let pos = offset.bytes_usize() / cx.data_layout().pointer_size.bytes_usize();
                 self.set_bits(pos / 64, 1 << (pos % 64), 1);
+
+                /* mark as inexact, if the pointee is an Unmanaged object */
+                if let ty::RawPtr(elem_ty, _) | ty::Ref(_, elem_ty, _) = *layout.ty.kind() {
+                    if !ManagedChecker::new(cx.tcx()).is_managed(elem_ty) {
+                        self.mask[pos / 64] |= 1 << (pos % 64);
+                    }
+                }
             }
-            _ => self.set_noptr(cx, offset, scalar.size(cx)),
+            _ => {
+                self.set_noptr(cx, offset, scalar.size(cx));
+            }
         }
     }
 
@@ -143,7 +155,7 @@ impl PointerMapData {
         match layout.fields {
             FieldsShape::Primitive => match layout.abi {
                 Abi::Uninhabited => self.set_noptr(cx, offset, layout.size),
-                Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
+                Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar, layout),
                 Abi::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
                 Abi::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
                 Abi::Aggregate { .. } => unreachable!("conflict: Primitive & Aggregate"),
@@ -210,7 +222,7 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn encode(&self, force_inexact: bool) -> EncodedPointerMap {
+    pub fn encode(&self) -> EncodedPointerMap {
         let size = self.data.bits.iter().rposition(|v| *v != 0).map_or(0, |n| n + 1);
         let total = size * (u64::BITS as usize);
 
@@ -231,15 +243,15 @@ impl PointerMap {
         );
 
         /* figure out if the bitmap is exact */
-        let inexact = self.data.mask[..size].iter().any(|v| *v != 0) || force_inexact;
+        let inexact = self.data.mask[..size].iter().any(|v| *v != 0);
         let overflow = self.data.bits[size - 1].leading_zeros() as usize;
 
         /* allocate space for encoded bitmap */
-        let mut mask = &self.data.mask[..size];
+        let slots = (total - overflow) as u64;
         let mut rbuf = Vec::with_capacity((size << (inexact as usize)) + 1);
 
-        /* encode length and bitmap */
-        rbuf.push((total - overflow) as u64);
+        /* encode flags, length and bitmap */
+        rbuf.push(((inexact as u64) << 63) | slots);
         rbuf.extend_from_slice(&self.data.bits[..size]);
 
         /* check if the encoding is exact */
@@ -247,13 +259,8 @@ impl PointerMap {
             return EncodedPointerMap(rbuf.into_boxed_slice());
         }
 
-        /* mark all pointer bits as inexact if forced */
-        if force_inexact {
-            mask = &self.data.bits[..size];
-        }
-
         /* add the inexact map if any */
-        rbuf.extend_from_slice(mask);
+        rbuf.extend_from_slice(&self.data.mask[..size]);
         EncodedPointerMap(rbuf.into_boxed_slice())
     }
 
@@ -285,7 +292,6 @@ impl PointerMap {
 
 pub trait HasPointerMap<'tcx> {
     fn pointer_map(&self, layout: TyAndLayout<'tcx>) -> PointerMap;
-    fn encoded_pointer_map(&self, layout: TyAndLayout<'tcx>) -> EncodedPointerMap;
 }
 
 impl<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>> HasPointerMap<'tcx> for Cx {
@@ -296,9 +302,5 @@ impl<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>> HasPointerMa
             .entry(layout.ty)
             .or_insert_with(|| PointerMap::resolve(self, layout))
             .clone()
-    }
-
-    fn encoded_pointer_map(&self, layout: TyAndLayout<'tcx>) -> EncodedPointerMap {
-        self.pointer_map(layout).encode(!ManagedChecker::new(self.tcx()).is_managed(layout.ty))
     }
 }
