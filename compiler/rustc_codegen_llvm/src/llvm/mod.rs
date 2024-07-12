@@ -159,6 +159,18 @@ pub fn SetFunctionCallConv(fn_: &Value, cc: CallConv) {
     }
 }
 
+pub fn GetGC(fn_: &Value) -> Option<String> {
+    unsafe {
+        let name = LLVMGetGC(fn_);
+        if name.is_null() {
+            return None;
+        }
+        let err = CStr::from_ptr(name).to_bytes();
+        let err = String::from_utf8_lossy(err).to_string();
+        Some(err)
+    }
+}
+
 pub fn SetGC(fn_: &Value, gc: &str) {
     unsafe {
         let name = SmallCStr::new(gc);

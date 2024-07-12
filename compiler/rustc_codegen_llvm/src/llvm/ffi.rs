@@ -1017,6 +1017,7 @@ extern "C" {
     // Operations on functions
     pub fn LLVMSetFunctionCallConv(Fn: &Value, CC: c_uint);
     pub fn LLVMSetGC(Fn: &Value, Name: *const c_char);
+    pub fn LLVMGetGC(Fn: &Value) -> *const c_char;
 
     // Operations on parameters
     pub fn LLVMIsAArgument(Val: &Value) -> Option<&Value>;

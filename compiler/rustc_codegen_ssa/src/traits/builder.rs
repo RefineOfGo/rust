@@ -183,7 +183,7 @@ pub trait BuilderMethods<'a, 'tcx>:
     fn nonnull_metadata(&mut self, load: Self::Value);
 
     fn is_const_zero(&mut self, val: Self::Value) -> bool;
-    fn is_local_frame(&mut self, val: Self::Value) -> bool;
+    fn can_omit_barriers(&mut self, val: Self::Value) -> bool;
 
     fn store_ptr(&mut self, val: Self::Value, ptr: Self::Value);
     fn store_ptr_with_flags(&mut self, val: Self::Value, ptr: Self::Value, flags: MemFlags);
@@ -230,7 +230,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         flags: MemFlags,
         layout: TyAndLayout<'tcx>,
     ) {
-        if self.pointer_map(layout).has_pointers() && !self.is_local_frame(ptr) {
+        if self.pointer_map(layout).has_pointers() && !self.can_omit_barriers(ptr) {
             assert!(
                 align >= self.data_layout().pointer_align.abi,
                 "invalid pointer alignment: {:?}",
