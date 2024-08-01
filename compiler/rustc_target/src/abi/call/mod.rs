@@ -774,6 +774,7 @@ pub enum Conv {
     C,
     Rust,
     Rog,
+    RogCold,
 
     Cold,
     PreserveMost,
@@ -981,6 +982,7 @@ impl FromStr for Conv {
             "C" => Ok(Conv::C),
             "Rust" => Ok(Conv::Rust),
             "Rog" => Ok(Conv::Rog),
+            "RogCold" => Ok(Conv::RogCold),
             "Cold" => Ok(Conv::Cold),
             "RustCold" => Ok(Conv::Rust),
             "ArmAapcs" => Ok(Conv::ArmAapcs),

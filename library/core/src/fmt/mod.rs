@@ -7,7 +7,7 @@ use crate::char::EscapeDebugExtArgs;
 use crate::marker::PhantomData;
 use crate::num::fmt as numfmt;
 use crate::ops::Deref;
-use crate::{iter, mem, result, str};
+use crate::{mem, result, str};
 
 mod builders;
 #[cfg(not(no_fp_fmt_parse))]
@@ -2094,7 +2094,7 @@ impl<'a> Formatter<'a> {
     ) -> Result {
         assert_eq!(names.len(), values.len());
         let mut builder = builders::debug_struct_new(self, name);
-        for (name, value) in iter::zip(names, values) {
+        for (name, value) in crate::iter::zip(names, values) {
             builder.field(name, value);
         }
         builder.finish()

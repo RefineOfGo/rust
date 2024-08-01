@@ -7,7 +7,7 @@ use rustc_middle::mir::{self, BinOp, ConstValue, NonDivergingIntrinsic};
 use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::layout::{LayoutOf as _, TyAndLayout, ValidityRequirement};
 use rustc_middle::ty::{GenericArgsRef, Ty, TyCtxt};
-use rustc_middle::{bug, ptrinfo, ty};
+use rustc_middle::{bug, ty};
 use rustc_span::symbol::{sym, Symbol};
 use rustc_target::abi::Size;
 use tracing::trace;

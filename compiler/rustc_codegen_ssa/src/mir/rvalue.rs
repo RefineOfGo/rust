@@ -1,10 +1,9 @@
 use arrayvec::ArrayVec;
 use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::adjustment::PointerCoercion;
-use rustc_middle::ty::cast::{CastTy, IntTy};
 use rustc_middle::ty::layout::{HasTyCtxt, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
-use rustc_middle::{bug, mir, ptrinfo, span_bug};
+use rustc_middle::{bug, mir, span_bug};
 use rustc_session::config::OptLevel;
 use rustc_span::{Span, DUMMY_SP};
 use rustc_target::abi::{self, FieldIdx, FIRST_VARIANT};

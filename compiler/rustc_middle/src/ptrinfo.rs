@@ -1,15 +1,11 @@
-use std::{borrow::Cow, fmt::Debug, sync::Arc};
+use std::borrow::Cow;
+use std::fmt::Debug;
+use std::sync::Arc;
 
 use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
 use smallvec::{smallvec, SmallVec};
 
-use crate::{
-    managed::ManagedChecker,
-    ty::{
-        self,
-        layout::{HasParamEnv, HasTyCtxt, TyAndLayout},
-    },
-};
+use crate::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
 
 struct BitIter {
     i: usize,
@@ -123,7 +119,6 @@ impl PointerMapData {
         cx: &Cx,
         offset: Size,
         scalar: Scalar,
-        layout: TyAndLayout<'tcx>,
     ) {
         match scalar {
             Scalar::Union { value: Primitive::Pointer(_) }
@@ -132,13 +127,6 @@ impl PointerMapData {
             {
                 let pos = offset.bytes_usize() / cx.data_layout().pointer_size.bytes_usize();
                 self.set_bits(pos / 64, 1 << (pos % 64), 1);
-
-                /* mark as inexact, if the pointee is an Unmanaged object */
-                if let ty::RawPtr(elem_ty, _) | ty::Ref(_, elem_ty, _) = *layout.ty.kind() {
-                    if !ManagedChecker::new(cx.tcx()).is_managed(elem_ty) {
-                        self.mask[pos / 64] |= 1 << (pos % 64);
-                    }
-                }
             }
             _ => {
                 self.set_noptr(cx, offset, scalar.size(cx));
@@ -155,7 +143,7 @@ impl PointerMapData {
         match layout.fields {
             FieldsShape::Primitive => match layout.abi {
                 Abi::Uninhabited => self.set_noptr(cx, offset, layout.size),
-                Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar, layout),
+                Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
                 Abi::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
                 Abi::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
                 Abi::Aggregate { .. } => unreachable!("conflict: Primitive & Aggregate"),

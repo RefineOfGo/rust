@@ -613,6 +613,7 @@ impl From<Conv> for llvm::CallConv {
     fn from(conv: Conv) -> Self {
         match conv {
             Conv::Rust | Conv::Rog => llvm::ROGCallConv,
+            Conv::RogCold => llvm::ROGColdCallConv,
             Conv::C | Conv::CCmseNonSecureCall | Conv::RiscvInterrupt { .. } => llvm::CCallConv,
             Conv::Cold => llvm::ColdCallConv,
             Conv::PreserveMost => llvm::PreserveMost,

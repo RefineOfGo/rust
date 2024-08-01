@@ -28,6 +28,9 @@ extern "rog-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: us
 }
 
 /// Enable ROG write barrier.
+#[no_gcwb]
+#[no_split]
+#[no_checkpoint]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn enable() {
@@ -37,6 +40,9 @@ pub unsafe fn enable() {
 }
 
 /// Disable ROG write barrier.
+#[no_gcwb]
+#[no_split]
+#[no_checkpoint]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn disable() {
@@ -46,6 +52,9 @@ pub unsafe fn disable() {
 }
 
 /// Check if ROG write barrier was enabled.
+#[no_gcwb]
+#[no_split]
+#[no_checkpoint]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub fn is_enabled() -> bool {

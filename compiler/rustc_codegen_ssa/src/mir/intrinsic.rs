@@ -2,7 +2,7 @@ use rustc_middle::mir::interpret::Allocation;
 use rustc_middle::mir::ConstValue;
 use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_middle::{bug, ptrinfo, span_bug};
+use rustc_middle::{bug, span_bug};
 use rustc_session::config::OptLevel;
 use rustc_span::{sym, Span};
 use rustc_target::abi::call::{FnAbi, PassMode};

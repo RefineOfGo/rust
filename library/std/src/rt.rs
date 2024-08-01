@@ -92,6 +92,7 @@ macro_rules! rtunwrap {
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(not(bootstrap), no_gcwb)]
 #[cfg_attr(not(bootstrap), no_split)]
+#[cfg_attr(not(bootstrap), no_checkpoint)]
 unsafe fn init(argc: isize, argv: *const *const u8, sigpipe: u8) {
     #[cfg_attr(target_os = "teeos", allow(unused_unsafe))]
     unsafe {
@@ -121,6 +122,7 @@ pub(crate) fn cleanup() {
 #[cfg(not(test))]
 #[cfg_attr(not(bootstrap), no_gcwb)]
 #[cfg_attr(not(bootstrap), no_split)]
+#[cfg_attr(not(bootstrap), no_checkpoint)]
 fn lang_start_internal(
     main: &(dyn Fn() -> i32 + Sync + crate::panic::RefUnwindSafe),
     argc: isize,
@@ -159,6 +161,7 @@ fn lang_start_internal(
 #[cfg(not(any(test, doctest)))]
 #[cfg_attr(not(bootstrap), no_gcwb)]
 #[cfg_attr(not(bootstrap), no_split)]
+#[cfg_attr(not(bootstrap), no_checkpoint)]
 #[inline(never)]
 #[lang = "start"]
 fn lang_start<T: crate::process::Termination + 'static>(

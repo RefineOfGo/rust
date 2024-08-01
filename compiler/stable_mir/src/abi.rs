@@ -426,6 +426,7 @@ pub enum CallConvention {
     C,
     Rust,
     Rog,
+    RogCold,
 
     Cold,
     PreserveMost,

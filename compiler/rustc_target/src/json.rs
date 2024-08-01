@@ -99,6 +99,7 @@ impl ToJson for crate::abi::call::Conv {
             Self::C => "C",
             Self::Rust => "Rust",
             Self::Rog => "Rog",
+            Self::RogCold => "RogCold",
             Self::Cold => "Cold",
             Self::PreserveMost => "PreserveMost",
             Self::PreserveAll => "PreserveAll",

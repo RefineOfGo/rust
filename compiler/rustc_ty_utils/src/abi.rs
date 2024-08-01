@@ -328,14 +328,11 @@ fn conv_from_spec_abi(tcx: TyCtxt<'_>, abi: SpecAbi, c_variadic: bool) -> Conv {
     match tcx.sess.target.adjust_abi(abi, c_variadic) {
         RustIntrinsic | Rust | RustCall => Conv::Rust,
         Rog => Conv::Rog,
+        RogCold => Conv::RogCold,
 
         // This is intentionally not using `Conv::Cold`, as that has to preserve
         // even SIMD registers, which is generally not a good trade-off.
         RustCold => Conv::PreserveMost,
-
-        // ROG specifically requires `Conv::Cold` for things like stack check
-        // prologue or GC write barriers
-        RogCold => Conv::Cold,
 
         // It's the ABI's job to select this, not ours.
         System { .. } => bug!("system abi should be selected elsewhere"),
@@ -733,6 +730,7 @@ fn fn_abi_adjust_for_abi<'tcx>(
     }
 
     if abi == SpecAbi::Rog
+        || abi == SpecAbi::RogCold
         || abi == SpecAbi::Rust
         || abi == SpecAbi::RustCall
         || abi == SpecAbi::RustIntrinsic

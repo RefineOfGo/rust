@@ -67,7 +67,7 @@ use crate::middle::codegen_fn_attrs::CodegenFnAttrs;
 use crate::middle::{resolve_bound_vars, stability};
 use crate::mir::interpret::{self, Allocation, ConstAllocation};
 use crate::mir::{Body, Local, Place, PlaceElem, ProjectionKind, Promoted};
-use crate::ptrinfo::{PointerMap, PointerMapKind};
+use crate::ptrinfo::PointerMap;
 use crate::query::plumbing::QuerySystem;
 use crate::query::{IntoQueryParam, LocalCrate, Providers, TyCtxtAt};
 use crate::thir::Thir;
@@ -1303,7 +1303,7 @@ pub struct GlobalCtxt<'tcx> {
     /// Data layout specification for the current target.
     pub data_layout: TargetDataLayout,
 
-    /// Caches the result of Pointer map calculation for each Ty and PointerMapKind.
+    /// Caches the result of Pointer map calculation for each Ty.
     pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
     pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
 
