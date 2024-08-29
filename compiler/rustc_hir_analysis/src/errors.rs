@@ -302,7 +302,7 @@ pub(crate) struct CopyImplOnNonAdt {
 
 #[derive(Diagnostic)]
 #[diag(hir_analysis_managed_impl_on_wrong_type)]
-pub struct ManagedImplOnWrongType {
+pub(crate) struct ManagedImplOnWrongType {
     #[primary_span]
     #[label]
     pub span: Span,

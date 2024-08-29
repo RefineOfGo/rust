@@ -49,6 +49,8 @@ use rustc_session::{Limit, MetadataKind, Session};
 use rustc_span::def_id::{CRATE_DEF_ID, DefPathHash, StableCrateId};
 use rustc_span::symbol::{Ident, Symbol, kw, sym};
 use rustc_span::{DUMMY_SP, Span};
+use rustc_target::abi::call::Reg;
+use rustc_target::abi::{FieldIdx, Layout, LayoutS, TargetDataLayout, VariantIdx};
 use rustc_target::spec::abi;
 use rustc_type_ir::TyKind::*;
 use rustc_type_ir::fold::TypeFoldable;
@@ -1338,9 +1340,12 @@ pub struct GlobalCtxt<'tcx> {
     /// Data layout specification for the current target.
     pub data_layout: TargetDataLayout,
 
-    /// Caches the result of Pointer map calculation for each Ty.
+    /// Caches the result of Pointer Map calculation for each Ty.
     pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
     pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
+
+    /// Caches the result of Register Map calculation for each Ty.
+    pub register_maps: Lock<FxHashMap<Ty<'tcx>, Vec<Reg>>>,
 
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: Lock<interpret::AllocMap<'tcx>>,
@@ -1564,9 +1569,10 @@ impl<'tcx> TyCtxt<'tcx> {
             new_solver_evaluation_cache: Default::default(),
             canonical_param_env_cache: Default::default(),
             data_layout,
-            alloc_map: Lock::new(interpret::AllocMap::new()),
             pointer_maps: Default::default(),
             managed_cache: Default::default(),
+            register_maps: Default::default(),
+            alloc_map: Lock::new(interpret::AllocMap::new()),
             current_gcx,
         }
     }

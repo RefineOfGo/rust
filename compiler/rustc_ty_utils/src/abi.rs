@@ -5,7 +5,6 @@ use rustc_abi::{BackendRepr, PointerKind, Scalar, Size};
 use rustc_hir as hir;
 use rustc_hir::lang_items::LangItem;
 use rustc_middle::bug;
-use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::query::Providers;
 use rustc_middle::ty::layout::{
     FnAbiError, HasParamEnv, HasTyCtxt, LayoutCx, LayoutOf, TyAndLayout, fn_can_unwind,
@@ -18,6 +17,8 @@ use rustc_target::abi::call::{
 };
 use rustc_target::spec::abi::Abi as SpecAbi;
 use tracing::debug;
+
+use crate::reg_map::HasRegisterMap;
 
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers { fn_abi_of_fn_ptr, fn_abi_of_instance, ..*providers };

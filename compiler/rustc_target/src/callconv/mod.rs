@@ -863,25 +863,23 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             let ptr_size = Pointer(AddressSpace::DATA).size(cx);
 
             if !arg.layout.is_unsized() && size <= ptr_size * 8 {
-                let size_bytes = size.bytes_usize();
-                let ptr_size_bytes = ptr_size.bytes_usize();
-                let mut regs = vec![Reg::i64(); size_bytes / ptr_size_bytes];
+                if size <= ptr_size {
+                    // We want to pass small aggregates as immediates, but using
+                    // an LLVM aggregate type for this leads to bad optimizations,
+                    // so we pick an appropriately sized integer type instead.
+                    arg.cast_to(Reg { kind: RegKind::Integer, size });
+                } else {
+                    let regs = cx.register_map(arg.layout);
+                    let ireg = regs
+                        .iter()
+                        .filter(|r| matches!(r.kind, RegKind::Integer | RegKind::Pointer))
+                        .count();
 
-                // Mark pointer slots
-                for slot_idx in cx.pointer_map(arg.layout).exact_pointer_slots() {
-                    regs[slot_idx] = Reg::ptr(cx);
+                    // Don't fit more than 8 integer or pointer values into register.
+                    if ireg <= 8 && regs.len() <= 9 {
+                        arg.cast_to(CastTarget::immediate(regs));
+                    }
                 }
-
-                // Not an exact multiple of pointers.
-                let remains = size_bytes % ptr_size_bytes;
-                if remains != 0 {
-                    regs.push(Reg { kind: RegKind::Integer, size: Size::from_bytes(remains) });
-                }
-
-                // We want to pass small aggregates as immediates, but using
-                // an LLVM aggregate type for this leads to bad optimizations,
-                // so we pick an appropriately sized register instead.
-                arg.cast_to(CastTarget::immediate(regs));
             }
         }
     }
