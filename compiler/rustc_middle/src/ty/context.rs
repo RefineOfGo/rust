@@ -30,7 +30,7 @@ use rustc_errors::{
 };
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
-use rustc_hir::def_id::{CrateNum, DefId, LOCAL_CRATE, LocalDefId};
+use rustc_hir::def_id::{CrateNum, DefId, LocalDefId, LOCAL_CRATE};
 use rustc_hir::definitions::Definitions;
 use rustc_hir::intravisit::Visitor;
 use rustc_hir::lang_items::LangItem;
@@ -45,17 +45,18 @@ use rustc_session::config::CrateType;
 use rustc_session::cstore::{CrateStoreDyn, Untracked};
 use rustc_session::lint::Lint;
 use rustc_session::{Limit, MetadataKind, Session};
-use rustc_span::def_id::{CRATE_DEF_ID, DefPathHash, StableCrateId};
-use rustc_span::symbol::{Ident, Symbol, kw, sym};
-use rustc_span::{DUMMY_SP, Span};
+use rustc_span::def_id::{DefPathHash, StableCrateId, CRATE_DEF_ID};
+use rustc_span::symbol::{kw, sym, Ident, Symbol};
+use rustc_span::{Span, DUMMY_SP};
+use rustc_target::abi::call::Reg;
 use rustc_target::abi::{FieldIdx, Layout, LayoutS, TargetDataLayout, VariantIdx};
 use rustc_target::spec::abi;
-use rustc_type_ir::TyKind::*;
 use rustc_type_ir::fold::TypeFoldable;
 use rustc_type_ir::lang_items::TraitSolverLangItem;
 pub use rustc_type_ir::lift::Lift;
 use rustc_type_ir::solve::SolverMode;
-use rustc_type_ir::{CollectAndApply, Interner, TypeFlags, WithCachedTypeInfo, search_graph};
+use rustc_type_ir::TyKind::*;
+use rustc_type_ir::{search_graph, CollectAndApply, Interner, TypeFlags, WithCachedTypeInfo};
 use tracing::{debug, instrument};
 
 use crate::arena::Arena;
@@ -1017,10 +1018,10 @@ impl<'tcx> CommonLifetimes<'tcx> {
             .map(|i| {
                 (0..NUM_PREINTERNED_RE_LATE_BOUNDS_V)
                     .map(|v| {
-                        mk(ty::ReBound(ty::DebruijnIndex::from(i), ty::BoundRegion {
-                            var: ty::BoundVar::from(v),
-                            kind: ty::BrAnon,
-                        }))
+                        mk(ty::ReBound(
+                            ty::DebruijnIndex::from(i),
+                            ty::BoundRegion { var: ty::BoundVar::from(v), kind: ty::BrAnon },
+                        ))
                     })
                     .collect()
             })
@@ -1296,9 +1297,12 @@ pub struct GlobalCtxt<'tcx> {
     /// Data layout specification for the current target.
     pub data_layout: TargetDataLayout,
 
-    /// Caches the result of Pointer map calculation for each Ty.
+    /// Caches the result of Pointer Map calculation for each Ty.
     pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
     pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
+
+    /// Caches the result of Register Map calculation for each Ty.
+    pub register_maps: Lock<FxHashMap<Ty<'tcx>, Vec<Reg>>>,
 
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: Lock<interpret::AllocMap<'tcx>>,
@@ -1454,12 +1458,9 @@ impl<'tcx> TyCtxt<'tcx> {
             };
             debug!("layout_scalar_valid_range: attr={:?}", attr);
             if let Some(
-                &[
-                    ast::NestedMetaItem::Lit(ast::MetaItemLit {
-                        kind: ast::LitKind::Int(a, _),
-                        ..
-                    }),
-                ],
+                &[ast::NestedMetaItem::Lit(ast::MetaItemLit {
+                    kind: ast::LitKind::Int(a, _), ..
+                })],
             ) = attr.meta_item_list().as_deref()
             {
                 Bound::Included(a.get())
@@ -1532,9 +1533,10 @@ impl<'tcx> TyCtxt<'tcx> {
             new_solver_coherence_evaluation_cache: Default::default(),
             canonical_param_env_cache: Default::default(),
             data_layout,
-            alloc_map: Lock::new(interpret::AllocMap::new()),
             pointer_maps: Default::default(),
             managed_cache: Default::default(),
+            register_maps: Default::default(),
+            alloc_map: Lock::new(interpret::AllocMap::new()),
             current_gcx,
         }
     }
@@ -2111,7 +2113,7 @@ macro_rules! nop_lift {
 
                 tcx.interners
                     .$set
-                    .contains_pointer_to(&InternedInSet(&*self.0.0))
+                    .contains_pointer_to(&InternedInSet(&*self.0 .0))
                     // SAFETY: `self` is interned and therefore valid
                     // for the entire lifetime of the `TyCtxt`.
                     .then(|| unsafe { mem::transmute(self) })
@@ -2553,7 +2555,11 @@ impl<'tcx> TyCtxt<'tcx> {
         pred: Predicate<'tcx>,
         binder: Binder<'tcx, PredicateKind<'tcx>>,
     ) -> Predicate<'tcx> {
-        if pred.kind() != binder { self.mk_predicate(binder) } else { pred }
+        if pred.kind() != binder {
+            self.mk_predicate(binder)
+        } else {
+            pred
+        }
     }
 
     pub fn check_args_compatible(self, def_id: DefId, args: &'tcx [ty::GenericArg<'tcx>]) -> bool {
@@ -2736,11 +2742,9 @@ impl<'tcx> TyCtxt<'tcx> {
         eps: &[PolyExistentialPredicate<'tcx>],
     ) -> &'tcx List<PolyExistentialPredicate<'tcx>> {
         assert!(!eps.is_empty());
-        assert!(
-            eps.array_windows()
-                .all(|[a, b]| a.skip_binder().stable_cmp(self, &b.skip_binder())
-                    != Ordering::Greater)
-        );
+        assert!(eps
+            .array_windows()
+            .all(|[a, b]| a.skip_binder().stable_cmp(self, &b.skip_binder()) != Ordering::Greater));
         self.intern_poly_existential_predicates(eps)
     }
 
@@ -2770,9 +2774,9 @@ impl<'tcx> TyCtxt<'tcx> {
     where
         I: Iterator<Item = T>,
         T: CollectAndApply<
-                &'tcx ty::CapturedPlace<'tcx>,
-                &'tcx List<&'tcx ty::CapturedPlace<'tcx>>,
-            >,
+            &'tcx ty::CapturedPlace<'tcx>,
+            &'tcx List<&'tcx ty::CapturedPlace<'tcx>>,
+        >,
     {
         T::collect_and_apply(iter, |xs| self.intern_captures(xs))
     }
@@ -2813,9 +2817,9 @@ impl<'tcx> TyCtxt<'tcx> {
     where
         I: Iterator<Item = T>,
         T: CollectAndApply<
-                PolyExistentialPredicate<'tcx>,
-                &'tcx List<PolyExistentialPredicate<'tcx>>,
-            >,
+            PolyExistentialPredicate<'tcx>,
+            &'tcx List<PolyExistentialPredicate<'tcx>>,
+        >,
     {
         T::collect_and_apply(iter, |xs| self.mk_poly_existential_predicates(xs))
     }
@@ -3060,12 +3064,15 @@ impl<'tcx> TyCtxt<'tcx> {
                     }
 
                     let generics = self.generics_of(new_parent);
-                    return ty::Region::new_early_param(self, ty::EarlyParamRegion {
-                        index: generics
-                            .param_def_id_to_index(self, ebv.to_def_id())
-                            .expect("early-bound var should be present in fn generics"),
-                        name: self.item_name(ebv.to_def_id()),
-                    });
+                    return ty::Region::new_early_param(
+                        self,
+                        ty::EarlyParamRegion {
+                            index: generics
+                                .param_def_id_to_index(self, ebv.to_def_id())
+                                .expect("early-bound var should be present in fn generics"),
+                            name: self.item_name(ebv.to_def_id()),
+                        },
+                    );
                 }
                 Some(resolve_bound_vars::ResolvedArg::LateBound(_, _, lbv)) => {
                     let new_parent = self.local_parent(lbv);

@@ -7,32 +7,6 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
 
-struct BitIter {
-    i: usize,
-    b: u64,
-}
-
-impl Iterator for BitIter {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<usize> {
-        if self.b == 0 {
-            None
-        } else {
-            let p = self.b.trailing_zeros() as usize;
-            self.b &= !(1 << p);
-            Some(self.i * 64 + p)
-        }
-    }
-}
-
-impl From<(usize, ((u64, u64), u64))> for BitIter {
-    fn from((i, ((b, m), u)): (usize, ((u64, u64), u64))) -> Self {
-        let b = b & !m & u;
-        BitIter { i, b }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 struct PointerMapData {
     used: SmallVec<[u64; 4]>,
@@ -148,22 +122,18 @@ impl PointerMapData {
                 Abi::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
                 Abi::Aggregate { .. } => unreachable!("conflict: Primitive & Aggregate"),
             },
-            FieldsShape::Union(_) => self.set_noptr(cx, offset, layout.size),
-            FieldsShape::Array { count, .. } => {
+            FieldsShape::Array { stride, count } => {
                 let elem = layout.field(cx, 0);
-                let item_size = elem.size.align_to(elem.align.abi);
                 for i in 0..count {
-                    self.set_layout(cx, offset + item_size * i, elem);
+                    self.set_layout(cx, offset + stride * i, elem);
                 }
             }
-            FieldsShape::Arbitrary { .. } => match layout.variants {
-                Variants::Single { .. } => {
-                    for i in layout.fields.index_by_increasing_offset() {
-                        let offs = offset + layout.fields.offset(i);
-                        self.set_layout(cx, offs, layout.field(cx, i));
-                    }
+            FieldsShape::Union(..) | FieldsShape::Arbitrary { .. } => {
+                for i in layout.fields.index_by_increasing_offset() {
+                    let offs = offset + layout.fields.offset(i);
+                    self.set_layout(cx, offs, layout.field(cx, i));
                 }
-                Variants::Multiple { ref variants, .. } => {
+                if let Variants::Multiple { ref variants, .. } = layout.variants {
                     let mut min_size = Size::from_bytes(u64::MAX);
                     for i in variants.indices() {
                         let variant = layout.for_variant(cx, i);
@@ -173,7 +143,7 @@ impl PointerMapData {
                     assert!(min_size <= layout.size);
                     self.set_noptr(cx, offset + min_size, layout.size - min_size);
                 }
-            },
+            }
         }
     }
 }
@@ -250,18 +220,6 @@ impl PointerMap {
         /* add the inexact map if any */
         rbuf.extend_from_slice(&self.data.mask[..size]);
         EncodedPointerMap(rbuf.into_boxed_slice())
-    }
-
-    pub fn exact_pointer_slots(&self) -> SmallVec<[usize; 16]> {
-        self.data
-            .bits
-            .iter()
-            .copied()
-            .zip(self.data.mask.iter().copied())
-            .zip(self.data.used.iter().copied())
-            .enumerate()
-            .flat_map(BitIter::from)
-            .collect()
     }
 }
 
