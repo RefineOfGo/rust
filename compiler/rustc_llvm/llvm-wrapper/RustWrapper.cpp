@@ -1550,14 +1550,11 @@ extern "C" LLVMValueRef LLVMRustBuildMemCpy(LLVMBuilderRef B,
   Value *src = unwrap(Src);
   Value *size = unwrap(Size);
   IRBuilder<> *irb = unwrap(B);
-  if (!NeedBarriers) {
+  if (NeedBarriers) {
+    return wrap(irb->CreateGCMemCpy(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  } else {
     return wrap(irb->CreateMemCpy(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
   }
-  Module *mod = irb->GetInsertBlock()->getParent()->getParent();
-  return wrap(irb->CreateCall(
-      Intrinsic::getDeclaration(mod, Intrinsic::gcmemcpy, { dst->getType(), src->getType(), size->getType() }),
-      { dst, src, size, ConstantInt::getBool(Type::getInt1Ty(irb->getContext()), IsVolatile) }
-  ));
 }
 
 extern "C" LLVMValueRef LLVMRustBuildMemMove(LLVMBuilderRef B,
@@ -1569,14 +1566,11 @@ extern "C" LLVMValueRef LLVMRustBuildMemMove(LLVMBuilderRef B,
   Value *src = unwrap(Src);
   Value *size = unwrap(Size);
   IRBuilder<> *irb = unwrap(B);
-  if (!NeedBarriers) {
+  if (NeedBarriers) {
+    return wrap(irb->CreateGCMemMove(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
+  } else {
     return wrap(irb->CreateMemMove(dst, MaybeAlign(DstAlign), src, MaybeAlign(SrcAlign), size, IsVolatile));
   }
-  Module *mod = irb->GetInsertBlock()->getParent()->getParent();
-  return wrap(irb->CreateCall(
-      Intrinsic::getDeclaration(mod, Intrinsic::gcmemmove, { dst->getType(), src->getType(), size->getType() }),
-      { dst, src, size, ConstantInt::getBool(Type::getInt1Ty(irb->getContext()), IsVolatile) }
-  ));
 }
 
 extern "C" LLVMValueRef LLVMRustBuildMemSet(LLVMBuilderRef B,
@@ -1592,11 +1586,7 @@ extern "C" LLVMValueRef LLVMRustBuildMemSet(LLVMBuilderRef B,
   }
   ConstantInt *fill = dyn_cast<ConstantInt>(val);
   assert(fill && fill->isZero() && "Cannot fill barrier memory with arbitrary bytes");
-  Module *mod = irb->GetInsertBlock()->getParent()->getParent();
-  return wrap(irb->CreateCall(
-      Intrinsic::getDeclaration(mod, Intrinsic::gcmemclr, { dst->getType(), size->getType() }),
-      { dst, size, ConstantInt::getBool(Type::getInt1Ty(irb->getContext()), IsVolatile) }
-  ));
+  return wrap(irb->CreateGCMemSet(dst, val, size, MaybeAlign(DstAlign), IsVolatile));
 }
 
 // Polyfill for `LLVMBuildCallBr`, which was added in LLVM 19.
