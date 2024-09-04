@@ -534,7 +534,7 @@ pub(crate) struct NoMangle {
 
 #[derive(Diagnostic)]
 #[diag(passes_no_gcwb)]
-pub struct NoGCWB {
+pub(crate) struct NoGCWB {
     #[primary_span]
     pub span: Span,
 }
@@ -542,7 +542,7 @@ pub struct NoGCWB {
 #[derive(LintDiagnostic)]
 #[diag(passes_no_gcwb_foreign)]
 #[note]
-pub struct NoGCWBForeign {
+pub(crate) struct NoGCWBForeign {
     #[label]
     pub span: Span,
     #[suggestion(code = "", applicability = "machine-applicable")]
@@ -552,7 +552,7 @@ pub struct NoGCWBForeign {
 
 #[derive(Diagnostic)]
 #[diag(passes_no_split)]
-pub struct NoSplit {
+pub(crate) struct NoSplit {
     #[primary_span]
     pub span: Span,
 }
@@ -560,7 +560,7 @@ pub struct NoSplit {
 #[derive(LintDiagnostic)]
 #[diag(passes_no_split_foreign)]
 #[note]
-pub struct NoSplitForeign {
+pub(crate) struct NoSplitForeign {
     #[label]
     pub span: Span,
     #[suggestion(code = "", applicability = "machine-applicable")]
@@ -570,7 +570,7 @@ pub struct NoSplitForeign {
 
 #[derive(Diagnostic)]
 #[diag(passes_no_checkpoint)]
-pub struct NoCheckPoint {
+pub(crate) struct NoCheckPoint {
     #[primary_span]
     pub span: Span,
 }
@@ -578,7 +578,7 @@ pub struct NoCheckPoint {
 #[derive(LintDiagnostic)]
 #[diag(passes_no_checkpoint_foreign)]
 #[note]
-pub struct NoCheckPointForeign {
+pub(crate) struct NoCheckPointForeign {
     #[label]
     pub span: Span,
     #[suggestion(code = "", applicability = "machine-applicable")]
