@@ -149,7 +149,7 @@ pub(crate) fn get_linker<'a>(
             target_cpu,
             hinted_static: None,
             is_ld: cc == Cc::No,
-            is_gnu: flavor.is_gnu(),
+            flavor,
         }) as Box<dyn Linker>,
         LinkerFlavor::Msvc(..) => Box::new(MsvcLinker { cmd, sess }) as Box<dyn Linker>,
         LinkerFlavor::EmCc => Box::new(EmLinker { cmd, sess }) as Box<dyn Linker>,
@@ -338,7 +338,7 @@ struct GccLinker<'a> {
     hinted_static: Option<bool>, // Keeps track of the current hinting mode.
     // Link as ld
     is_ld: bool,
-    is_gnu: bool,
+    flavor: LinkerFlavor,
 }
 
 impl<'a> GccLinker<'a> {
@@ -395,10 +395,13 @@ impl<'a> GccLinker<'a> {
         if let Some(path) = &self.sess.opts.unstable_opts.profile_sample_use {
             self.link_arg(&format!("-plugin-opt=sample-profile={}", path.display()));
         };
-        self.link_args(&[
-            &format!("-plugin-opt={opt_level}"),
-            &format!("-plugin-opt=mcpu={}", self.target_cpu),
-        ]);
+        if self.flavor.uses_lld() {
+            self.link_arg(&format!("--lto-CG{opt_level}"));
+            self.link_args(&["-mcpu", self.target_cpu]);
+        } else {
+            self.link_arg(&format!("-plugin-opt={opt_level}"));
+            self.link_arg(&format!("-plugin-opt=mcpu={}", self.target_cpu));
+        }
     }
 
     fn build_dylib(&mut self, crate_type: CrateType, out_filename: &Path) {
@@ -453,7 +456,7 @@ impl<'a> GccLinker<'a> {
                 // has -needed-l{} / -needed_library {}
                 // but we have no way to detect that here.
                 self.sess.dcx().emit_warn(errors::Ld64UnimplementedModifier);
-            } else if self.is_gnu && !self.sess.target.is_like_windows {
+            } else if self.flavor.is_gnu() && !self.sess.target.is_like_windows {
                 self.link_arg("--no-as-needed");
             } else {
                 self.sess.dcx().emit_warn(errors::LinkerUnsupportedModifier);
@@ -465,7 +468,7 @@ impl<'a> GccLinker<'a> {
         if !as_needed {
             if self.sess.target.is_like_osx {
                 // See above FIXME comment
-            } else if self.is_gnu && !self.sess.target.is_like_windows {
+            } else if self.flavor.is_gnu() && !self.sess.target.is_like_windows {
                 self.link_arg("--as-needed");
             }
         }
@@ -489,7 +492,7 @@ impl<'a> Linker for GccLinker<'a> {
     ) {
         match output_kind {
             LinkOutputKind::DynamicNoPicExe => {
-                if !self.is_ld && self.is_gnu {
+                if !self.is_ld && self.flavor.is_gnu() {
                     self.cc_arg("-no-pie");
                 }
             }
@@ -503,7 +506,7 @@ impl<'a> Linker for GccLinker<'a> {
             LinkOutputKind::StaticNoPicExe => {
                 // `-static` works for both gcc wrapper and ld.
                 self.link_or_cc_arg("-static");
-                if !self.is_ld && self.is_gnu {
+                if !self.is_ld && self.flavor.is_gnu() {
                     self.cc_arg("-no-pie");
                 }
             }
@@ -558,7 +561,7 @@ impl<'a> Linker for GccLinker<'a> {
         }
         self.hint_dynamic();
         self.with_as_needed(as_needed, |this| {
-            let colon = if verbatim && this.is_gnu { ":" } else { "" };
+            let colon = if verbatim && this.flavor.is_gnu() { ":" } else { "" };
             this.link_or_cc_arg(format!("-l{colon}{name}"));
         });
     }
@@ -583,7 +586,7 @@ impl<'a> Linker for GccLinker<'a> {
 
     fn link_staticlib_by_name(&mut self, name: &str, verbatim: bool, whole_archive: bool) {
         self.hint_static();
-        let colon = if verbatim && self.is_gnu { ":" } else { "" };
+        let colon = if verbatim && self.flavor.is_gnu() { ":" } else { "" };
         if !whole_archive {
             self.link_or_cc_arg(format!("-l{colon}{name}"));
         } else if self.sess.target.is_like_osx {
@@ -645,19 +648,19 @@ impl<'a> Linker for GccLinker<'a> {
         // eliminate the metadata. If we're building an executable, however,
         // --gc-sections drops the size of hello world from 1.8MB to 597K, a 67%
         // reduction.
-        } else if (self.is_gnu || self.sess.target.is_like_wasm) && !keep_metadata {
+        } else if (self.flavor.is_gnu() || self.sess.target.is_like_wasm) && !keep_metadata {
             self.link_arg("--gc-sections");
         }
     }
 
     fn no_gc_sections(&mut self) {
-        if self.is_gnu || self.sess.target.is_like_wasm {
+        if self.flavor.is_gnu() || self.sess.target.is_like_wasm {
             self.link_arg("--no-gc-sections");
         }
     }
 
     fn optimize(&mut self) {
-        if !self.is_gnu && !self.sess.target.is_like_wasm {
+        if !self.flavor.is_gnu() && !self.sess.target.is_like_wasm {
             return;
         }
 
@@ -671,7 +674,7 @@ impl<'a> Linker for GccLinker<'a> {
     }
 
     fn pgo_gen(&mut self) {
-        if !self.is_gnu {
+        if !self.flavor.is_gnu() {
             return;
         }
 
@@ -853,13 +856,13 @@ impl<'a> Linker for GccLinker<'a> {
     fn add_no_exec(&mut self) {
         if self.sess.target.is_like_windows {
             self.link_arg("--nxcompat");
-        } else if self.is_gnu {
+        } else if self.flavor.is_gnu() {
             self.link_args(&["-z", "noexecstack"]);
         }
     }
 
     fn add_as_needed(&mut self) {
-        if self.is_gnu && !self.sess.target.is_like_windows {
+        if self.flavor.is_gnu() && !self.sess.target.is_like_windows {
             self.link_arg("--as-needed");
         } else if self.sess.target.is_like_solaris {
             // -z ignore is the Solaris equivalent to the GNU ld --as-needed option
