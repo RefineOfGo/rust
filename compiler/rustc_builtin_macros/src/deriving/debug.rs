@@ -1,9 +1,9 @@
 use rustc_ast::{self as ast, EnumDef, MetaItem};
 use rustc_expand::base::{Annotatable, ExtCtxt};
 use rustc_session::config::FmtDebug;
+use rustc_span::symbol::{sym, Ident};
 use rustc_span::Span;
-use rustc_span::symbol::{Ident, Symbol, sym};
-use thin_vec::{ThinVec, thin_vec};
+use thin_vec::{thin_vec, ThinVec};
 
 use crate::deriving::generic::ty::*;
 use crate::deriving::generic::*;

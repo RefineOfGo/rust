@@ -2317,39 +2317,6 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                     WhereAny(obligation.predicate.rebind(args.as_closure().upvar_tys().to_vec()))
                 }
             }
-            ty::CoroutineClosure(_, args) => {
-                let ty = self.infcx.shallow_resolve(args.as_coroutine_closure().tupled_upvars_ty());
-                if let ty::Infer(ty::TyVar(_)) = ty.kind() {
-                    Ambiguous
-                } else {
-                    WhereAny(
-                        obligation
-                            .predicate
-                            .rebind(args.as_coroutine_closure().upvar_tys().to_vec()),
-                    )
-                }
-            }
-            ty::Coroutine(_, args) => {
-                let upvars = self.infcx.shallow_resolve(args.as_coroutine().tupled_upvars_ty());
-                let witness = self.infcx.shallow_resolve(args.as_coroutine().witness());
-                if upvars.is_ty_var() || witness.is_ty_var() {
-                    Ambiguous
-                } else {
-                    WhereAny(
-                        obligation.predicate.rebind(
-                            args.as_coroutine()
-                                .upvar_tys()
-                                .iter()
-                                .chain([args.as_coroutine().witness()])
-                                .collect::<Vec<_>>(),
-                        ),
-                    )
-                }
-            }
-            ty::CoroutineWitness(def_id, args) => {
-                let bound_vars = obligation.predicate.bound_vars();
-                WhereAny(bind_coroutine_hidden_types_above(self.infcx, def_id, args, bound_vars))
-            }
             ty::Tuple(tys) => WhereAny(obligation.predicate.rebind(tys.iter().collect())),
             _ => None,
         }
