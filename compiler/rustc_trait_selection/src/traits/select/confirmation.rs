@@ -245,7 +245,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
         has_nested: bool,
-    ) -> PredicateObligations<'tcx> {
+    ) -> Selection<'tcx> {
         debug!(?obligation, ?has_nested, "confirm_builtin_candidate");
 
         let tcx = self.tcx();
