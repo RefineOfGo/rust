@@ -505,7 +505,10 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
 
                 let val = bx.from_immediate(a);
                 let align = dest.val.align;
-                if matches!(a_scalar, abi::Scalar::Initialized { value: abi::Pointer(_), .. }) {
+                if matches!(a_scalar, abi::Scalar::Initialized {
+                    value: abi::Primitive::Pointer(_),
+                    ..
+                }) {
                     bx.store_ptr_with_flags(val, dest.val.llval, flags);
                 } else {
                     bx.store_noptr_with_flags(val, dest.val.llval, align, flags);
@@ -514,7 +517,10 @@ impl<'a, 'tcx, V: CodegenObject> OperandValue<V> {
                 let llptr = bx.inbounds_ptradd(dest.val.llval, bx.const_usize(b_offset.bytes()));
                 let val = bx.from_immediate(b);
                 let align = dest.val.align.restrict_for_offset(b_offset);
-                if matches!(b_scalar, abi::Scalar::Initialized { value: abi::Pointer(_), .. }) {
+                if matches!(b_scalar, abi::Scalar::Initialized {
+                    value: abi::Primitive::Pointer(_),
+                    ..
+                }) {
                     bx.store_ptr_with_flags(val, llptr, flags);
                 } else {
                     bx.store_noptr_with_flags(val, llptr, align, flags);

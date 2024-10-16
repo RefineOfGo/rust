@@ -1837,6 +1837,6 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
         let align = self.tcx.data_layout.i32_align.abi;
         let current_tv_index = self.load(self.cx.type_i32(), mcdc_temp, align);
         let new_tv_index = self.add(current_tv_index, cond_index);
-        self.store(new_tv_index, mcdc_temp, align);
+        self.store_noptr(new_tv_index, mcdc_temp, align);
     }
 }

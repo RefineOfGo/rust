@@ -50,7 +50,6 @@ use rustc_span::def_id::{CRATE_DEF_ID, DefPathHash, StableCrateId};
 use rustc_span::symbol::{Ident, Symbol, kw, sym};
 use rustc_span::{DUMMY_SP, Span};
 use rustc_target::abi::call::Reg;
-use rustc_target::abi::{FieldIdx, Layout, LayoutS, TargetDataLayout, VariantIdx};
 use rustc_target::spec::abi;
 use rustc_type_ir::TyKind::*;
 use rustc_type_ir::fold::TypeFoldable;
