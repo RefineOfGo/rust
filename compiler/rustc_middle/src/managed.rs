@@ -31,15 +31,10 @@ impl<'tcx> ManagedChecker<'tcx> {
         adt: AdtDef<'tcx>,
         args: &'tcx List<GenericArg<'tcx>>,
     ) -> Option<&'tcx FieldDef> {
-        if adt.is_union() {
-            None
-        } else {
-            assert!(adt.is_enum() || adt.is_struct());
-            adt.variants().iter().flat_map(|def| def.fields.iter()).find(|field| {
-                let ty = field.ty(self.tcx, args);
-                let ty = self.tcx.normalize_erasing_regions(ParamEnv::reveal_all(), ty);
-                self.is_managed(ty)
-            })
-        }
+        adt.variants().iter().flat_map(|def| def.fields.iter()).find(|field| {
+            let ty = field.ty(self.tcx, args);
+            let ty = self.tcx.normalize_erasing_regions(ParamEnv::reveal_all(), ty);
+            self.is_managed(ty)
+        })
     }
 }

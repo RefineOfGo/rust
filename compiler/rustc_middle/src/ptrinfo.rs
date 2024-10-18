@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 
 use crate::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
 
@@ -129,19 +129,35 @@ impl PointerMapData {
                 }
             }
             FieldsShape::Union(..) | FieldsShape::Arbitrary { .. } => {
-                for i in layout.fields.index_by_increasing_offset() {
-                    let offs = offset + layout.fields.offset(i);
-                    self.set_layout(cx, offs, layout.field(cx, i));
+                let min_field = layout
+                    .fields
+                    .index_by_increasing_offset()
+                    .map(|i| {
+                        let offs = layout.fields.offset(i);
+                        let field = layout.field(cx, i);
+                        self.set_layout(cx, offset + offs, field);
+                        field.size
+                    })
+                    .min()
+                    .unwrap_or(Size::ZERO);
+                if layout.ty.is_union() && min_field != layout.size {
+                    assert!(min_field < layout.size);
+                    self.set_noptr(cx, offset + min_field, layout.size - min_field);
                 }
                 if let Variants::Multiple { ref variants, .. } = layout.variants {
-                    let mut min_size = Size::from_bytes(u64::MAX);
-                    for i in variants.indices() {
-                        let variant = layout.for_variant(cx, i);
-                        min_size = min_size.min(variant.size);
-                        self.set_layout(cx, offset, variant);
+                    let min_variant = variants
+                        .indices()
+                        .map(|i| {
+                            let variant = layout.for_variant(cx, i);
+                            self.set_layout(cx, offset, variant);
+                            variant.size
+                        })
+                        .min()
+                        .unwrap_or_else(|| bug!("multiple variant without any variants"));
+                    if min_variant != layout.size {
+                        assert!(min_variant < layout.size);
+                        self.set_noptr(cx, offset + min_variant, layout.size - min_variant);
                     }
-                    assert!(min_size <= layout.size);
-                    self.set_noptr(cx, offset + min_size, layout.size - min_size);
                 }
             }
         }

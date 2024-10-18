@@ -243,6 +243,10 @@ pub union MaybeUninit<T> {
     value: ManuallyDrop<T>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: Managed> Managed for MaybeUninit<T> {}
+
 #[stable(feature = "maybe_uninit", since = "1.36.0")]
 impl<T: Copy> Clone for MaybeUninit<T> {
     #[inline(always)]

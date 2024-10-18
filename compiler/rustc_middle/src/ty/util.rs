@@ -1299,13 +1299,12 @@ impl<'tcx> Ty<'tcx> {
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..) => true,
-            ty::Adt(adt, _) => adt.is_union(),
+            ty::Adt(..) | ty::Closure(..) => false,
             ty::Array(elem_ty, _)
             | ty::Pat(elem_ty, _)
             | ty::Slice(elem_ty)
             | ty::RawPtr(elem_ty, _)
             | ty::Ref(_, elem_ty, _) => elem_ty.is_trivially_unmanaged(),
-            ty::Closure(..) => false,
             ty::Tuple(fields) => fields.iter().all(Self::is_trivially_unmanaged),
             ty::Alias(..) | ty::Param(_) | ty::Bound(..) | ty::Placeholder(_) | ty::Infer(_) => {
                 tracing::debug!("suspicious type, assuming unmanaged {self:#?}");

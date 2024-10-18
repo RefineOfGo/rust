@@ -186,7 +186,7 @@ fn visit_implementation_of_managed(checker: &Checker<'_>) -> Result<(), ErrorGua
     let impl_did = checker.impl_def_id;
     // Managed types only work on local non-union ADT types.
     match tcx.type_of(impl_did).instantiate_identity().kind() {
-        ty::Adt(def, ..) if def.did().is_local() && !def.is_union() => Ok(()),
+        ty::Adt(def, ..) if def.did().is_local() => Ok(()),
         ty::Ref(..) | ty::RawPtr(..) | ty::Slice(..) | ty::Array(..) | ty::Error(..) => Ok(()),
         _ => {
             let impl_ = tcx.hir().expect_item(impl_did).expect_impl();
