@@ -210,7 +210,7 @@ mod move_check;
 use std::path::PathBuf;
 
 use move_check::MoveCheckState;
-use rustc_data_structures::sync::{par_for_each_in, LRef, MTLock};
+use rustc_data_structures::sync::{LRef, MTLock, par_for_each_in};
 use rustc_data_structures::unord::{UnordMap, UnordSet};
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;
@@ -221,7 +221,7 @@ use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use rustc_middle::mir::interpret::{AllocId, ErrorHandled, GlobalAlloc, Scalar};
 use rustc_middle::mir::mono::{InstantiationMode, MonoItem};
 use rustc_middle::mir::visit::{TyContext, Visitor as MirVisitor};
-use rustc_middle::mir::{self, traversal, HasLocalDecls, Location, MentionedItem};
+use rustc_middle::mir::{self, HasLocalDecls, Location, MentionedItem, traversal};
 use rustc_middle::query::TyCtxtAt;
 use rustc_middle::ty::adjustment::{CustomCoerceUnsized, PointerCoercion};
 use rustc_middle::ty::layout::ValidityRequirement;
@@ -232,11 +232,11 @@ use rustc_middle::ty::{
 };
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, span_bug};
-use rustc_session::config::EntryFnType;
 use rustc_session::Limit;
-use rustc_span::source_map::{dummy_spanned, respan, Spanned};
-use rustc_span::symbol::{sym, Ident};
-use rustc_span::{Span, DUMMY_SP};
+use rustc_session::config::EntryFnType;
+use rustc_span::source_map::{Spanned, dummy_spanned, respan};
+use rustc_span::symbol::{Ident, sym};
+use rustc_span::{DUMMY_SP, Span};
 use rustc_target::abi::Size;
 use tracing::{debug, instrument, trace};
 
@@ -608,21 +608,11 @@ fn check_managed_fields<'tcx>(tcx: TyCtxt<'tcx>, mc: ManagedChecker<'tcx>, ty: T
     if let ty::Adt(adt, args) = *ty.kind() {
         if !mc.is_managed(ty) {
             if let Some(field) = mc.find_managed_field(adt, args) {
-                let field_ty = field.ty(tcx, args).to_string();
-                let field_span = tcx.def_span(field.did);
-                if adt.is_union() {
-                    tcx.dcx().emit_err(errors::ManagedUnionField {
-                        field_span,
-                        field_ty,
-                        note: (),
-                    });
-                } else {
-                    tcx.dcx().emit_err(errors::ManagedFieldInUnmanagedAdt {
-                        field_span,
-                        field_ty,
-                        note: (),
-                    });
-                }
+                tcx.dcx().emit_err(errors::ManagedFieldInUnmanagedAdt {
+                    field_span: tcx.def_span(field.did),
+                    field_ty: field.ty(tcx, args).to_string(),
+                    note: (),
+                });
             }
         }
     }

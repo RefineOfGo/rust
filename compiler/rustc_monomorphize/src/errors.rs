@@ -7,16 +7,6 @@ use rustc_span::{Span, Symbol};
 use crate::fluent_generated as fluent;
 
 #[derive(Diagnostic)]
-#[diag(monomorphize_managed_union_field)]
-pub(crate) struct ManagedUnionField {
-    #[primary_span]
-    pub field_span: Span,
-    pub field_ty: String,
-    #[note]
-    pub note: (),
-}
-
-#[derive(Diagnostic)]
 #[diag(monomorphize_managed_field_in_unmanaged_adt)]
 pub(crate) struct ManagedFieldInUnmanagedAdt {
     #[primary_span]

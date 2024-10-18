@@ -102,7 +102,7 @@ pub(crate) fn expand_deriving_managed(
         skip_path_as_bound: true,
         needs_copy_as_bound_if_packed: false,
         additional_bounds: Vec::new(),
-        supports_unions: false,
+        supports_unions: true,
         methods: Vec::new(),
         associated_types: Vec::new(),
         is_const,
