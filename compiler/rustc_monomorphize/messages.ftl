@@ -29,12 +29,8 @@ monomorphize_unused_generic_params = item has unused generic parameters
 
 monomorphize_written_to_path = the full type name has been written to '{$path}'
 
-monomorphize_managed_union_field =
-    unions cannot hold managed value of type `{$field_ty}`
-    .note = unions does not have a deterministic layout at runtime, which is impossible for GC to manage
-
 monomorphize_managed_field_in_unmanaged_adt =
-    unmanaged structs or enums cannot hold managed value of type `{$field_ty}`
+    unmanaged structs/enums/unions cannot hold managed value of type `{$field_ty}`
     .note = add `#[derive(Managed)]` to the containing struct/enum in order to hold this field
 
 monomorphize_dyn_trait_points_to_managed_value =
