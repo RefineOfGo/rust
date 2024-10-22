@@ -119,6 +119,10 @@ pub struct RwLockReadGuard<'a, T: ?Sized + 'a> {
     inner_lock: &'a sys::RwLock,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for RwLockReadGuard<'_, T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !Send for RwLockReadGuard<'_, T> {}
 
@@ -144,6 +148,10 @@ pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
     lock: &'a RwLock<T>,
     poison: poison::Guard,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for RwLockWriteGuard<'_, T> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !Send for RwLockWriteGuard<'_, T> {}
@@ -173,6 +181,10 @@ pub struct MappedRwLockReadGuard<'a, T: ?Sized + 'a> {
     data: NonNull<T>,
     inner_lock: &'a sys::RwLock,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MappedRwLockReadGuard<'_, T> {}
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedRwLockReadGuard<'_, T> {}
@@ -205,6 +217,10 @@ pub struct MappedRwLockWriteGuard<'a, T: ?Sized + 'a> {
     poison: poison::Guard,
     _variance: PhantomData<&'a mut T>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MappedRwLockWriteGuard<'_, T> {}
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedRwLockWriteGuard<'_, T> {}

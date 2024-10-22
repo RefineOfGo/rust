@@ -215,6 +215,10 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
     poison: poison::Guard,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MutexGuard<'_, T> {}
+
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !Send for MutexGuard<'_, T> {}
 #[stable(feature = "mutexguard", since = "1.19.0")]
@@ -255,6 +259,10 @@ pub struct MappedMutexGuard<'a, T: ?Sized + 'a> {
     poison: poison::Guard,
     _variance: PhantomData<&'a mut T>,
 }
+
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for MappedMutexGuard<'_, T> {}
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
 impl<T: ?Sized> !Send for MappedMutexGuard<'_, T> {}
