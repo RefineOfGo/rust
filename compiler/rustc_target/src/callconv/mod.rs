@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use std::{fmt, iter};
 
+use rustc_abi::HasRegisterMap;
 pub use rustc_abi::{Reg, RegKind};
 use rustc_macros::HashStable_Generic;
 use rustc_span::Symbol;
@@ -758,7 +759,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
     pub fn adjust_for_rust_abi<C>(&mut self, cx: &C, abi: SpecAbi)
     where
         Ty: TyAbiInterface<'a, C> + Copy,
-        C: HasDataLayout + HasTargetSpec,
+        C: HasDataLayout + HasTargetSpec + HasRegisterMap<'a, Ty>,
     {
         let spec = cx.target_spec();
         match &spec.arch[..] {
@@ -844,11 +845,14 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                 // Note that the intrinsic ABI is exempt here as
                 // that's how we connect up to LLVM and it's unstable
                 // anyway, we control all calls to it in libstd.
-                BackendRepr::Vector { .. }
-                    if abi != SpecAbi::RustIntrinsic && spec.simd_types_indirect =>
-                {
-                    arg.make_indirect();
-                    continue;
+                //
+                // ROG Rust does not support this.
+                BackendRepr::Vector { .. } if abi != SpecAbi::RustIntrinsic => {
+                    assert!(
+                        !spec.simd_types_indirect,
+                        "ROG Rust does not support indirect SIMD types"
+                    );
+                    return;
                 }
 
                 _ => continue,

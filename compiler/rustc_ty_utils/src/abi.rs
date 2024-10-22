@@ -18,8 +18,6 @@ use rustc_target::abi::call::{
 use rustc_target::spec::abi::Abi as SpecAbi;
 use tracing::debug;
 
-use crate::reg_map::HasRegisterMap;
-
 pub(crate) fn provide(providers: &mut Providers) {
     *providers = Providers { fn_abi_of_fn_ptr, fn_abi_of_instance, ..*providers };
 }

@@ -1825,7 +1825,7 @@ impl<'a, 'll, 'tcx> Builder<'a, 'll, 'tcx> {
 
     #[instrument(level = "debug", skip(self))]
     pub(crate) fn mcdc_condbitmap_reset(&mut self, mcdc_temp: &'ll Value) {
-        self.store(self.const_i32(0), mcdc_temp, self.tcx.data_layout.i32_align.abi);
+        self.store_noptr(self.const_i32(0), mcdc_temp, self.tcx.data_layout.i32_align.abi);
     }
 
     #[instrument(level = "debug", skip(self))]

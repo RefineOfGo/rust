@@ -4,9 +4,9 @@ use std::{cmp, fmt};
 
 use rustc_abi::Primitive::{self, Float, Int, Pointer};
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, FieldsShape, HasDataLayout, Integer, LayoutCalculator,
-    LayoutData, PointeeInfo, PointerKind, ReprOptions, Scalar, Size, TagEncoding, TargetDataLayout,
-    Variants,
+    AddressSpace, Align, BackendRepr, FieldsShape, HasDataLayout, HasRegisterMap, Integer,
+    LayoutCalculator, LayoutData, PointeeInfo, PointerKind, Reg, ReprOptions, Scalar, Size,
+    TagEncoding, TargetDataLayout, Variants,
 };
 use rustc_error_messages::DiagMessage;
 use rustc_errors::{
@@ -31,6 +31,7 @@ use {rustc_abi as abi, rustc_hir as hir};
 use crate::error::UnsupportedFnAbi;
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use crate::query::TyCtxtAt;
+use crate::reg_map::RegisterMap;
 use crate::ty::normalize_erasing_regions::NormalizationError;
 use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt, TypeVisitableExt};
 
@@ -306,6 +307,12 @@ pub struct LayoutCx<'tcx> {
 impl<'tcx> LayoutCx<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, param_env: ty::ParamEnv<'tcx>) -> Self {
         Self { calc: LayoutCalculator::new(tcx), param_env }
+    }
+}
+
+impl<'tcx> HasRegisterMap<'tcx, Ty<'tcx>> for LayoutCx<'tcx> {
+    fn register_map(&self, layout: TyAndLayout<'tcx>) -> Vec<Reg> {
+        RegisterMap::resolve(self, layout)
     }
 }
 

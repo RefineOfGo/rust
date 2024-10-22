@@ -2,7 +2,9 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use rustc_target::abi::{Abi, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
+use rustc_target::abi::{
+    BackendRepr, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants,
+};
 use smallvec::{SmallVec, smallvec};
 
 use crate::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
@@ -115,12 +117,12 @@ impl PointerMapData {
         layout: TyAndLayout<'tcx>,
     ) {
         match layout.fields {
-            FieldsShape::Primitive => match layout.abi {
-                Abi::Uninhabited => self.set_noptr(cx, offset, layout.size),
-                Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
-                Abi::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
-                Abi::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
-                Abi::Aggregate { .. } => unreachable!("conflict: Primitive & Aggregate"),
+            FieldsShape::Primitive => match layout.backend_repr {
+                BackendRepr::Uninhabited => self.set_noptr(cx, offset, layout.size),
+                BackendRepr::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
+                BackendRepr::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
+                BackendRepr::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
+                BackendRepr::Memory { .. } => unreachable!("conflict: Primitive & Memory"),
             },
             FieldsShape::Array { stride, count } => {
                 let elem = layout.field(cx, 0);

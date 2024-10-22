@@ -31,7 +31,6 @@ mod instance;
 mod layout;
 mod needs_drop;
 mod opaque_types;
-mod reg_map;
 mod representability;
 pub mod sig_types;
 mod structural_match;

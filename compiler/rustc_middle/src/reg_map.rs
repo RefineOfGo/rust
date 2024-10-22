@@ -1,8 +1,8 @@
-use rustc_middle::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
-use rustc_target::abi::call::{Reg, RegKind};
-use rustc_target::abi::{
-    Abi, FieldsShape, Float, HasDataLayout, Primitive, Scalar, Size, Variants,
+use rustc_abi::{
+    BackendRepr, FieldsShape, Float, HasDataLayout, Primitive, Reg, RegKind, Scalar, Size, Variants,
 };
+
+use crate::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
 
 #[derive(Debug, Clone, Copy)]
 struct Value {
@@ -17,7 +17,7 @@ impl Value {
     }
 }
 
-struct RegisterMap {
+pub struct RegisterMap {
     vals: Vec<Value>,
 }
 
@@ -154,12 +154,12 @@ impl RegisterMap {
         layout: TyAndLayout<'tcx>,
     ) {
         match layout.fields {
-            FieldsShape::Primitive => match layout.abi {
-                Abi::Uninhabited => self.set_int(offset, layout.size),
-                Abi::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
-                Abi::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
-                Abi::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
-                Abi::Aggregate { .. } => unreachable!("conflict: Primitive & Aggregate"),
+            FieldsShape::Primitive => match layout.backend_repr {
+                BackendRepr::Uninhabited => self.set_int(offset, layout.size),
+                BackendRepr::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
+                BackendRepr::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
+                BackendRepr::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
+                BackendRepr::Memory { .. } => unreachable!("conflict: Primitive & Memory"),
             },
             FieldsShape::Array { stride, count } => {
                 let elem = layout.field(cx, 0);
@@ -242,29 +242,21 @@ impl RegisterMap {
 }
 
 impl RegisterMap {
-    fn resolve<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
+    pub fn resolve<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
         cx: &Cx,
         layout: TyAndLayout<'tcx>,
     ) -> Vec<Reg> {
-        let unit = cx.data_layout().pointer_size.bytes_usize();
-        let vals = Vec::with_capacity(layout.size.bytes_usize() / unit + 1);
-        let mut ret = Self { vals };
-        ret.set_layout(cx, Size::ZERO, layout);
-        ret.finalize(layout)
-    }
-}
-
-pub(crate) trait HasRegisterMap<'tcx> {
-    fn register_map(&self, layout: TyAndLayout<'tcx>) -> Vec<Reg>;
-}
-
-impl<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>> HasRegisterMap<'tcx> for Cx {
-    fn register_map(&self, layout: TyAndLayout<'tcx>) -> Vec<Reg> {
-        self.tcx()
+        cx.tcx()
             .register_maps
             .borrow_mut()
             .entry(layout.ty)
-            .or_insert_with(|| RegisterMap::resolve(self, layout))
+            .or_insert_with(|| {
+                let unit = cx.data_layout().pointer_size.bytes_usize();
+                let vals = Vec::with_capacity(layout.size.bytes_usize() / unit + 1);
+                let mut ret = Self { vals };
+                ret.set_layout(cx, Size::ZERO, layout);
+                ret.finalize(layout)
+            })
             .clone()
     }
 }

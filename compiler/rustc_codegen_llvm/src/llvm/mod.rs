@@ -8,6 +8,7 @@ use std::str::FromStr;
 use std::string::FromUtf8Error;
 
 use libc::c_uint;
+use rustc_data_structures::small_c_str::SmallCStr;
 use rustc_llvm::RustString;
 use rustc_target::abi::{Align, Size, WrappingRange};
 

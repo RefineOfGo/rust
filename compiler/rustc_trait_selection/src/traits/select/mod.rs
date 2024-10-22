@@ -23,8 +23,8 @@ use rustc_infer::traits::{PredicateObligations, TraitObligation};
 use rustc_middle::bug;
 use rustc_middle::dep_graph::{DepNodeIndex, dep_kinds};
 use rustc_middle::mir::interpret::ErrorHandled;
-pub use rustc_middle::traits::select::*;
 use rustc_middle::traits::ImplSource;
+pub use rustc_middle::traits::select::*;
 use rustc_middle::ty::abstract_const::NotConstEvaluatable;
 use rustc_middle::ty::error::TypeErrorToStringExt;
 use rustc_middle::ty::print::{PrintTraitRefExt as _, with_no_trimmed_paths};
@@ -660,7 +660,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                             &obligation.with(self.tcx(), data),
                         ) {
                             Ok(nested) => {
-                                self.evaluate_predicates_recursively(previous_stack, nested)
+                                self.evaluate_predicates_recursively(previous_stack, nested, false)
                             }
                             Err(effects::EvaluationFailure::Ambiguous) => Ok(EvaluatedToAmbig),
                             Err(effects::EvaluationFailure::NoSolution) => Ok(EvaluatedToErr),
