@@ -181,7 +181,7 @@ impl Once {
     // without some allocation overhead.
     #[cold]
     #[track_caller]
-    pub fn call(&self, ignore_poisoning: bool, init: &mut dyn FnMut(&public::OnceState)) {
+    pub fn call(&self, ignore_poisoning: bool, init: &mut impl FnMut(&public::OnceState)) {
         let mut current = self.state_and_queue.load(Acquire);
         loop {
             let state = to_state(current);

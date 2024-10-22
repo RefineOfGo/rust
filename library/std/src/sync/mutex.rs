@@ -181,6 +181,10 @@ pub struct Mutex<T: ?Sized> {
     data: UnsafeCell<T>,
 }
 
+#[cfg(not(bootstrap))]
+#[stable(feature = "rog", since = "1.0.0")]
+impl<T: ?Sized + Managed> Managed for Mutex<T> {}
+
 // these are the only places where `T: Send` matters; all other
 // functionality works fine on a single thread.
 #[stable(feature = "rust1", since = "1.0.0")]

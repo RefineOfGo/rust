@@ -84,7 +84,7 @@ impl<T: ?Sized> !Sync for NonNull<T> {}
 
 #[cfg(not(bootstrap))]
 #[stable(feature = "rog", since = "1.0.0")]
-impl<T: Managed + ?Sized> Managed for NonNull<T> {}
+impl<T: ?Sized + Managed> Managed for NonNull<T> {}
 
 impl<T: Sized> NonNull<T> {
     /// Creates a new `NonNull` that is dangling, but well-aligned.
