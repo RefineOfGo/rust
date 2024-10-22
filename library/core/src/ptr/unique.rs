@@ -46,7 +46,7 @@ pub struct Unique<T: ?Sized> {
 
 #[cfg(not(bootstrap))]
 #[stable(feature = "rog", since = "1.0.0")]
-impl<T: Managed + ?Sized> Managed for Unique<T> {}
+impl<T: ?Sized + Managed> Managed for Unique<T> {}
 
 /// `Unique` pointers are `Send` if `T` is `Send` because the data they
 /// reference is unaliased. Note that this aliasing invariant is
