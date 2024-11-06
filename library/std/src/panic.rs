@@ -358,6 +358,12 @@ pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R> {
     unsafe { panicking::r#try(f) }
 }
 
+/// catch_unwind for rog which can handler rog error
+#[stable(feature = "catch_unwind", since = "1.9.0")]
+pub fn catch_unwind_with_rog<F: FnOnce() -> R + UnwindSafe, R>(f: F) -> Result<R> {
+    unsafe { panicking::r#try_with_rog(f) }
+}
+
 /// Triggers a panic without invoking the panic hook.
 ///
 /// This is designed to be used in conjunction with [`catch_unwind`] to, for
