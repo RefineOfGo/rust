@@ -145,7 +145,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 ensure_monomorphic_enough(self.tcx.tcx, ty)?;
                 let layout = self
                     .tcx
-                    .layout_of(self.param_env.and(ty))
+                    .layout_of(self.typing_env.as_query_input(ty))
                     .map_err(|e| err_inval!(Layout(*e)))?;
                 let ptrmap = self.pointer_map(layout).encode();
                 let val = self.const_val_to_op(

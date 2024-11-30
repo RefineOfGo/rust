@@ -1,4 +1,4 @@
-use crate::ty::{AdtDef, FieldDef, GenericArg, List, ParamEnv, Ty, TyCtxt};
+use crate::ty::{AdtDef, FieldDef, GenericArg, List, Ty, TyCtxt, TypingEnv};
 
 #[derive(Clone, Copy)]
 pub struct ManagedChecker<'tcx> {
@@ -13,7 +13,7 @@ impl<'tcx> ManagedChecker<'tcx> {
 
 impl<'tcx> ManagedChecker<'tcx> {
     pub fn is_managed(self, ty: Ty<'tcx>) -> bool {
-        ty.is_managed(self.tcx, ParamEnv::reveal_all())
+        ty.is_managed(self.tcx, TypingEnv::fully_monomorphized())
     }
 
     pub fn find_managed_field(
@@ -33,7 +33,7 @@ impl<'tcx> ManagedChecker<'tcx> {
     ) -> Option<&'tcx FieldDef> {
         adt.variants().iter().flat_map(|def| def.fields.iter()).find(|field| {
             let ty = field.ty(self.tcx, args);
-            let ty = self.tcx.normalize_erasing_regions(ParamEnv::reveal_all(), ty);
+            let ty = self.tcx.normalize_erasing_regions(TypingEnv::fully_monomorphized(), ty);
             self.is_managed(ty)
         })
     }

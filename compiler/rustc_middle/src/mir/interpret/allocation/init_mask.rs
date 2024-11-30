@@ -9,7 +9,7 @@ use rustc_macros::{HashStable, TyDecodable, TyEncodable};
 use rustc_serialize::{Decodable, Encodable};
 use rustc_type_ir::{TyDecoder, TyEncoder};
 
-use super::AllocRange;
+use super::{alloc_range, AllocRange};
 
 type Block = u64;
 
@@ -39,6 +39,11 @@ impl InitMask {
         // Blocks start lazily allocated, until we have to materialize them.
         let blocks = InitMaskBlocks::Lazy { state };
         InitMask { len: size, blocks }
+    }
+
+    #[inline]
+    pub fn is_all_initialized(&self) -> Result<(), AllocRange> {
+        self.is_range_initialized(alloc_range(Size::ZERO, self.len))
     }
 
     /// Checks whether the `range` is entirely initialized.

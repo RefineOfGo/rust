@@ -50,7 +50,7 @@ nohash-hasher.workspace = true
 always-assert = "0.2.0"
 walkdir = "2.3.2"
 semver.workspace = true
-memchr = "2.7.1"
+memchr = "2.7.4"
 cargo_metadata.workspace = true
 process-wrap.workspace = true
 

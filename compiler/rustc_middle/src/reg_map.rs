@@ -2,7 +2,7 @@ use rustc_abi::{
     BackendRepr, FieldsShape, Float, HasDataLayout, Primitive, Reg, RegKind, Scalar, Size, Variants,
 };
 
-use crate::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
+use crate::ty::layout::{HasTyCtxt, HasTypingEnv, TyAndLayout};
 
 #[derive(Debug, Clone, Copy)]
 struct Value {
@@ -127,12 +127,7 @@ impl RegisterMap {
         }
     }
 
-    fn set_scalar<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
-        &mut self,
-        cx: &Cx,
-        offset: Size,
-        scalar: Scalar,
-    ) {
+    fn set_scalar<Cx: HasDataLayout>(&mut self, cx: &Cx, offset: Size, scalar: Scalar) {
         if offset.is_aligned(scalar.align(cx).abi) {
             match scalar.primitive() {
                 Primitive::Int(v, _) => self.set_int(offset, v.size()),
@@ -147,7 +142,7 @@ impl RegisterMap {
         }
     }
 
-    fn set_layout<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
+    fn set_layout<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasTypingEnv<'tcx>>(
         &mut self,
         cx: &Cx,
         offset: Size,
@@ -242,7 +237,7 @@ impl RegisterMap {
 }
 
 impl RegisterMap {
-    pub fn resolve<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
+    pub fn resolve<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasTypingEnv<'tcx>>(
         cx: &Cx,
         layout: TyAndLayout<'tcx>,
     ) -> Vec<Reg> {
