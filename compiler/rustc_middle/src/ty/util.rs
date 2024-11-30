@@ -1279,8 +1279,8 @@ impl<'tcx> Ty<'tcx> {
     }
 
     /// Checks whether values of this type `T` implement the `Managed` trait.
-    pub fn is_managed(self, tcx: TyCtxt<'tcx>, param_env: ty::ParamEnv<'tcx>) -> bool {
-        !self.is_trivially_unmanaged() && tcx.is_managed_raw(param_env.and(self))
+    pub fn is_managed(self, tcx: TyCtxt<'tcx>, typing_env: ty::TypingEnv<'tcx>) -> bool {
+        !self.is_trivially_unmanaged() && tcx.is_managed_raw(typing_env.as_query_input(self))
     }
 
     /// Fast path helper for testing if a type is not `Managed`.

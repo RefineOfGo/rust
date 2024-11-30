@@ -7,7 +7,7 @@ use rustc_target::abi::{
 };
 use smallvec::{SmallVec, smallvec};
 
-use crate::ty::layout::{HasParamEnv, HasTyCtxt, TyAndLayout};
+use crate::ty::layout::{HasTyCtxt, HasTypingEnv, TyAndLayout};
 
 #[derive(Debug, PartialEq, Eq)]
 struct PointerMapData {
@@ -38,12 +38,7 @@ impl PointerMapData {
         self.used[idx] |= mask;
     }
 
-    fn set_noptr<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
-        &mut self,
-        cx: &Cx,
-        offset: Size,
-        size: Size,
-    ) {
+    fn set_noptr<Cx: HasDataLayout>(&mut self, cx: &Cx, offset: Size, size: Size) {
         let start = offset.bytes_usize();
         let align = cx.data_layout().pointer_size.bytes_usize();
 
@@ -90,12 +85,7 @@ impl PointerMapData {
         }
     }
 
-    fn set_scalar<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
-        &mut self,
-        cx: &Cx,
-        offset: Size,
-        scalar: Scalar,
-    ) {
+    fn set_scalar<Cx: HasDataLayout>(&mut self, cx: &Cx, offset: Size, scalar: Scalar) {
         match scalar {
             Scalar::Union { value: Primitive::Pointer(_) }
             | Scalar::Initialized { value: Primitive::Pointer(_), .. }
@@ -110,7 +100,7 @@ impl PointerMapData {
         }
     }
 
-    fn set_layout<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
+    fn set_layout<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasTypingEnv<'tcx>>(
         &mut self,
         cx: &Cx,
         offset: Size,
@@ -242,7 +232,7 @@ impl PointerMap {
 }
 
 impl PointerMap {
-    pub fn resolve<'cx, 'tcx: 'cx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>>(
+    pub fn resolve<'cx, 'tcx: 'cx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasTypingEnv<'tcx>>(
         cx: &'cx Cx,
         layout: TyAndLayout<'tcx>,
     ) -> Self {
@@ -258,7 +248,7 @@ pub trait HasPointerMap<'tcx> {
     fn pointer_map(&self, layout: TyAndLayout<'tcx>) -> PointerMap;
 }
 
-impl<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasParamEnv<'tcx>> HasPointerMap<'tcx> for Cx {
+impl<'tcx, Cx: HasDataLayout + HasTyCtxt<'tcx> + HasTypingEnv<'tcx>> HasPointerMap<'tcx> for Cx {
     fn pointer_map(&self, layout: TyAndLayout<'tcx>) -> PointerMap {
         self.tcx()
             .pointer_maps

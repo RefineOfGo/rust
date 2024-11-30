@@ -22,7 +22,10 @@ fn is_unpin_raw<'tcx>(tcx: TyCtxt<'tcx>, query: ty::PseudoCanonicalInput<'tcx, T
     is_item_raw(tcx, query, LangItem::Unpin)
 }
 
-fn is_managed_raw<'tcx>(tcx: TyCtxt<'tcx>, query: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
+fn is_managed_raw<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    query: ty::PseudoCanonicalInput<'tcx, Ty<'tcx>>,
+) -> bool {
     is_item_raw(tcx, query, LangItem::Managed)
 }
 
