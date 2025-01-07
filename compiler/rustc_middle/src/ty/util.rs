@@ -1304,7 +1304,7 @@ impl<'tcx> Ty<'tcx> {
             | ty::CoroutineClosure(..)
             | ty::Coroutine(..)
             | ty::CoroutineWitness(..) => true,
-            ty::Adt(..) | ty::Closure(..) => false,
+            ty::Adt(..) | ty::UnsafeBinder(..) | ty::Closure(..) => false,
             ty::Array(elem_ty, _)
             | ty::Pat(elem_ty, _)
             | ty::Slice(elem_ty)

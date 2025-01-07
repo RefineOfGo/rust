@@ -328,7 +328,8 @@ fn emit_xtensa_va_arg<'ll, 'tcx>(
 
     bx.switch_to_block(from_regsave);
     // update va_ndx
-    bx.store(offset_next, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
+    // `va_list`s are on stack, so we don't need write barriers here
+    bx.store_noptr(offset_next, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
 
     // (*va).va_reg
     let regsave_area_ptr =
@@ -353,7 +354,8 @@ fn emit_xtensa_va_arg<'ll, 'tcx>(
     // va_ndx = offset_next_corrected;
     let offset_next_corrected = bx.add(offset_next, bx.const_i32(slot_size));
     // update va_ndx
-    bx.store(offset_next_corrected, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
+    // `va_list`s are on stack, so we don't need write barriers here
+    bx.store_noptr(offset_next_corrected, offset_ptr, bx.tcx().data_layout.pointer_align.abi);
 
     // let stack_value_ptr = unsafe { (*va).va_stk.byte_add(offset_corrected) };
     let stack_area_ptr = bx.inbounds_gep(bx.type_i8(), va_list_addr, &[bx.cx.const_usize(0)]);
