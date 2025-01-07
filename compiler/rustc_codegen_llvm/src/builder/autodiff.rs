@@ -119,6 +119,7 @@ fn generate_enzyme_call<'ll, 'tcx>(
             llvm::UnnamedAddr::No,
             llvm::Visibility::Default,
             enzyme_ty,
+            None,
         );
 
         // Otherwise LLVM might inline our temporary code before the enzyme pass has a chance to

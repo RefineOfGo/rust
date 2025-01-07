@@ -800,7 +800,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                 // anyway, we control all calls to it in libstd.
                 //
                 // ROG Rust does not support this.
-                BackendRepr::Vector { .. } if abi != SpecAbi::RustIntrinsic => {
+                BackendRepr::Vector { .. } if abi != ExternAbi::RustIntrinsic => {
                     assert!(
                         !spec.simd_types_indirect,
                         "ROG Rust does not support indirect SIMD types"
