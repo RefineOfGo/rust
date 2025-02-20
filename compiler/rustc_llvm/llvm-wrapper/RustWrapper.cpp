@@ -1604,12 +1604,11 @@ extern "C" LLVMValueRef LLVMRustBuildMemSet(LLVMBuilderRef B,
   Value *val = unwrap(Val);
   Value *size = unwrap(Size);
   IRBuilder<> *irb = unwrap(B);
-  if (!NeedBarriers) {
+  if (NeedBarriers) {
+    return wrap(irb->CreateGCMemSet(dst, val, size, MaybeAlign(DstAlign), IsVolatile));
+  } else {
     return wrap(irb->CreateMemSet(dst, val, size, MaybeAlign(DstAlign), IsVolatile));
   }
-  ConstantInt *fill = dyn_cast<ConstantInt>(val);
-  assert(fill && fill->isZero() && "Cannot fill barrier memory with arbitrary bytes");
-  return wrap(irb->CreateGCMemSet(dst, val, size, MaybeAlign(DstAlign), IsVolatile));
 }
 
 // Polyfill for `LLVMBuildCallBr`, which was added in LLVM 19.
@@ -1972,11 +1971,6 @@ extern "C" int32_t LLVMRustGetElementTypeArgIndex(LLVMValueRef CallSite) {
     return 1;
   }
   return -1;
-}
-
-extern "C" bool LLVMRustIsConstZero(LLVMValueRef V) {
-  ConstantInt *val = dyn_cast<ConstantInt>(unwrap<Value>(V));
-  return val && val->isZero();
 }
 
 extern "C" bool LLVMRustIsLocalFrame(LLVMValueRef V) {

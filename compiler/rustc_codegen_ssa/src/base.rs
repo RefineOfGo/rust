@@ -601,7 +601,7 @@ pub fn codegen_crate<B: ExtraBackendMethods>(
     // Check crate items and just output metadata in -Z no-codegen mode.
     if tcx.sess.opts.unstable_opts.no_codegen || !tcx.sess.opts.output_types.should_codegen() {
         let codegen = start_async_codegen(backend, tcx, target_cpu, metadata, None);
-        tcx.ensure().check_mono_items(());
+        tcx.ensure_ok().check_mono_items(());
         codegen.codegen_finished(tcx);
         codegen.check_for_errors(tcx.sess);
         return codegen;

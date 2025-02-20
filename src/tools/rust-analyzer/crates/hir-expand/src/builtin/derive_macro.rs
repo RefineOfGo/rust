@@ -1470,9 +1470,14 @@ fn coerce_pointee_expand(
     }
 }
 
-fn managed_expand(span: Span, tt: &tt::TopSubtree) -> ExpandResult<tt::TopSubtree> {
+fn managed_expand(
+    db: &dyn ExpandDatabase,
+    span: Span,
+    tt: &tt::TopSubtree,
+) -> ExpandResult<tt::TopSubtree> {
     let krate = dollar_crate(span);
     expand_simple_derive(
+        db,
         span,
         tt,
         quote! { span => #krate::marker::Managed },

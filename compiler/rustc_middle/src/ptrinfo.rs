@@ -2,9 +2,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use rustc_target::abi::{
-    BackendRepr, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants,
-};
+use rustc_abi::{BackendRepr, FieldsShape, HasDataLayout, Primitive, Scalar, Size, Variants};
 use smallvec::{SmallVec, smallvec};
 
 use crate::ty::layout::{HasTyCtxt, HasTypingEnv, TyAndLayout};

@@ -836,10 +836,6 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         }
     }
 
-    fn is_const_zero(&mut self, val: &'ll Value) -> bool {
-        unsafe { llvm::LLVMRustIsConstZero(val) }
-    }
-
     fn can_omit_barriers(&mut self, val: &'ll Value) -> bool {
         if let Some(gc) = GetGC(self.llfn()) {
             assert!(gc == ROG_GC_NAME, "unrecognized GC name: {gc}");
@@ -1228,10 +1224,6 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memset not supported");
-        assert!(
-            !has_pointers || self.is_const_zero(fill_byte),
-            "Cannot fill pointer memory with arbitrary bytes"
-        );
         let no_gcwb = self.can_omit_barriers(ptr);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {

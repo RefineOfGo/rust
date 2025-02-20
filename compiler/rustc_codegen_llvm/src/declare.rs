@@ -42,11 +42,16 @@ pub(crate) fn declare_simple_fn<'ll>(
     unnamed: llvm::UnnamedAddr,
     visibility: llvm::Visibility,
     ty: &'ll Type,
+    gc: Option<&str>,
 ) -> &'ll Value {
-    debug!("declare_simple_fn(name={:?}, ty={:?})", name, ty);
+    debug!("declare_simple_fn(name={:?}, ty={:?}, gc={:?})", name, ty, gc);
     let llfn = unsafe {
         llvm::LLVMRustGetOrInsertFunction(cx.llmod, name.as_c_char_ptr(), name.len(), ty)
     };
+
+    if let Some(gc_name) = gc {
+        llvm::SetGC(llfn, gc_name);
+    }
 
     llvm::SetFunctionCallConv(llfn, callconv);
     llvm::SetUnnamedAddress(llfn, unnamed);
@@ -69,11 +74,7 @@ pub(crate) fn declare_raw_fn<'ll, 'tcx>(
     gc: Option<&str>,
 ) -> &'ll Value {
     debug!("declare_raw_fn(name={:?}, ty={:?}, gc={:?})", name, ty, gc);
-    let llfn = declare_simple_fn(cx, name, callconv, unnamed, visibility, ty);
-    if let Some(gc_name) = gc {
-        llvm::SetGC(llfn, gc_name);
-    }
-
+    let llfn = declare_simple_fn(cx, name, callconv, unnamed, visibility, ty, gc);
     let mut attrs = SmallVec::<[_; 4]>::new();
 
     if cx.tcx.sess.opts.cg.no_redzone.unwrap_or(cx.tcx.sess.target.disable_redzone) {
