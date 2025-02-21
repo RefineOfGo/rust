@@ -104,9 +104,12 @@ impl PointerMapData {
         offset: Size,
         layout: TyAndLayout<'tcx>,
     ) {
+        if layout.is_uninhabited() {
+            self.set_noptr(cx, offset, layout.size);
+            return;
+        }
         match layout.fields {
             FieldsShape::Primitive => match layout.backend_repr {
-                BackendRepr::Uninhabited => self.set_noptr(cx, offset, layout.size),
                 BackendRepr::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
                 BackendRepr::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
                 BackendRepr::Vector { .. } => unreachable!("conflict: Primitive & Vector"),

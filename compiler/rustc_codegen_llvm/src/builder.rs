@@ -736,8 +736,12 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
             unsafe {
                 if let Some(global) = llvm::LLVMIsAGlobalVariable(place.val.llval) {
                     if llvm::LLVMIsGlobalConstant(global) == llvm::True {
-                        if let Some(init) = llvm::LLVMGetInitializer(global) {
+                        if let Some(mut init) = llvm::LLVMGetInitializer(global) {
                             if self.val_ty(init) == llty {
+                                if let abi::BackendRepr::Scalar(scalar) = place.layout.backend_repr
+                                {
+                                    init = self.to_immediate_scalar(init, scalar);
+                                }
                                 const_llval = Some(init);
                             }
                         }
