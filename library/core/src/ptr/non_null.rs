@@ -126,8 +126,8 @@ impl<T: Sized> NonNull<T> {
     #[must_use]
     #[inline]
     pub const fn dangling() -> Self {
-        let align = crate::ptr::Alignment::of::<T>();
-        NonNull::without_provenance(align.as_nonzero())
+        // Safety: the data pointer of an empty slice is not null.
+        unsafe { NonNull::new_unchecked([].as_mut_ptr()) }
     }
 
     /// Converts an address back to a mutable pointer, picking up some previously 'exposed'

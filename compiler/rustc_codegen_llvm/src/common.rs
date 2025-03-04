@@ -272,38 +272,28 @@ impl<'ll, 'tcx> ConstCodegenMethods for CodegenCx<'ll, 'tcx> {
                 let global_alloc = self.tcx.global_alloc(prov.alloc_id());
                 let base_addr = match global_alloc {
                     GlobalAlloc::Memory(alloc) => {
-                        // For ZSTs directly codegen an aligned pointer.
-                        // This avoids generating a zero-sized constant value and actually needing a
-                        // real address at runtime.
-                        if alloc.inner().len() == 0 {
-                            assert_eq!(offset.bytes(), 0);
-                            let llval = self.const_usize(alloc.inner().align.bytes());
-                            return if matches!(layout.primitive(), Pointer(_)) {
-                                unsafe { llvm::LLVMConstIntToPtr(llval, llty) }
+                        let init = {
+                            if alloc.inner().len() == 0 {
+                                assert_eq!(offset.bytes(), 0);
+                                self.const_struct(&[], false)
                             } else {
-                                self.const_bitcast(llval, llty)
-                            };
-                        } else {
-                            let init = const_alloc_to_llvm(self, alloc, /*static*/ false);
-                            let alloc = alloc.inner();
-                            let value = match alloc.mutability {
-                                Mutability::Mut => self.static_addr_of_mut(init, alloc.align, None),
-                                _ => self.static_addr_of_impl(init, alloc.align, None),
-                            };
-                            if !self.sess().fewer_names() && llvm::get_value_name(value).is_empty()
-                            {
-                                let hash = self.tcx.with_stable_hashing_context(|mut hcx| {
-                                    let mut hasher = StableHasher::new();
-                                    alloc.hash_stable(&mut hcx, &mut hasher);
-                                    hasher.finish::<Hash128>()
-                                });
-                                llvm::set_value_name(
-                                    value,
-                                    format!("alloc_{hash:032x}").as_bytes(),
-                                );
+                                const_alloc_to_llvm(self, alloc, /*static*/ false)
                             }
-                            value
+                        };
+                        let alloc = alloc.inner();
+                        let value = match alloc.mutability {
+                            Mutability::Mut => self.static_addr_of_mut(init, alloc.align, None),
+                            _ => self.static_addr_of_impl(init, alloc.align, None),
+                        };
+                        if !self.sess().fewer_names() && llvm::get_value_name(value).is_empty() {
+                            let hash = self.tcx.with_stable_hashing_context(|mut hcx| {
+                                let mut hasher = StableHasher::new();
+                                alloc.hash_stable(&mut hcx, &mut hasher);
+                                hasher.finish::<Hash128>()
+                            });
+                            llvm::set_value_name(value, format!("alloc_{hash:032x}").as_bytes());
                         }
+                        (value, AddressSpace::DATA)
                     }
                     GlobalAlloc::Function { instance, .. } => self.get_fn_addr(instance),
                     GlobalAlloc::VTable(ty, dyn_ty) => {
