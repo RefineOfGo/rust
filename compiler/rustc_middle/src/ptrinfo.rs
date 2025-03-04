@@ -112,7 +112,7 @@ impl PointerMapData {
             FieldsShape::Primitive => match layout.backend_repr {
                 BackendRepr::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
                 BackendRepr::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
-                BackendRepr::Vector { .. } => unreachable!("conflict: Primitive & Vector"),
+                BackendRepr::SimdVector { .. } => unreachable!("conflict: Primitive & SimdVector"),
                 BackendRepr::Memory { .. } => unreachable!("conflict: Primitive & Memory"),
             },
             FieldsShape::Array { stride, count } => {
