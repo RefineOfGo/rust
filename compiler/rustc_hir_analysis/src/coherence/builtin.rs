@@ -196,8 +196,8 @@ fn visit_implementation_of_managed(checker: &Checker<'_>) -> Result<(), ErrorGua
         ty::Adt(def, ..) if def.did().is_local() => Ok(()),
         ty::Ref(..) | ty::RawPtr(..) | ty::Slice(..) | ty::Array(..) | ty::Error(..) => Ok(()),
         _ => {
-            let impl_ = tcx.hir().expect_item(impl_did).expect_impl();
-            Err(tcx.dcx().emit_err(errors::ManagedImplOnWrongType { span: impl_.self_ty.span }))
+            let span = tcx.hir_expect_item(impl_did).expect_impl().self_ty.span;
+            Err(tcx.dcx().emit_err(errors::ManagedImplOnWrongType { span }))
         }
     }
 }

@@ -1,17 +1,17 @@
 /// ROG Runtime Check Point switch.
 /// Known to the relevant LLVM passes.
 #[linkage = "weak_odr"]
-#[no_mangle]
+#[unsafe(no_mangle)]
 static mut rog_checkpoint_switch: i32 = 0;
 
 /// ROG Runtime Check Point handler stub, the real implementation is in ROG runtime.
 /// Known to the relevant LLVM passes.
 #[no_gcwb]
 #[no_split]
-#[no_mangle]
 #[no_checkpoint]
 #[linkage = "weak"]
-extern "rog-cold" fn rog_checkpoint_abi() {
+#[unsafe(no_mangle)]
+unsafe extern "rog-cold" fn rog_checkpoint_abi() {
     crate::intrinsics::abort();
 }
 
