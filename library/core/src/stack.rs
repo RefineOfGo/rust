@@ -57,9 +57,9 @@ use crate::arch::asm;
 /// implement in assembly, or at least a wrapper to the real function should.
 #[no_gcwb]
 #[no_split]
-#[no_mangle]
 #[no_checkpoint]
 #[linkage = "weak"]
+#[unsafe(no_mangle)]
 extern "rog-cold" fn rog_morestack_abi() {
     crate::intrinsics::abort();
 }

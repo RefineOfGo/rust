@@ -1713,12 +1713,13 @@ impl<'a, 'll, CX: Borrow<SCx<'ll>>> GenericBuilder<'a, 'll, CX> {
     }
 
     fn check_scalar(&mut self, ty: &'ll Type) {
-        let size = unsafe { llvm::LLVMRustGetTypeSize(self.llmod, ty) };
-        let kind = self.cx.type_kind(ty);
+        let size = unsafe { llvm::LLVMRustGetTypeSize(self.cx.llmod(), ty) };
+        let ptr_size = unsafe { llvm::LLVMRustGetTypeSize(self.cx.llmod(), self.cx.type_ptr()) };
+        let type_kind = self.cx.type_kind(ty);
         assert!(
-            (size <= self.data_layout().pointer_size.bytes_usize())
+            (size <= ptr_size)
                 || !matches!(
-                    kind,
+                    type_kind,
                     TypeKind::Void
                         | TypeKind::Label
                         | TypeKind::Struct
@@ -1729,7 +1730,7 @@ impl<'a, 'll, CX: Borrow<SCx<'ll>>> GenericBuilder<'a, 'll, CX> {
                         | TypeKind::ScalableVector
                 ),
             "Aggregate type larger than a word: kind={:?}, size={}",
-            kind,
+            type_kind,
             size
         );
     }

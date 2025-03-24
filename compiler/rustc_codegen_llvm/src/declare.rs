@@ -98,12 +98,7 @@ impl<'ll, CX: Borrow<SCx<'ll>>> GenericCx<'ll, CX> {
     pub(crate) fn declare_global(&self, name: &str, ty: &'ll Type) -> &'ll Value {
         debug!("declare_global(name={:?})", name);
         unsafe {
-            llvm::LLVMRustGetOrInsertGlobal(
-                (**self).borrow().llmod,
-                name.as_c_char_ptr(),
-                name.len(),
-                ty,
-            )
+            llvm::LLVMRustGetOrInsertGlobal(self.llmod(), name.as_c_char_ptr(), name.len(), ty)
         }
     }
 }
