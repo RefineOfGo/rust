@@ -2,9 +2,9 @@ use std::ops::Bound;
 use std::{cmp, fmt};
 
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, ExternAbi, FieldIdx, FieldsShape, HasDataLayout,
-    HasRegisterMap, LayoutData, PointeeInfo, PointerKind, Primitive, ReprOptions, Scalar, Size,
-    TagEncoding, TargetDataLayout, TyAbiInterface, VariantIdx, Variants,
+    AddressSpace, Align, ExternAbi, FieldIdx, FieldsShape, HasDataLayout, HasRegisterMap,
+    LayoutData, PointeeInfo, PointerKind, Primitive, ReprOptions, Scalar, Size, TagEncoding,
+    TargetDataLayout, TyAbiInterface, VariantIdx, Variants,
 };
 use rustc_error_messages::DiagMessage;
 use rustc_errors::{

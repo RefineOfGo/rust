@@ -3,17 +3,17 @@ use crate::ptr::{addr_of, addr_of_mut};
 /// ROG GC Write Barrier switch.
 /// Known to the relevant LLVM passes.
 #[linkage = "weak_odr"]
-#[no_mangle]
+#[unsafe(no_mangle)]
 static mut rog_gcwb_switch: i32 = 0;
 
 /// ROG GC Write Barrier stub, the real implementation is in ROG runtime.
 /// Known to the relevant LLVM passes.
 #[no_gcwb]
 #[no_split]
-#[no_mangle]
 #[no_checkpoint]
 #[linkage = "weak"]
-extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
+#[unsafe(no_mangle)]
+unsafe extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
     crate::intrinsics::abort();
 }
 
@@ -21,10 +21,10 @@ extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
 /// Known to the relevant LLVM passes.
 #[no_gcwb]
 #[no_split]
-#[no_mangle]
 #[no_checkpoint]
 #[linkage = "weak"]
-extern "rog-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
+#[unsafe(no_mangle)]
+unsafe extern "rog-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
     crate::intrinsics::abort();
 }
 
