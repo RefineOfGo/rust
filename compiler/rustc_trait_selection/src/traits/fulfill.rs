@@ -810,7 +810,7 @@ impl<'a, 'tcx> FulfillProcessor<'a, 'tcx> {
         match self.selcx.poly_select(&trait_obligation) {
             Ok(Some(ImplSource::BuiltinAny(nested))) => {
                 debug!("selecting trait at depth {} yielded Ok(Some)", obligation.recursion_depth);
-                ProcessResult::ChangedAny(mk_pending(nested))
+                ProcessResult::ChangedAny(mk_pending(obligation, nested))
             }
             Ok(Some(impl_source)) => {
                 debug!("selecting trait at depth {} yielded Ok(Some)", obligation.recursion_depth);

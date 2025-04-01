@@ -42,7 +42,11 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         Ok(match candidate {
             SizedCandidate { has_nested } => {
                 let data = self.confirm_builtin_candidate(obligation, has_nested);
-                ImplSource::Builtin(BuiltinImplSource::Misc, data)
+                assert!(
+                    matches!(data, ImplSource::Builtin(BuiltinImplSource::Misc, ..)),
+                    "BuiltinAny() does not apply to Sized"
+                );
+                data
             }
 
             BuiltinCandidate { has_nested } => {

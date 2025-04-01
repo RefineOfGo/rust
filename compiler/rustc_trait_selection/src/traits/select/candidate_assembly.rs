@@ -1078,6 +1078,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
                     .vec
                     .push(SizedCandidate { has_nested: !nested.skip_binder().is_empty() });
             }
+            BuiltinImplConditions::WhereAny(..) => bug!("WhereAny() does not apply to Sized"),
             BuiltinImplConditions::None => {}
             BuiltinImplConditions::Ambiguous => {
                 candidates.ambiguous = true;
