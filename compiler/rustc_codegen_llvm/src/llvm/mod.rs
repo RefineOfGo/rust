@@ -23,7 +23,7 @@ mod ffi;
 
 pub(crate) use self::enzyme_ffi::*;
 
-pub const ROG_GC_NAME: &str = "rog";
+pub(crate) const ROG_GC_NAME: &str = "rog";
 
 impl LLVMRustResult {
     pub(crate) fn into_result(self) -> Result<(), ()> {

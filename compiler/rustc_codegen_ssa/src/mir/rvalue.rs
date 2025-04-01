@@ -98,12 +98,22 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     let val = self.eval_mir_constant(const_op);
                     if val.all_bytes_uninit(self.cx.tcx()) {
                         let size = bx.const_usize(dest.layout.size.bytes());
+                        let has_pointers = bx.pointer_map(dest.layout).has_pointers();
+                        let fill_value = {
+                            if has_pointers && !bx.can_omit_barriers(dest.val.llval) {
+                                // Force a zero initialization for values that may require write barriers
+                                bx.const_i8(0)
+                            } else {
+                                bx.const_undef(bx.type_i8())
+                            }
+                        };
                         bx.memset(
                             dest.val.llval,
-                            bx.const_undef(bx.type_i8()),
+                            fill_value,
                             size,
                             dest.val.align,
                             MemFlags::empty(),
+                            has_pointers,
                         );
                         return;
                     }
@@ -121,6 +131,10 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                         let bytes = &int.to_le_bytes()[..cg_elem.layout.size.bytes_usize()];
                         let first = bytes[0];
                         if bytes[1..].iter().all(|&b| b == first) {
+                            assert!(
+                                first == 0 || !has_pointers,
+                                "cannot fill managed memory with non-zero bytes"
+                            );
                             let fill = bx.cx().const_u8(first);
                             bx.memset(
                                 start,
@@ -137,7 +151,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     // Use llvm.memset.p0i8.* to initialize byte arrays
                     let v = bx.from_immediate(v);
                     if bx.cx().val_ty(v) == bx.cx().type_i8() {
-                        assert!(!has_pointers, "cannot fill managed memory with arbitrary bytes");
+                        assert!(!has_pointers, "cannot fill managed memory with arbitrary value");
                         bx.memset(start, v, size, dest.val.align, MemFlags::empty(), false);
                         return true;
                     }

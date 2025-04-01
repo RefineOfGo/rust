@@ -6,6 +6,12 @@ static mut rog_checkpoint_switch: i32 = 0;
 
 /// ROG Runtime Check Point handler stub, the real implementation is in ROG runtime.
 /// Known to the relevant LLVM passes.
+///
+/// This function does not take any arguments, but due to how AArch64 saves it's
+/// return address, it's unsafe to implement this in pure Rust. See `stack.rs` for a
+/// very detailed explanation.
+///
+/// On AArch64, the original return address will be saved to R17 as well.
 #[no_gcwb]
 #[no_split]
 #[no_checkpoint]
