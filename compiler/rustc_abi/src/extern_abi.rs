@@ -198,6 +198,11 @@ impl StableOrd for ExternAbi {
 }
 
 impl ExternAbi {
+    pub fn is_lto_aware(self) -> bool {
+        use ExternAbi::*;
+        matches!(self, C { .. } | Rog)
+    }
+
     /// An ABI "like Rust"
     ///
     /// These ABIs are fully controlled by the Rust compiler, which means they
