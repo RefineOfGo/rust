@@ -384,8 +384,8 @@ passes_inline_ignored_constants =
     .note = {-passes_see_issue(issue: "65833")}
 
 passes_inline_ignored_for_exported =
-    `#[inline]` is ignored on externally exported functions
-    .help = externally exported functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]`
+    `#[inline]` is ignored on externally exported non-lto-aware functions
+    .help = externally exported non-lto-aware functions are functions with `#[no_mangle]`, `#[export_name]`, or `#[linkage]` attributes that uses ABI other than "C" or "rog"
 
 passes_inline_ignored_function_prototype =
     `#[inline]` is ignored on function prototypes
