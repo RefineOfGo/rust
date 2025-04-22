@@ -6,7 +6,7 @@
 
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit, SizedTypeProperties};
-use core::ptr::{self, Alignment, NonNull, Unique};
+use core::ptr::{self, NonNull, Unique};
 use core::{cmp, hint};
 
 #[cfg(not(no_global_oom_handling))]

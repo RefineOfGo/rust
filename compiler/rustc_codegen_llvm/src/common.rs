@@ -293,7 +293,7 @@ impl<'ll, 'tcx> ConstCodegenMethods for CodegenCx<'ll, 'tcx> {
                             });
                             llvm::set_value_name(value, format!("alloc_{hash:032x}").as_bytes());
                         }
-                        (value, AddressSpace::DATA)
+                        value
                     }
                     GlobalAlloc::Function { instance, .. } => self.get_fn_addr(instance),
                     GlobalAlloc::VTable(ty, dyn_ty) => {
