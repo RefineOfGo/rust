@@ -801,7 +801,9 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     fn can_omit_barriers(&mut self, val: &'ll Value) -> bool {
         if let Some(gc) = GetGC(self.llfn()) {
             assert!(gc == ROG_GC_NAME, "unrecognized GC name: {gc}");
-            unsafe { llvm::LLVMRustIsLocalFrame(val) }
+            // TODO (chenzhuoyu): omit all write barriers for now, until we found better ways to implement gcwb.
+            let _ = unsafe { llvm::LLVMRustIsLocalFrame(val) };
+            true
         } else {
             true
         }
@@ -1386,43 +1388,27 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     ) -> (&'ll Value, &'ll Value) {
         let ty = self.cx.val_ty(src);
         self.check_scalar(ty);
+        if self.cx.type_kind(ty) == TypeKind::Pointer && !self.can_omit_barriers(dst) {
+            llvm::AddCallSiteAttributes(
+                self.call_intrinsic("llvm.gcwrite", &[src, self.cx.const_null(ty), dst]),
+                llvm::AttributePlace::Function,
+                &[llvm::CreateAttrStringValue(self.cx.llcx, "volatile", "false")],
+            );
+        }
         let value = unsafe {
-            if self.cx.type_kind(ty) == TypeKind::Pointer && !self.can_omit_barriers(dst) {
-                let value = self.call_intrinsic(
-                    "llvm.gcatomic.cas",
-                    &[dst, cmp, src, self.cx.const_bool(weak), self.cx.const_bool(false)],
-                );
-                llvm::AddCallSiteAttributes(
-                    value,
-                    llvm::AttributePlace::Function,
-                    &[
-                        llvm::CreateAttrStringValue(
-                            self.cx.llcx,
-                            "order",
-                            AtomicOrdering::from_generic(order).name(),
-                        ),
-                        llvm::CreateAttrStringValue(
-                            self.cx.llcx,
-                            "failure_order",
-                            AtomicOrdering::from_generic(failure_order).name(),
-                        ),
-                    ],
-                );
-                value
-            } else {
-                let value = llvm::LLVMBuildAtomicCmpXchg(
-                    self.llbuilder,
-                    dst,
-                    cmp,
-                    src,
-                    AtomicOrdering::from_generic(order),
-                    AtomicOrdering::from_generic(failure_order),
-                    llvm::False, // SingleThreaded
-                );
-                llvm::LLVMSetWeak(value, if weak { llvm::True } else { llvm::False });
-                value
-            }
+            llvm::LLVMBuildAtomicCmpXchg(
+                self.llbuilder,
+                dst,
+                cmp,
+                src,
+                AtomicOrdering::from_generic(order),
+                AtomicOrdering::from_generic(failure_order),
+                llvm::False, // SingleThreaded
+            )
         };
+        unsafe {
+            llvm::LLVMSetWeak(value, if weak { llvm::True } else { llvm::False });
+        }
         let val = self.extract_value(value, 0);
         let success = self.extract_value(value, 1);
         (val, success)
@@ -1447,30 +1433,23 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
             needs_gcwb = false;
         }
 
+        if needs_gcwb {
+            llvm::AddCallSiteAttributes(
+                self.call_intrinsic("llvm.gcwrite", &[src, self.cx.const_null(ty), dst]),
+                llvm::AttributePlace::Function,
+                &[llvm::CreateAttrStringValue(self.cx.llcx, "volatile", "false")],
+            );
+        }
+
         unsafe {
-            if needs_gcwb {
-                let value = self
-                    .call_intrinsic("llvm.gcatomic.swap", &[dst, src, self.cx.const_bool(false)]);
-                llvm::AddCallSiteAttributes(
-                    value,
-                    llvm::AttributePlace::Function,
-                    &[llvm::CreateAttrStringValue(
-                        self.cx.llcx,
-                        "order",
-                        AtomicOrdering::from_generic(order).name(),
-                    )],
-                );
-                value
-            } else {
-                llvm::LLVMBuildAtomicRMW(
-                    self.llbuilder,
-                    AtomicRmwBinOp::from_generic(op),
-                    dst,
-                    src,
-                    AtomicOrdering::from_generic(order),
-                    llvm::False, // SingleThreaded
-                )
-            }
+            llvm::LLVMBuildAtomicRMW(
+                self.llbuilder,
+                AtomicRmwBinOp::from_generic(op),
+                dst,
+                src,
+                AtomicOrdering::from_generic(order),
+                llvm::False, // SingleThreaded
+            )
         }
     }
 
