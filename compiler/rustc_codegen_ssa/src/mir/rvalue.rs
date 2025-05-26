@@ -98,7 +98,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     let val = self.eval_mir_constant(const_op);
                     if val.all_bytes_uninit(self.cx.tcx()) {
                         let size = bx.const_usize(dest.layout.size.bytes());
-                        let has_pointers = bx.pointer_map(dest.layout).has_pointers();
+                        let has_pointers = bx.has_pointers(dest.layout);
                         let fill_value = {
                             if has_pointers && !bx.can_omit_barriers(dest.val.llval) {
                                 // Force a zero initialization for values that may require write barriers
@@ -124,7 +124,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 let try_init_all_same = |bx: &mut Bx, v| {
                     let start = dest.val.llval;
                     let size = bx.const_usize(dest.layout.size.bytes());
-                    let has_pointers = bx.pointer_map(dest.layout).has_pointers();
+                    let has_pointers = bx.has_pointers(dest.layout);
 
                     // Use llvm.memset.p0i8.* to initialize all same byte arrays
                     if let Some(int) = bx.cx().const_to_opt_u128(v, false) {

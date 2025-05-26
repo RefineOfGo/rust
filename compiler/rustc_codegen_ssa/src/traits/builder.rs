@@ -336,7 +336,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         flags: MemFlags,
         layout: TyAndLayout<'tcx>,
     ) {
-        if self.pointer_map(layout).has_pointers() && !self.can_omit_barriers(ptr) {
+        if self.has_pointers(layout) && !self.can_omit_barriers(ptr) {
             assert!(
                 align >= self.data_layout().pointer_align.abi,
                 "invalid pointer alignment: {:?}",
@@ -384,7 +384,7 @@ pub trait BuilderMethods<'a, 'tcx>:
         order: AtomicOrdering,
         layout: TyAndLayout<'tcx>,
     ) {
-        if self.pointer_map(layout).has_pointers() {
+        if self.has_pointers(layout) {
             assert_eq!(layout.size, self.data_layout().pointer_size);
             self.atomic_store_ptr(val, ptr, order);
         } else {
@@ -550,7 +550,7 @@ pub trait BuilderMethods<'a, 'tcx>:
             temp.val.store_with_flags(self, dst.with_type(layout), flags);
         } else if !layout.is_zst() {
             let bytes = self.const_usize(layout.size.bytes());
-            let has_pointers = self.pointer_map(layout).has_pointers();
+            let has_pointers = self.has_pointers(layout);
             self.memcpy(dst.llval, dst.align, src.llval, src.align, bytes, flags, has_pointers);
         }
     }

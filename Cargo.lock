@@ -4100,6 +4100,7 @@ dependencies = [
  "bitflags",
  "either",
  "gsgdt",
+ "num-integer",
  "polonius-engine",
  "rustc-rayon-core",
  "rustc_abi",

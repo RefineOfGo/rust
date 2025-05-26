@@ -1157,10 +1157,13 @@ impl<'tcx> CommonLifetimes<'tcx> {
             .map(|i| {
                 (0..NUM_PREINTERNED_RE_LATE_BOUNDS_V)
                     .map(|v| {
-                        mk(ty::ReBound(ty::DebruijnIndex::from(i), ty::BoundRegion {
-                            var: ty::BoundVar::from(v),
-                            kind: ty::BoundRegionKind::Anon,
-                        }))
+                        mk(ty::ReBound(
+                            ty::DebruijnIndex::from(i),
+                            ty::BoundRegion {
+                                var: ty::BoundVar::from(v),
+                                kind: ty::BoundRegionKind::Anon,
+                            },
+                        ))
                     })
                     .collect()
             })
@@ -1450,6 +1453,7 @@ pub struct GlobalCtxt<'tcx> {
     pub data_layout: TargetDataLayout,
 
     /// Caches the result of Pointer Map calculation for each Ty.
+    pub noptr_cache: Lock<FxHashMap<(Ty<'tcx>, Option<VariantIdx>), bool>>,
     pub pointer_maps: Lock<FxHashMap<Ty<'tcx>, PointerMap>>,
     pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
 
@@ -1700,6 +1704,7 @@ impl<'tcx> TyCtxt<'tcx> {
             new_solver_evaluation_cache: Default::default(),
             canonical_param_env_cache: Default::default(),
             data_layout,
+            noptr_cache: Default::default(),
             pointer_maps: Default::default(),
             managed_cache: Default::default(),
             register_maps: Default::default(),
@@ -3278,12 +3283,15 @@ impl<'tcx> TyCtxt<'tcx> {
                     }
 
                     let generics = self.generics_of(new_parent);
-                    return ty::Region::new_early_param(self, ty::EarlyParamRegion {
-                        index: generics
-                            .param_def_id_to_index(self, ebv.to_def_id())
-                            .expect("early-bound var should be present in fn generics"),
-                        name: self.item_name(ebv.to_def_id()),
-                    });
+                    return ty::Region::new_early_param(
+                        self,
+                        ty::EarlyParamRegion {
+                            index: generics
+                                .param_def_id_to_index(self, ebv.to_def_id())
+                                .expect("early-bound var should be present in fn generics"),
+                            name: self.item_name(ebv.to_def_id()),
+                        },
+                    );
                 }
                 resolve_bound_vars::ResolvedArg::LateBound(_, _, lbv) => {
                     let new_parent = self.local_parent(lbv);

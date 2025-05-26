@@ -888,6 +888,8 @@ fn conv_to_externabi(conv: &Conv) -> ExternAbi {
     match conv {
         Conv::C => ExternAbi::C { unwind: false },
         Conv::Rust => ExternAbi::Rust,
+        Conv::Rog => ExternAbi::Rog,
+        Conv::RogCold => ExternAbi::RogCold,
         Conv::PreserveMost => ExternAbi::RustCold,
         Conv::ArmAapcs => ExternAbi::Aapcs { unwind: false },
         Conv::CCmseNonSecureCall => ExternAbi::CCmseNonSecureCall,

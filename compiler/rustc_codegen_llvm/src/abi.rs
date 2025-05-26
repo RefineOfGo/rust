@@ -236,7 +236,7 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     cmp::min(cast.unaligned_size(bx).bytes(), self.layout.size.bytes());
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
-                let has_pointers = bx.pointer_map(dst.layout).has_pointers();
+                let has_pointers = bx.has_pointers(dst.layout);
                 bx.lifetime_start(llscratch, scratch_size);
                 // ...store the value...
                 bx.store_noptr(val, llscratch, scratch_align);
