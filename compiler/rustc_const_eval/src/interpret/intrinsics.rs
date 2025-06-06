@@ -95,6 +95,14 @@ pub(crate) fn eval_nullary_intrinsic<'tcx>(
                 )),
             }
         }
+        sym::is_pointer_map_exact => {
+            let layout = tcx
+                .layout_of(typing_env.as_query_input(tp_ty))
+                .map_err(|e| err_inval!(Layout(*e)))?;
+            let pcx = PointerMapCx { tcx, typing_env };
+            let ptrmap = pcx.pointer_map(layout);
+            ConstValue::Scalar(Scalar::from_bool(ptrmap.is_exact()))
+        }
         sym::variant_count => match match tp_ty.kind() {
             // Pattern types have the same number of variants as their base type.
             // Even if we restrict e.g. which variants are valid, the variants are essentially just uninhabited.
@@ -179,6 +187,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
             }
 
             sym::pointer_map_of
+            | sym::is_pointer_map_exact
             | sym::needs_drop
             | sym::type_id
             | sym::type_name
@@ -187,7 +196,7 @@ impl<'tcx, M: Machine<'tcx>> InterpCx<'tcx, M> {
                 let ty = match intrinsic_name {
                     sym::pref_align_of | sym::variant_count => self.tcx.types.usize,
                     sym::pointer_map_of => Ty::new_static_u64_slice(self.tcx.tcx),
-                    sym::needs_drop => self.tcx.types.bool,
+                    sym::is_pointer_map_exact | sym::needs_drop => self.tcx.types.bool,
                     sym::type_id => self.tcx.types.u128,
                     sym::type_name => Ty::new_static_str(self.tcx.tcx),
                     _ => bug!(),

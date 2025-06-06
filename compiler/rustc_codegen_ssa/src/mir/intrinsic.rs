@@ -155,6 +155,7 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                 value
             }
             sym::pointer_map_of
+            | sym::is_pointer_map_exact
             | sym::needs_drop
             | sym::type_id
             | sym::type_name

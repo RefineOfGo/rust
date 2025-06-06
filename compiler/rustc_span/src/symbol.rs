@@ -1219,6 +1219,7 @@ symbols! {
         io_stdout,
         irrefutable_let_patterns,
         is,
+        is_pointer_map_exact,
         is_val_statically_known,
         isa_attribute,
         isize,

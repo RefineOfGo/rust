@@ -226,6 +226,29 @@ impl PointerMapData {
     }
 }
 
+impl PointerMapData {
+    fn validate_and_trim(&mut self) {
+        assert!(
+            self.bits
+                .iter()
+                .zip(self.mask.iter())
+                .zip(self.used.iter())
+                .all(|((&b, &m), &u)| (b | m) & !u == 0),
+            "found pointer or mask bits within unused area"
+        );
+        let valid_len = self
+            .bits
+            .iter()
+            .copied()
+            .rposition(|slot| slot != 0)
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        self.bits.truncate(valid_len);
+        self.mask.truncate(valid_len);
+        self.used.truncate(valid_len);
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EncodedPointerMap(Box<[u64]>);
 
@@ -248,49 +271,31 @@ impl From<EncodedPointerMap> for Cow<'_, [u8]> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PointerMap {
     data: Arc<PointerMapData>,
-    num_slots: usize,
+}
+
+impl PointerMap {
+    pub fn is_exact(&self) -> bool {
+        self.data.mask.iter().all(|v| *v == 0)
+    }
 }
 
 impl PointerMap {
     pub fn encode(&self) -> EncodedPointerMap {
-        let size = self.data.bits.iter().rposition(|v| *v != 0).map_or(0, |n| n + 1);
-        let total = size * (u64::BITS as usize);
+        let len = self.data.bits.len();
+        let mut rbuf = Vec::with_capacity(len + 1);
 
         /* empty bitmap */
-        if size == 0 {
+        if len == 0 {
             return EncodedPointerMap(vec![].into_boxed_slice());
         }
 
-        /* sanity check */
-        assert!(
-            self.data
-                .bits
-                .iter()
-                .zip(self.data.mask.iter())
-                .zip(self.data.used.iter())
-                .all(|((b, m), u)| (*b | *m) & !*u == 0),
-            "found bits within unused area"
-        );
+        /* calculate the actual bit count */
+        let last = *self.data.bits.last().unwrap();
+        let num_bits = len * 64 - last.leading_zeros() as usize;
 
-        /* figure out if the bitmap is exact */
-        let inexact = self.data.mask[..size].iter().any(|v| *v != 0);
-        let overflow = self.data.bits[size - 1].leading_zeros() as usize;
-
-        /* allocate space for encoded bitmap */
-        let slots = (total - overflow) as u64;
-        let mut rbuf = Vec::with_capacity((size << (inexact as usize)) + 1);
-
-        /* encode flags, length and bitmap */
-        rbuf.push(((inexact as u64) << 63) | slots);
-        rbuf.extend_from_slice(&self.data.bits[..size]);
-
-        /* check if the encoding is exact */
-        if !inexact {
-            return EncodedPointerMap(rbuf.into_boxed_slice());
-        }
-
-        /* add the inexact map if any */
-        rbuf.extend_from_slice(&self.data.mask[..size]);
+        /* encode the bitmap */
+        rbuf.push(num_bits as u64);
+        rbuf.extend_from_slice(&self.data.bits);
         EncodedPointerMap(rbuf.into_boxed_slice())
     }
 }
@@ -309,7 +314,8 @@ impl PointerMap {
         let num_slots = layout.size.bytes_usize() / ptr_size.bytes_usize();
         let mut ptrmap = PointerMapData::new(num_slots);
         ptrmap.set_layout(cx, Size::ZERO, layout, None);
-        Self { data: Arc::new(ptrmap), num_slots }
+        ptrmap.validate_and_trim();
+        Self { data: Arc::new(ptrmap) }
     }
 }
 
