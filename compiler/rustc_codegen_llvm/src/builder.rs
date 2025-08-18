@@ -35,8 +35,8 @@ use crate::attributes;
 use crate::common::Funclet;
 use crate::context::{CodegenCx, FullCx, GenericCx, SCx};
 use crate::llvm::{
-    self, AtomicOrdering, AtomicRmwBinOp, BasicBlock, FALSE, GEPNoWrapFlags, GetGC, Metadata,
-    ROG_GC_NAME, TRUE, ToLlvmBool,
+    self, AtomicOrdering, AtomicRmwBinOp, BasicBlock, GEPNoWrapFlags, GetGC, Metadata, ROG_GC_NAME,
+    TRUE, ToLlvmBool,
 };
 use crate::type_::Type;
 use crate::type_of::LayoutLlvmExt;
