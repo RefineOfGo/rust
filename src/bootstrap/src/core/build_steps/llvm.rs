@@ -327,10 +327,7 @@ impl Step for Llvm {
         // defaults!
         let llvm_targets = match &builder.config.llvm_targets {
             Some(s) => s,
-            None => {
-                "AArch64;AMDGPU;ARM;BPF;Hexagon;LoongArch;MSP430;Mips;NVPTX;PowerPC;RISCV;\
-                     Sparc;SystemZ;WebAssembly;X86"
-            }
+            None => "AArch64;LoongArch;RISCV;X86",
         };
 
         let llvm_exp_targets = match builder.config.llvm_experimental_targets {
@@ -450,12 +447,8 @@ impl Step for Llvm {
             cfg.define("LLVM_TOOL_LLVM_RTDYLD_BUILD", "OFF");
         }
 
-        // Enable lld by default, ROG needs this.
-        let mut enabled_llvm_projects = vec!["lld"];
-
-        if helpers::forcing_clang_based_tests() {
-            enabled_llvm_projects.push("clang");
-        }
+        // Enable lld, bolt and clang by default, ROG needs this.
+        let mut enabled_llvm_projects = vec!["lld", "bolt", "clang"];
 
         if builder.config.llvm_polly {
             enabled_llvm_projects.push("polly");
@@ -471,9 +464,8 @@ impl Step for Llvm {
 
         let mut enabled_llvm_runtimes = Vec::new();
 
-        if helpers::forcing_clang_based_tests() {
-            enabled_llvm_runtimes.push("compiler-rt");
-        }
+        // build compiler-rt for rog pgo
+        enabled_llvm_runtimes.push("compiler-rt");
 
         if !enabled_llvm_projects.is_empty() {
             enabled_llvm_projects.sort();
