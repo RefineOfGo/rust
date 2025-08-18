@@ -434,8 +434,8 @@ impl Step for Llvm {
             cfg.define("LLVM_TOOL_LLVM_RTDYLD_BUILD", "OFF");
         }
 
-        // Enable lld by default, ROG needs this.
-        let mut enabled_llvm_projects = vec!["lld"];
+        // Enable lld and bolt by default, ROG needs this.
+        let mut enabled_llvm_projects = vec!["lld", "bolt"];
 
         if helpers::forcing_clang_based_tests() {
             enabled_llvm_projects.push("clang");
@@ -455,9 +455,8 @@ impl Step for Llvm {
 
         let mut enabled_llvm_runtimes = Vec::new();
 
-        if helpers::forcing_clang_based_tests() {
-            enabled_llvm_runtimes.push("compiler-rt");
-        }
+        // build compiler-rt for rog pgo
+        enabled_llvm_runtimes.push("compiler-rt");
 
         // This is an experimental flag, which likely builds more than necessary.
         // We will optimize it when we get closer to releasing it on nightly.
