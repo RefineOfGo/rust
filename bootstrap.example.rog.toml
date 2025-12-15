@@ -1,0 +1,18 @@
+# See bootstrap.example.toml for documentation of available options
+#
+profile = "compiler"  # Includes one of the default files in src/bootstrap/defaults
+change-id = "ignore"
+
+rust.deny-warnings = false
+
+[llvm]
+assertions = true
+download-ci-llvm = false
+ninja = true
+clang = true
+optimize = true
+thin-lto = false
+cflags = "-fno-omit-frame-pointer"
+cxxflags = "-fno-omit-frame-pointer"
+binutils-incdir = "/usr/include"
+plugins = true

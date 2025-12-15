@@ -876,6 +876,10 @@ fn configure_llvm(builder: &Builder<'_>, target: TargetSelection, cfg: &mut cmak
     if builder.config.llvm_allow_old_toolchain {
         cfg.define("LLVM_TEMPORARILY_ALLOW_OLD_TOOLCHAIN", "YES");
     }
+
+    if let Some(binutils_incdir) = &builder.config.llvm_binutils_incdir {
+        cfg.define("LLVM_BINUTILS_INCDIR", binutils_incdir);
+    }
 }
 
 // Adapted from https://github.com/alexcrichton/cc-rs/blob/fba7feded71ee4f63cfe885673ead6d7b4f2f454/src/lib.rs#L2347-L2365
