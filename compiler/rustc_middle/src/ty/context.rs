@@ -1623,7 +1623,7 @@ pub struct GlobalCtxt<'tcx> {
     pub managed_cache: Lock<FxHashMap<Ty<'tcx>, bool>>,
 
     /// Caches the result of Register Map calculation for each Ty.
-    pub register_maps: Lock<FxHashMap<Ty<'tcx>, Vec<Reg>>>,
+    pub register_maps: Lock<FxHashMap<Ty<'tcx>, Option<Vec<Reg>>>>,
 
     /// Stores memory for globals (statics/consts).
     pub(crate) alloc_map: interpret::AllocMap<'tcx>,

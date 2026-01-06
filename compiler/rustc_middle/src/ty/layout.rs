@@ -22,7 +22,7 @@ use {rustc_abi as abi, rustc_hir as hir};
 
 use crate::middle::codegen_fn_attrs::CodegenFnAttrFlags;
 use crate::query::TyCtxtAt;
-use crate::reg_map::RegisterMap;
+use crate::regmap::RegisterMap;
 use crate::traits::ObligationCause;
 use crate::ty::normalize_erasing_regions::NormalizationError;
 use crate::ty::{self, CoroutineArgsExt, Ty, TyCtxt, TypeVisitableExt};
@@ -354,7 +354,7 @@ impl<'tcx> LayoutCx<'tcx> {
 }
 
 impl<'tcx> HasRegisterMap<'tcx, Ty<'tcx>> for LayoutCx<'tcx> {
-    fn register_map(&self, layout: TyAndLayout<'tcx>) -> Vec<abi::Reg> {
+    fn register_map(&self, layout: TyAndLayout<'tcx>) -> Option<Vec<abi::Reg>> {
         RegisterMap::resolve(self, layout)
     }
 }

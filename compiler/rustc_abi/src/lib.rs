@@ -717,7 +717,7 @@ impl HasDataLayout for &TargetDataLayout {
 }
 
 pub trait HasRegisterMap<'a, Ty> {
-    fn register_map(&self, layout: TyAndLayout<'a, Ty>) -> Vec<Reg>;
+    fn register_map(&self, layout: TyAndLayout<'a, Ty>) -> Option<Vec<Reg>>;
 }
 
 /// Endianness of the target, which must match cfg(target-endian).

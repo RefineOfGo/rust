@@ -47,12 +47,10 @@ impl PointerMapData {
                     Scalar::Union { value: Primitive::Pointer(_) }
                         | Scalar::Initialized { value: Primitive::Pointer(_), .. }
                 ),
-                BackendRepr::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
-                BackendRepr::ScalableVector { .. } => {
-                    unreachable!("conflict: Primitive & ScalableVector")
-                }
-                BackendRepr::SimdVector { .. } => unreachable!("conflict: Primitive & SimdVector"),
-                BackendRepr::Memory { .. } => unreachable!("conflict: Primitive & Memory"),
+                BackendRepr::ScalarPair(..) => bug!("conflict: Primitive & Scalar Pair"),
+                BackendRepr::ScalableVector { .. } => bug!("conflict: Primitive & ScalableVector"),
+                BackendRepr::SimdVector { .. } => bug!("conflict: Primitive & SimdVector"),
+                BackendRepr::Memory { .. } => bug!("conflict: Primitive & Memory"),
             },
             FieldsShape::Array { .. } => {
                 let elem = layout.field(cx, 0);
@@ -171,12 +169,10 @@ impl PointerMapData {
         match layout.fields {
             FieldsShape::Primitive => match layout.backend_repr {
                 BackendRepr::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
-                BackendRepr::ScalarPair(..) => unreachable!("conflict: Primitive & Scalar Pair"),
-                BackendRepr::ScalableVector { .. } => {
-                    unreachable!("conflict: Primitive & ScalableVector")
-                }
-                BackendRepr::SimdVector { .. } => unreachable!("conflict: Primitive & SimdVector"),
-                BackendRepr::Memory { .. } => unreachable!("conflict: Primitive & Memory"),
+                BackendRepr::ScalarPair(..) => bug!("conflict: Primitive & Scalar Pair"),
+                BackendRepr::ScalableVector { .. } => bug!("conflict: Primitive & ScalableVector"),
+                BackendRepr::SimdVector { .. } => bug!("conflict: Primitive & SimdVector"),
+                BackendRepr::Memory { .. } => bug!("conflict: Primitive & Memory"),
             },
             FieldsShape::Array { stride, count } => {
                 let elem = layout.field(cx, 0);

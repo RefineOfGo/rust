@@ -284,14 +284,6 @@ impl From<Uniform> for CastTarget {
 }
 
 impl CastTarget {
-    pub fn immediate(regs: &[Reg]) -> Self {
-        assert!(regs.len() <= 9);
-        let (tail, head) = regs.split_last().expect("cast into no registers");
-        let mut prefix = [None; 8];
-        head.iter().copied().enumerate().for_each(|(i, r)| prefix[i] = Some(r));
-        Self::prefixed(prefix, Uniform::from(*tail))
-    }
-
     pub fn prefixed(prefix: [Option<Reg>; 8], rest: Uniform) -> Self {
         Self { prefix, rest_offset: None, rest, attrs: ArgAttributes::new() }
     }
@@ -316,21 +308,26 @@ impl CastTarget {
 
     /// When you only access the range containing valid data, you can use this unaligned size;
     /// otherwise, use the safer `size` method.
-    pub fn unaligned_size<C: HasDataLayout>(&self, _cx: &C) -> Size {
+    pub fn unaligned_size<C: HasDataLayout>(&self, cx: &C) -> Size {
         // Prefix arguments are passed in specific designated registers
         let prefix_size = if let Some(offset_from_start) = self.rest_offset {
             offset_from_start
         } else {
             self.prefix
                 .iter()
-                .filter_map(|x| x.map(|reg| reg.size))
-                .fold(Size::ZERO, |acc, size| acc + size)
+                .filter_map(|x| *x)
+                .fold(Size::ZERO, |acc, reg| acc.align_to(reg.align(cx)) + reg.size)
         };
-        // Remaining arguments are passed in chunks of the unit size
-        let rest_size =
-            self.rest.unit.size * self.rest.total.bytes().div_ceil(self.rest.unit.size.bytes());
 
-        prefix_size + rest_size
+        // Remaining arguments are passed in chunks of the unit size
+        let unit_size = self.rest.unit.size;
+        let rest_size = unit_size * self.rest.total.bytes().div_ceil(unit_size.bytes());
+
+        if rest_size != Size::ZERO {
+            prefix_size.align_to(self.rest.align(cx)) + rest_size
+        } else {
+            prefix_size
+        }
     }
 
     pub fn size<C: HasDataLayout>(&self, cx: &C) -> Size {
@@ -745,27 +742,22 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                         matches!(arg.mode, PassMode::Indirect { on_stack: false, .. });
                     assert!(is_indirect_not_on_stack);
 
-                    let size = arg.layout.size;
-                    let ptr_size = cx.data_layout().pointer_size();
+                    let count_ireg = |regs: &[Reg]| {
+                        regs.iter()
+                            .copied()
+                            .filter(|r| matches!(r.kind, RegKind::Integer | RegKind::Pointer))
+                            .count()
+                    };
 
-                    if !arg.layout.is_unsized() && size <= ptr_size * 8 {
-                        if size <= ptr_size {
-                            // We want to pass small aggregates as immediates, but using
-                            // an LLVM aggregate type for this leads to bad optimizations,
-                            // so we pick an appropriately sized integer type instead.
-                            arg.cast_to(Reg { kind: RegKind::Integer, size });
-                        } else {
-                            let regs = cx.register_map(arg.layout);
-                            let ireg = regs
-                                .iter()
-                                .filter(|r| matches!(r.kind, RegKind::Integer | RegKind::Pointer))
-                                .count();
-
-                            // Don't fit more than 8 integer or pointer values into register.
-                            if ireg <= 8 && regs.len() <= 9 {
-                                arg.cast_to(CastTarget::immediate(&regs));
-                            }
-                        }
+                    if arg.layout.is_sized()
+                        && let Some(regs) = cx.register_map(arg.layout)
+                        && count_ireg(&regs) <= 8
+                        && regs.len() <= 9
+                    {
+                        let (tail, head) = regs.split_last().expect("cast into no registers");
+                        let mut prefix = [None; 8];
+                        head.iter().enumerate().for_each(|(i, r)| prefix[i] = Some(*r));
+                        arg.cast_to(CastTarget::prefixed(prefix, Uniform::from(*tail)));
                     }
                 }
 
