@@ -1,0 +1,10 @@
+CompileFlags:
+  Add:
+    - "-I/home/chenzhuoyu/Sources/rust/build/x86_64-unknown-linux-gnu/llvm/include"
+    - "-D_GNU_SOURCE"
+    - "-D_DEBUG"
+    - "-D_GLIBCXX_ASSERTIONS"
+    - "-DEXPERIMENTAL_KEY_INSTRUCTIONS"
+    - "-D__STDC_CONSTANT_MACROS"
+    - "-D__STDC_FORMAT_MACROS"
+    - "-D__STDC_LIMIT_MACROS"

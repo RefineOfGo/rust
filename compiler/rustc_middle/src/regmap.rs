@@ -36,8 +36,8 @@ impl RegisterMap {
         offset: Size,
         scalar: Scalar,
     ) -> Option<()> {
-        let mut offs = offset;
-        let mut align = scalar.align(cx).abi;
+        let offs = offset;
+        let align = scalar.align(cx).abi;
 
         /* don't use registers for unaligned field */
         if !offset.is_aligned(align) {
@@ -45,7 +45,7 @@ impl RegisterMap {
         }
 
         /* map the scalar to register */
-        let mut reg = match scalar.primitive() {
+        let reg = match scalar.primitive() {
             Primitive::Int(Integer::I8, _) => Reg::i8(),
             Primitive::Int(Integer::I16, _) => Reg::i16(),
             Primitive::Int(Integer::I32, _) => Reg::i32(),
@@ -57,14 +57,6 @@ impl RegisterMap {
             Primitive::Float(Float::F128) => Reg::f128(),
             Primitive::Pointer(_) => Reg::ptr(cx),
         };
-
-        /* special case: i128 values are passed with two i64 registers */
-        if reg == Reg::i128() {
-            self.regs.push(Value { reg: Reg::i64(), offs, align });
-            align = Align::EIGHT;
-            offs += Size::from_bytes(8);
-            reg = Reg::i64();
-        }
 
         /* add the register */
         self.regs.push(Value { reg, offs, align });
@@ -82,7 +74,7 @@ impl RegisterMap {
         }
         match layout.fields {
             FieldsShape::Primitive => match layout.backend_repr {
-                BackendRepr::Scalar(scalar) => self.set_scalar(cx, offset, scalar),
+                BackendRepr::Scalar(scalar) => self.set_scalar(cx, offset, scalar)?,
                 BackendRepr::ScalarPair(..) => bug!("conflict: Primitive & Scalar Pair"),
                 BackendRepr::ScalableVector { .. } => bug!("conflict: Primitive & ScalableVector"),
                 BackendRepr::SimdVector { .. } => bug!("conflict: Primitive & SimdVector"),
@@ -93,7 +85,6 @@ impl RegisterMap {
                 for i in 0..count {
                     self.set_layout(cx, offset + stride * i, elem)?;
                 }
-                Some(())
             }
             FieldsShape::Union(..) | FieldsShape::Arbitrary { .. } => {
                 for i in layout.fields.index_by_increasing_offset() {
@@ -104,9 +95,9 @@ impl RegisterMap {
                         self.set_layout(cx, offset, layout.for_variant(cx, i))?;
                     }
                 }
-                Some(())
             }
         }
+        Some(())
     }
 }
 

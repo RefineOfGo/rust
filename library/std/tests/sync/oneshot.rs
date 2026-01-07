@@ -137,7 +137,7 @@ fn recv_timeout_before_send() {
 
     match receiver.recv_timeout(Duration::from_secs(1)) {
         Ok(99) => {}
-        _ => panic!("expected Ok(99)"),
+        val => panic!("expected Ok(99): {val:?}"),
     }
 
     t.join().unwrap();

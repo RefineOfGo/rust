@@ -75,6 +75,7 @@ macro_rules! declare_enum {
 declare_enum!(
     Copy => [],
     Clone => [clone],
+    Managed => [],
     Default => [default],
     Debug => [fmt],
     Hash => [hash],
@@ -106,6 +107,7 @@ pub(crate) fn with_derive_traits(
     let trait_ = match derive {
         BuiltinDeriveExpander::Copy => BuiltinDeriveImplTrait::Copy,
         BuiltinDeriveExpander::Clone => BuiltinDeriveImplTrait::Clone,
+        BuiltinDeriveExpander::Managed => BuiltinDeriveImplTrait::Managed,
         BuiltinDeriveExpander::Default => BuiltinDeriveImplTrait::Default,
         BuiltinDeriveExpander::Debug => BuiltinDeriveImplTrait::Debug,
         BuiltinDeriveExpander::Hash => BuiltinDeriveImplTrait::Hash,

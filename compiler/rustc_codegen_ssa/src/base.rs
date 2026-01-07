@@ -26,7 +26,7 @@ use rustc_middle::mir::BinOp;
 use rustc_middle::mir::interpret::ErrorHandled;
 use rustc_middle::mir::mono::{CodegenUnit, CodegenUnitNameBuilder, MonoItem, MonoItemPartitions};
 use rustc_middle::query::Providers;
-use rustc_middle::ty::layout::{HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
+use rustc_middle::ty::layout::{FnAbiOf, HasTyCtxt, HasTypingEnv, LayoutOf, TyAndLayout};
 use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
 use rustc_middle::{bug, span_bug};
 use rustc_session::Session;
@@ -538,7 +538,7 @@ pub fn maybe_create_entry_wrapper<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
         let (arg_argc, arg_argv) = get_argc_argv(&mut bx);
 
         let EntryFnType::Main { sigpipe } = entry_type;
-        let (start_fn, start_ty, args, instance) = {
+        let (start_fn, start_ty, start_abi, args, instance) = {
             let start_def_id = cx.tcx().require_lang_item(LangItem::Start, DUMMY_SP);
             let start_instance = ty::Instance::expect_resolve(
                 cx.tcx(),
@@ -548,6 +548,7 @@ pub fn maybe_create_entry_wrapper<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
                 DUMMY_SP,
             );
             let start_fn = cx.get_fn_addr(start_instance);
+            let start_abi = cx.fn_abi_of_instance(start_instance, ty::List::empty());
 
             let i8_ty = cx.type_i8();
             let arg_sigpipe = bx.const_u8(sigpipe);
@@ -556,12 +557,13 @@ pub fn maybe_create_entry_wrapper<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
             (
                 start_fn,
                 start_ty,
+                start_abi,
                 vec![rust_main, arg_argc, arg_argv, arg_sigpipe],
                 Some(start_instance),
             )
         };
 
-        let result = bx.call(start_ty, None, None, start_fn, &args, None, instance);
+        let result = bx.call(start_ty, None, Some(start_abi), start_fn, &args, None, instance);
         if cx.sess().target.os == Os::Uefi {
             bx.ret(result);
         } else {

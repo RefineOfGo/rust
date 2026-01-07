@@ -277,6 +277,7 @@ language_item_table! { LangItems =>
     StructuralTeq,           sym::structural_teq,      TraitId;
     Copy,                    sym::copy,                TraitId;
     Clone,                   sym::clone,               TraitId;
+    Managed,                 sym::managed,             TraitId;
     TrivialClone,            sym::trivial_clone,       TraitId;
     Sync,                    sym::sync,                TraitId;
     DiscriminantKind,        sym::discriminant_kind,   TraitId;

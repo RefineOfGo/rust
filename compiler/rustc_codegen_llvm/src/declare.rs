@@ -44,7 +44,7 @@ pub(crate) fn declare_simple_fn<'ll>(
     ty: &'ll Type,
     gc: Option<&str>,
 ) -> &'ll Value {
-    debug!("declare_simple_fn(name={:?}, ty={:?}, gc={:?})", name, ty, gc);
+    debug!("declare_simple_fn(name={:?}, ty={:?}, callconv={:?}, gc={:?})", name, ty, callconv, gc);
     let llfn = unsafe {
         llvm::LLVMRustGetOrInsertFunction(cx.llmod, name.as_c_char_ptr(), name.len(), ty)
     };

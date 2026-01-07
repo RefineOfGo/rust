@@ -28,6 +28,7 @@ use rustc_session::config::{
 use rustc_span::source_map::Spanned;
 use rustc_span::{DUMMY_SP, Span, Symbol};
 use rustc_symbol_mangling::mangle_internal_symbol;
+use rustc_target::callconv::FnAbi;
 use rustc_target::spec::{
     Abi, Arch, Env, HasTargetSpec, Os, RelocModel, SmallDataThresholdSupport, Target, TlsModel,
 };
@@ -137,7 +138,7 @@ pub(crate) struct FullCx<'ll, 'tcx> {
 
     eh_personality: Cell<Option<&'ll Value>>,
     eh_catch_typeinfo: Cell<Option<&'ll Value>>,
-    pub rust_try_fn: Cell<Option<(&'ll Type, &'ll Value)>>,
+    pub rust_try_fn: Cell<Option<(&'ll Type, &'ll Value, &'tcx FnAbi<'tcx, Ty<'tcx>>)>>,
 
     intrinsics:
         RefCell<FxHashMap<(Cow<'static, str>, SmallVec<[&'ll Type; 2]>), (&'ll Type, &'ll Value)>>,

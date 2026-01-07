@@ -2582,6 +2582,8 @@ options! {
         "print the LLVM optimization passes being run (default: no)"),
     print_mono_items: bool = (false, parse_bool, [UNTRACKED],
         "print the result of the monomorphization collection pass (default: no)"),
+    print_opt_pipeline: bool = (false, parse_bool, [UNTRACKED],
+        "print the LLVM optimization pipeline (default: no)"),
     print_type_sizes: bool = (false, parse_bool, [UNTRACKED],
         "print layout information for each type encountered (default: no)"),
     proc_macro_backtrace: bool = (false, parse_bool, [UNTRACKED],

@@ -23,7 +23,7 @@ use rustc_middle::{bug, span_bug};
 use rustc_session::config::CrateType;
 use rustc_span::{Span, Symbol, sym};
 use rustc_symbol_mangling::{mangle_internal_symbol, symbol_name_for_instance_in_crate};
-use rustc_target::callconv::PassMode;
+use rustc_target::callconv::{FnAbi, PassMode};
 use rustc_target::spec::Os;
 use tracing::debug;
 
@@ -669,6 +669,7 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                     llvm::UnnamedAddr::Global,
                     llvm::Visibility::Default,
                     fn_ty,
+                    None,
                 );
                 fn_abi.apply_attrs_llfn(self, llfn, Some(instance));
 
@@ -727,7 +728,10 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
         if is_cleanup {
             self.apply_attrs_to_cleanup_callsite(llret);
         }
-
+        let cconv = fn_abi.llvm_cconv(self);
+        if cconv != llvm::CCallConv {
+            llvm::SetInstructionCallConv(llret, cconv);
+        }
         llret
     }
 
@@ -785,20 +789,44 @@ fn catch_unwind_intrinsic<'ll, 'tcx>(
     catch_func: &'ll Value,
     dest: PlaceRef<'tcx, &'ll Value>,
 ) {
+    let tcx = bx.tcx();
+    let i8p = Ty::new_mut_ptr(tcx, tcx.types.i8);
+    // `unsafe fn(*mut i8) -> ()`
+    let try_fn_abi = bx.fn_abi_of_fn_ptr(
+        ty::Binder::dummy(tcx.mk_fn_sig(
+            [i8p],
+            tcx.types.unit,
+            false,
+            hir::Safety::Unsafe,
+            ExternAbi::Rust,
+        )),
+        ty::List::empty(),
+    );
+    // `unsafe fn(*mut i8, *mut i8) -> ()`
+    let catch_fn_abi = bx.fn_abi_of_fn_ptr(
+        ty::Binder::dummy(tcx.mk_fn_sig(
+            [i8p, i8p],
+            tcx.types.unit,
+            false,
+            hir::Safety::Unsafe,
+            ExternAbi::Rust,
+        )),
+        ty::List::empty(),
+    );
     if !bx.sess().panic_strategy().unwinds() {
         let try_func_ty = bx.type_func(&[bx.type_ptr()], bx.type_void());
-        bx.call(try_func_ty, None, None, try_func, &[data], None, None);
+        bx.call(try_func_ty, None, Some(try_fn_abi), try_func, &[data], None, None);
         // Return 0 unconditionally from the intrinsic call;
         // we can never unwind.
         OperandValue::Immediate(bx.const_i32(0)).store(bx, dest);
     } else if wants_msvc_seh(bx.sess()) {
-        codegen_msvc_try(bx, try_func, data, catch_func, dest);
+        codegen_msvc_try(bx, try_func, try_fn_abi, data, catch_func, catch_fn_abi, dest);
     } else if wants_wasm_eh(bx.sess()) {
-        codegen_wasm_try(bx, try_func, data, catch_func, dest);
+        codegen_wasm_try(bx, try_func, try_fn_abi, data, catch_func, catch_fn_abi, dest);
     } else if bx.sess().target.os == Os::Emscripten {
-        codegen_emcc_try(bx, try_func, data, catch_func, dest);
+        codegen_emcc_try(bx, try_func, try_fn_abi, data, catch_func, catch_fn_abi, dest);
     } else {
-        codegen_gnu_try(bx, try_func, data, catch_func, dest);
+        codegen_gnu_try(bx, try_func, try_fn_abi, data, catch_func, catch_fn_abi, dest);
     }
 }
 
@@ -812,11 +840,13 @@ fn catch_unwind_intrinsic<'ll, 'tcx>(
 fn codegen_msvc_try<'ll, 'tcx>(
     bx: &mut Builder<'_, 'll, 'tcx>,
     try_func: &'ll Value,
+    try_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     data: &'ll Value,
     catch_func: &'ll Value,
+    catch_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     dest: PlaceRef<'tcx, &'ll Value>,
 ) {
-    let (llty, llfn) = get_rust_try_fn(bx, &mut |mut bx| {
+    let (llty, llfn, fn_abi) = get_rust_try_fn(bx, &mut |mut bx| {
         bx.set_personality_fn(bx.eh_personality());
 
         let normal = bx.append_sibling_block("normal");
@@ -888,7 +918,17 @@ fn codegen_msvc_try<'ll, 'tcx>(
         let ptr_align = bx.tcx().data_layout.pointer_align().abi;
         let slot = bx.alloca(ptr_size, ptr_align);
         let try_func_ty = bx.type_func(&[bx.type_ptr()], bx.type_void());
-        bx.invoke(try_func_ty, None, None, try_func, &[data], normal, catchswitch, None, None);
+        bx.invoke(
+            try_func_ty,
+            None,
+            Some(try_fn_abi),
+            try_func,
+            &[data],
+            normal,
+            catchswitch,
+            None,
+            None,
+        );
 
         bx.switch_to_block(normal);
         bx.ret(bx.const_i32(0));
@@ -936,7 +976,7 @@ fn codegen_msvc_try<'ll, 'tcx>(
         let funclet = bx.catch_pad(cs, &[tydesc, flags, slot]);
         let ptr = bx.load(bx.type_ptr(), slot, ptr_align);
         let catch_ty = bx.type_func(&[bx.type_ptr(), bx.type_ptr()], bx.type_void());
-        bx.call(catch_ty, None, None, catch_func, &[data, ptr], Some(&funclet), None);
+        bx.call(catch_ty, None, Some(catch_fn_abi), catch_func, &[data, ptr], Some(&funclet), None);
         bx.catch_ret(&funclet, caught);
 
         // The flag value of 64 indicates a "catch-all".
@@ -944,7 +984,15 @@ fn codegen_msvc_try<'ll, 'tcx>(
         let flags = bx.const_i32(64);
         let null = bx.const_null(bx.type_ptr());
         let funclet = bx.catch_pad(cs, &[null, flags, null]);
-        bx.call(catch_ty, None, None, catch_func, &[data, null], Some(&funclet), None);
+        bx.call(
+            catch_ty,
+            None,
+            Some(catch_fn_abi),
+            catch_func,
+            &[data, null],
+            Some(&funclet),
+            None,
+        );
         bx.catch_ret(&funclet, caught);
 
         bx.switch_to_block(caught);
@@ -953,7 +1001,7 @@ fn codegen_msvc_try<'ll, 'tcx>(
 
     // Note that no invoke is used here because by definition this function
     // can't panic (that's what it's catching).
-    let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
+    let ret = bx.call(llty, None, Some(fn_abi), llfn, &[try_func, data, catch_func], None, None);
     OperandValue::Immediate(ret).store(bx, dest);
 }
 
@@ -961,11 +1009,13 @@ fn codegen_msvc_try<'ll, 'tcx>(
 fn codegen_wasm_try<'ll, 'tcx>(
     bx: &mut Builder<'_, 'll, 'tcx>,
     try_func: &'ll Value,
+    try_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     data: &'ll Value,
     catch_func: &'ll Value,
+    catch_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     dest: PlaceRef<'tcx, &'ll Value>,
 ) {
-    let (llty, llfn) = get_rust_try_fn(bx, &mut |mut bx| {
+    let (llty, llfn, fn_abi) = get_rust_try_fn(bx, &mut |mut bx| {
         bx.set_personality_fn(bx.eh_personality());
 
         let normal = bx.append_sibling_block("normal");
@@ -1001,7 +1051,17 @@ fn codegen_wasm_try<'ll, 'tcx>(
         //   }
         //
         let try_func_ty = bx.type_func(&[bx.type_ptr()], bx.type_void());
-        bx.invoke(try_func_ty, None, None, try_func, &[data], normal, catchswitch, None, None);
+        bx.invoke(
+            try_func_ty,
+            None,
+            Some(try_fn_abi),
+            try_func,
+            &[data],
+            normal,
+            catchswitch,
+            None,
+            None,
+        );
 
         bx.switch_to_block(normal);
         bx.ret(bx.const_i32(0));
@@ -1017,7 +1077,7 @@ fn codegen_wasm_try<'ll, 'tcx>(
         let _sel = bx.call_intrinsic("llvm.wasm.get.ehselector", &[], &[funclet.cleanuppad()]);
 
         let catch_ty = bx.type_func(&[bx.type_ptr(), bx.type_ptr()], bx.type_void());
-        bx.call(catch_ty, None, None, catch_func, &[data, ptr], Some(&funclet), None);
+        bx.call(catch_ty, None, Some(catch_fn_abi), catch_func, &[data, ptr], Some(&funclet), None);
         bx.catch_ret(&funclet, caught);
 
         bx.switch_to_block(caught);
@@ -1026,7 +1086,7 @@ fn codegen_wasm_try<'ll, 'tcx>(
 
     // Note that no invoke is used here because by definition this function
     // can't panic (that's what it's catching).
-    let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
+    let ret = bx.call(llty, None, Some(fn_abi), llfn, &[try_func, data, catch_func], None, None);
     OperandValue::Immediate(ret).store(bx, dest);
 }
 
@@ -1044,11 +1104,13 @@ fn codegen_wasm_try<'ll, 'tcx>(
 fn codegen_gnu_try<'ll, 'tcx>(
     bx: &mut Builder<'_, 'll, 'tcx>,
     try_func: &'ll Value,
+    try_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     data: &'ll Value,
     catch_func: &'ll Value,
+    catch_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     dest: PlaceRef<'tcx, &'ll Value>,
 ) {
-    let (llty, llfn) = get_rust_try_fn(bx, &mut |mut bx| {
+    let (llty, llfn, fn_abi) = get_rust_try_fn(bx, &mut |mut bx| {
         // Codegens the shims described above:
         //
         //   bx:
@@ -1068,7 +1130,7 @@ fn codegen_gnu_try<'ll, 'tcx>(
         let data = llvm::get_param(bx.llfn(), 1);
         let catch_func = llvm::get_param(bx.llfn(), 2);
         let try_func_ty = bx.type_func(&[bx.type_ptr()], bx.type_void());
-        bx.invoke(try_func_ty, None, None, try_func, &[data], then, catch, None, None);
+        bx.invoke(try_func_ty, None, Some(try_fn_abi), try_func, &[data], then, catch, None, None);
 
         bx.switch_to_block(then);
         bx.ret(bx.const_i32(0));
@@ -1086,13 +1148,13 @@ fn codegen_gnu_try<'ll, 'tcx>(
         bx.add_clause(vals, tydesc);
         let ptr = bx.extract_value(vals, 0);
         let catch_ty = bx.type_func(&[bx.type_ptr(), bx.type_ptr()], bx.type_void());
-        bx.call(catch_ty, None, None, catch_func, &[data, ptr], None, None);
+        bx.call(catch_ty, None, Some(catch_fn_abi), catch_func, &[data, ptr], None, None);
         bx.ret(bx.const_i32(1));
     });
 
     // Note that no invoke is used here because by definition this function
     // can't panic (that's what it's catching).
-    let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
+    let ret = bx.call(llty, None, Some(fn_abi), llfn, &[try_func, data, catch_func], None, None);
     OperandValue::Immediate(ret).store(bx, dest);
 }
 
@@ -1102,11 +1164,13 @@ fn codegen_gnu_try<'ll, 'tcx>(
 fn codegen_emcc_try<'ll, 'tcx>(
     bx: &mut Builder<'_, 'll, 'tcx>,
     try_func: &'ll Value,
+    try_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     data: &'ll Value,
     catch_func: &'ll Value,
+    catch_fn_abi: &'tcx FnAbi<'tcx, Ty<'tcx>>,
     dest: PlaceRef<'tcx, &'ll Value>,
 ) {
-    let (llty, llfn) = get_rust_try_fn(bx, &mut |mut bx| {
+    let (llty, llfn, fn_abi) = get_rust_try_fn(bx, &mut |mut bx| {
         // Codegens the shims described above:
         //
         //   bx:
@@ -1131,7 +1195,7 @@ fn codegen_emcc_try<'ll, 'tcx>(
         let data = llvm::get_param(bx.llfn(), 1);
         let catch_func = llvm::get_param(bx.llfn(), 2);
         let try_func_ty = bx.type_func(&[bx.type_ptr()], bx.type_void());
-        bx.invoke(try_func_ty, None, None, try_func, &[data], then, catch, None, None);
+        bx.invoke(try_func_ty, None, Some(try_fn_abi), try_func, &[data], then, catch, None, None);
 
         bx.switch_to_block(then);
         bx.ret(bx.const_i32(0));
@@ -1168,13 +1232,13 @@ fn codegen_emcc_try<'ll, 'tcx>(
         bx.store_noptr(is_rust_panic, catch_data_1, i8_align);
 
         let catch_ty = bx.type_func(&[bx.type_ptr(), bx.type_ptr()], bx.type_void());
-        bx.call(catch_ty, None, None, catch_func, &[data, catch_data], None, None);
+        bx.call(catch_ty, None, Some(catch_fn_abi), catch_func, &[data, catch_data], None, None);
         bx.ret(bx.const_i32(1));
     });
 
     // Note that no invoke is used here because by definition this function
     // can't panic (that's what it's catching).
-    let ret = bx.call(llty, None, None, llfn, &[try_func, data, catch_func], None, None);
+    let ret = bx.call(llty, None, Some(fn_abi), llfn, &[try_func, data, catch_func], None, None);
     OperandValue::Immediate(ret).store(bx, dest);
 }
 
@@ -1185,7 +1249,7 @@ fn gen_fn<'a, 'll, 'tcx>(
     name: &str,
     rust_fn_sig: ty::PolyFnSig<'tcx>,
     codegen: &mut dyn FnMut(Builder<'a, 'll, 'tcx>),
-) -> (&'ll Type, &'ll Value) {
+) -> (&'ll Type, &'ll Value, &'tcx FnAbi<'tcx, Ty<'tcx>>) {
     let fn_abi = cx.fn_abi_of_fn_ptr(rust_fn_sig, ty::List::empty());
     let llty = fn_abi.llvm_type(cx);
     let llfn = cx.declare_fn(name, fn_abi, None);
@@ -1196,7 +1260,7 @@ fn gen_fn<'a, 'll, 'tcx>(
     let llbb = Builder::append_block(cx, llfn, "entry-block");
     let bx = Builder::build(cx, llbb);
     codegen(bx);
-    (llty, llfn)
+    (llty, llfn, fn_abi)
 }
 
 // Helper function used to get a handle to the `__rust_try` function used to
@@ -1206,7 +1270,7 @@ fn gen_fn<'a, 'll, 'tcx>(
 fn get_rust_try_fn<'a, 'll, 'tcx>(
     cx: &'a CodegenCx<'ll, 'tcx>,
     codegen: &mut dyn FnMut(Builder<'a, 'll, 'tcx>),
-) -> (&'ll Type, &'ll Value) {
+) -> (&'ll Type, &'ll Value, &'tcx FnAbi<'tcx, Ty<'tcx>>) {
     if let Some(llfn) = cx.rust_try_fn.get() {
         return llfn;
     }

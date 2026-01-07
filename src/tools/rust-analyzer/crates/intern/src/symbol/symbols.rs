@@ -310,6 +310,7 @@ define_symbols! {
     macro_rules,
     macro_use,
     main,
+    managed,
     Managed,
     manually_drop,
     may_dangle,

@@ -6,7 +6,8 @@
 
 use core::marker::{Destruct, PhantomData};
 use core::mem::{ManuallyDrop, MaybeUninit, SizedTypeProperties};
-use core::ptr::{self, NonNull, Unique};
+use core::num::NonZero;
+use core::ptr::{self, Alignment, NonNull, Unique};
 use core::{cmp, hint};
 
 #[cfg(not(no_global_oom_handling))]
@@ -74,11 +75,6 @@ pub(crate) struct RawVec<T, A: Allocator = Global> {
     inner: RawVecInner<A>,
     _marker: PhantomData<T>,
 }
-
-/// This is not meant to make `RawVec<T, A>: Managed`, but rather trigger a compilation error when
-/// user accidentally created `Vec<T> where T: Managed`.
-#[stable(feature = "rog", since = "1.0.0")]
-impl<T: Managed, A: Allocator> Managed for RawVec<T, A> {}
 
 /// Like a `RawVec`, but only generic over the allocator, not the type.
 ///
@@ -202,7 +198,9 @@ impl<T, A: Allocator> RawVec<T, A> {
     /// the returned `RawVec`.
     #[inline]
     pub(crate) const fn new_in(alloc: A) -> Self {
-        Self { inner: RawVecInner::new_in::<T>(alloc), _marker: PhantomData }
+        // Check assumption made in `current_memory`
+        const { assert!(T::LAYOUT.size() % T::LAYOUT.align() == 0) };
+        Self { inner: RawVecInner::new_in(alloc, Alignment::of::<T>()), _marker: PhantomData }
     }
 
     /// Like `try_with_capacity`, but parameterized over the choice of
@@ -415,23 +413,6 @@ unsafe impl<#[may_dangle] T, A: Allocator> Drop for RawVec<T, A> {
 #[rustc_const_unstable(feature = "const_heap", issue = "79597")]
 #[rustfmt::skip] // FIXME(fee1-dead): temporary measure before rustfmt is bumped
 const impl<A: [const] Allocator + [const] Destruct> RawVecInner<A> {
-    #[inline]
-    const fn new_in<T>(alloc: A) -> Self {
-        let ptr = Unique::<T>::dangling().cast();
-        // `cap: 0` means "unallocated". zero-sized types are ignored.
-        Self { ptr, cap: ZERO_CAP, alloc }
-    }
-
-    #[inline]
-    fn with_alignment_in(alloc: A, align: usize) -> Self {
-        assert!(align.is_power_of_two());
-        let ptr = <[u8]>::as_mut_ptr(&mut []);
-        let ptr = ptr.with_addr((ptr.expose_provenance() + align - 1) & !(align - 1));
-        // `cap: 0` means "unallocated". zero-sized types are ignored.
-        // Safety: ptr cannot be null.
-        Self { ptr: unsafe { Unique::new_unchecked(ptr) }, cap: ZERO_CAP, alloc }
-    }
-
     #[cfg(not(no_global_oom_handling))]
     #[inline]
     fn with_capacity_in(capacity: usize, alloc: A, elem_layout: Layout) -> Self {
@@ -462,7 +443,7 @@ const impl<A: [const] Allocator + [const] Destruct> RawVecInner<A> {
 
         // Don't allocate here because `Drop` will not deallocate when `capacity` is 0.
         if layout.size() == 0 {
-            return Ok(Self::with_alignment_in(alloc, elem_layout.align()));
+            return Ok(Self::new_in(alloc, elem_layout.alignment()));
         }
 
         let result = match init {
@@ -572,9 +553,22 @@ const impl<A: [const] Allocator + [const] Destruct> RawVecInner<A> {
 }
 
 impl<A: Allocator> RawVecInner<A> {
+    /// The minimum safe memory address that is aligned and won't cause problems
+    /// with ROG GC.
+    ///
+    /// Must sync with the compiler at `compiler/rustc_codegen_llvm/src/common.rs`.
+    const ROG_MIN_PTR_ADDR: NonZero<usize> = unsafe { NonZero::new_unchecked(1 << 18) };
+
     #[inline]
     const fn new_in(alloc: A, align: Alignment) -> Self {
-        let ptr = Unique::from_non_null(NonNull::without_provenance(align.as_nonzero()));
+        let addr = {
+            if align.as_usize() < Self::ROG_MIN_PTR_ADDR.get() {
+                Self::ROG_MIN_PTR_ADDR
+            } else {
+                align.as_nonzero()
+            }
+        };
+        let ptr = Unique::from_non_null(NonNull::without_provenance(addr));
         // `cap: 0` means "unallocated". zero-sized types are ignored.
         Self { ptr, cap: ZERO_CAP, alloc }
     }

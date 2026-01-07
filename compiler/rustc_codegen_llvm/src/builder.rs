@@ -63,17 +63,11 @@ impl<'a, 'll> SBuilder<'a, 'll> {
         llty: &'ll Type,
         llfn: &'ll Value,
         args: &[&'ll Value],
-        funclet: Option<&Funclet<'ll>>,
+        cconv: llvm::CallConv,
     ) -> &'ll Value {
         debug!("call {:?} with args ({:?})", llfn, args);
 
         let args = self.check_call("call", llty, llfn, args);
-        let funclet_bundle = funclet.map(|funclet| funclet.bundle());
-        let mut bundles: SmallVec<[_; 2]> = SmallVec::new();
-        if let Some(funclet_bundle) = funclet_bundle {
-            bundles.push(funclet_bundle);
-        }
-
         let call = unsafe {
             llvm::LLVMBuildCallWithOperandBundles(
                 self.llbuilder,
@@ -81,11 +75,14 @@ impl<'a, 'll> SBuilder<'a, 'll> {
                 llfn,
                 args.as_ptr() as *const &llvm::Value,
                 args.len() as c_uint,
-                bundles.as_ptr(),
-                bundles.len() as c_uint,
+                std::ptr::null_mut(),
+                0,
                 c"".as_ptr(),
             )
         };
+        if cconv != llvm::CCallConv {
+            llvm::SetInstructionCallConv(call, cconv);
+        }
         call
     }
 }
