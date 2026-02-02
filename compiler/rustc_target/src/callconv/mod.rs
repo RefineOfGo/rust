@@ -263,7 +263,7 @@ impl Uniform {
 /// (and all data in the padding between the registers is dropped).
 #[derive(Clone, PartialEq, Eq, Hash, Debug, HashStable_Generic)]
 pub struct CastTarget {
-    pub prefix: [Option<Reg>; 8],
+    pub prefix: [Option<Reg>; 15],
     /// The offset of `rest` from the start of the value. Currently only implemented for a `Reg`
     /// pair created by the `offset_pair` method.
     pub rest_offset: Option<Size>,
@@ -279,18 +279,41 @@ impl From<Reg> for CastTarget {
 
 impl From<Uniform> for CastTarget {
     fn from(uniform: Uniform) -> CastTarget {
-        Self::prefixed([None; 8], uniform)
+        Self::prefixed([None; 15], uniform)
     }
 }
 
 impl CastTarget {
-    pub fn prefixed(prefix: [Option<Reg>; 8], rest: Uniform) -> Self {
+    #[inline]
+    pub fn prefix(reg: Reg) -> [Option<Reg>; 15] {
+        [
+            Some(reg),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+    }
+}
+
+impl CastTarget {
+    pub fn prefixed(prefix: [Option<Reg>; 15], rest: Uniform) -> Self {
         Self { prefix, rest_offset: None, rest, attrs: ArgAttributes::new() }
     }
 
     pub fn offset_pair(a: Reg, offset_from_start: Size, b: Reg) -> Self {
         Self {
-            prefix: [Some(a), None, None, None, None, None, None, None],
+            prefix: Self::prefix(a),
             rest_offset: Some(offset_from_start),
             rest: b.into(),
             attrs: ArgAttributes::new(),
@@ -303,7 +326,7 @@ impl CastTarget {
     }
 
     pub fn pair(a: Reg, b: Reg) -> CastTarget {
-        Self::prefixed([Some(a), None, None, None, None, None, None, None], Uniform::from(b))
+        Self::prefixed(Self::prefix(a), Uniform::from(b))
     }
 
     /// When you only access the range containing valid data, you can use this unaligned size;
@@ -752,10 +775,10 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                     if arg.layout.is_sized()
                         && let Some(regs) = cx.register_map(arg.layout)
                         && count_ireg(&regs) <= 8
-                        && regs.len() <= 9
+                        && regs.len() <= 16
                     {
                         let (tail, head) = regs.split_last().expect("cast into no registers");
-                        let mut prefix = [None; 8];
+                        let mut prefix = [None; 15];
                         head.iter().enumerate().for_each(|(i, r)| prefix[i] = Some(*r));
                         arg.cast_to(CastTarget::prefixed(prefix, Uniform::from(*tail)));
                     }
