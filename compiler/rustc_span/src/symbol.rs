@@ -1368,7 +1368,6 @@ symbols! {
         nll,
         no,
         no_builtins,
-        no_checkpoint,
         no_core,
         no_coverage,
         no_crate_inject,

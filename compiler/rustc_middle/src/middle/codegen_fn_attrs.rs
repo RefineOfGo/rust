@@ -214,8 +214,6 @@ bitflags::bitflags! {
         const NO_SPLIT                  = 1 << 19;
         /// `#[no_gcwb]`: indicates that any form of GC write barrier must not exist in this function.
         const NO_GCWB                   = 1 << 20;
-        /// `#[no_checkpoint]`: a hint to LLVM that we should not insert check-point for this function.
-        const NO_CHECKPOINT             = 1 << 21;
     }
 }
 rustc_data_structures::external_bitflags_debug! { CodegenFnAttrFlags }

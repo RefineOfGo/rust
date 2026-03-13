@@ -69,7 +69,6 @@ impl AttributeKind {
             NeedsAllocator => No,
             NeedsPanicRuntime => No,
             NoBuiltins => Yes,
-            NoCheckpoint => No,
             NoCore(..) => No,
             NoGcwb => No,
             NoImplicitPrelude(..) => No,

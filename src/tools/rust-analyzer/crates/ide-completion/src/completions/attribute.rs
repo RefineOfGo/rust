@@ -367,7 +367,6 @@ const ATTRIBUTES: &[AttrCompletion] = &[
     attr("macro_export", None, None),
     attr("macro_use", None, None),
     attr(r#"must_use"#, Some("must_use"), Some(r#"must_use"#)),
-    attr("no_checkpoint", None, None),
     attr("no_gcwb", None, None),
     attr("no_implicit_prelude", None, None).prefer_inner(),
     attr("no_link", None, None).prefer_inner(),

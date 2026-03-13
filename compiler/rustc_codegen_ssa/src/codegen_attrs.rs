@@ -100,9 +100,6 @@ fn process_builtin_attrs(
             }
             AttributeKind::NoGcwb => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_GCWB,
             AttributeKind::NoSplit => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_SPLIT,
-            AttributeKind::NoCheckpoint => {
-                codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_CHECKPOINT
-            }
             AttributeKind::Optimize(optimize, _) => codegen_fn_attrs.optimize = *optimize,
             AttributeKind::TargetFeature { features, attr_span, was_forced } => {
                 let Some(sig) = tcx.hir_node_by_def_id(did).fn_sig() else {

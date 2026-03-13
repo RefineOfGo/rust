@@ -110,7 +110,6 @@ fn handle_rt_panic<T>(e: Box<dyn Any + Send>) -> T {
 #[cfg_attr(test, allow(dead_code))]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 unsafe fn init(argc: isize, argv: *const *const u8, sigpipe: u8) {
     // Remember the main thread ID to give it the correct name.
     // SAFETY: this is the only time and place where we call this function.
@@ -154,7 +153,6 @@ pub(crate) fn cleanup() {
 #[cfg(not(test))]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 fn lang_start_internal(
     main: &(dyn Fn() -> i32 + Sync + crate::panic::RefUnwindSafe),
     argc: isize,
@@ -203,7 +201,6 @@ fn lang_start_internal(
 #[cfg(not(any(test, doctest)))]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(never)]
 #[lang = "start"]
 fn lang_start<T: crate::process::Termination + 'static>(
@@ -213,7 +210,6 @@ fn lang_start<T: crate::process::Termination + 'static>(
     sigpipe: u8,
 ) -> isize {
     unsafe {
-        core::checkpoint::disable();
         core::gcwb::disable();
         core::stack::set_stack_limit(0);
     }
