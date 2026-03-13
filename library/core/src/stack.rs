@@ -58,7 +58,6 @@ use crate::intrinsics::abort;
 /// implement in assembly, or at least a wrapper to the real function should.
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[linkage = "weak"]
 #[unsafe(no_mangle)]
 extern "rog-cold" fn rog_morestack_abi() {
@@ -70,7 +69,6 @@ extern "rog-cold" fn rog_morestack_abi() {
 #[stable(feature = "rog", since = "1.0.0")]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
     unsafe {
@@ -85,7 +83,6 @@ pub fn get_stack_limit() -> usize {
 #[stable(feature = "rog", since = "1.0.0")]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
     unsafe {
@@ -106,7 +103,6 @@ pub fn get_stack_limit() -> usize {
 #[stable(feature = "rog", since = "1.0.0")]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
     unsafe {
@@ -121,7 +117,6 @@ pub fn get_stack_limit() -> usize {
 #[stable(feature = "rog", since = "1.0.0")]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
     unsafe {
@@ -146,7 +141,6 @@ pub unsafe fn set_stack_limit(limit: usize) {
 #[stable(feature = "rog", since = "1.0.0")]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
     unsafe {
@@ -165,7 +159,6 @@ pub unsafe fn set_stack_limit(limit: usize) {
 #[stable(feature = "rog", since = "1.0.0")]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
     unsafe {
@@ -178,7 +171,6 @@ pub unsafe fn set_stack_limit(limit: usize) {
 #[stable(feature = "rog", since = "1.0.0")]
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
     unsafe {

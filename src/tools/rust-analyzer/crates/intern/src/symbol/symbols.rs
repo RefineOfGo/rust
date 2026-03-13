@@ -346,7 +346,6 @@ define_symbols! {
     no_gcwb,
     no_split,
     no_mangle,
-    no_checkpoint,
     no_std,
     non_exhaustive,
     none,

@@ -396,20 +396,6 @@ impl<S: Stage> NoArgsAttributeParser<S> for NoSplitParser {
     const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::NoSplit;
 }
 
-pub(crate) struct NoCheckpointParser;
-impl<S: Stage> NoArgsAttributeParser<S> for NoCheckpointParser {
-    const PATH: &[Symbol] = &[sym::no_checkpoint];
-    const ON_DUPLICATE: OnDuplicate<S> = OnDuplicate::Warn;
-    const ALLOWED_TARGETS: AllowedTargets = AllowedTargets::AllowList(&[
-        Allow(Target::Fn),
-        Allow(Target::Method(MethodKind::Trait { body: true })),
-        Allow(Target::Method(MethodKind::Inherent)),
-        Allow(Target::Method(MethodKind::TraitImpl)),
-        Allow(Target::Closure),
-    ]);
-    const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::NoCheckpoint;
-}
-
 #[derive(Default)]
 pub(crate) struct UsedParser {
     first_compiler: Option<Span>,

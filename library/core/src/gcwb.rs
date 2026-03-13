@@ -10,7 +10,6 @@ static mut rog_gcwb_switch: i32 = 0;
 /// Known to the relevant LLVM passes.
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[linkage = "weak"]
 #[unsafe(no_mangle)]
 unsafe extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
@@ -21,7 +20,6 @@ unsafe extern "rog-cold" fn rog_write_barrier(_slot: usize, _ptr: usize) {
 /// Known to the relevant LLVM passes.
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[linkage = "weak"]
 #[unsafe(no_mangle)]
 unsafe extern "rog-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _size: usize) {
@@ -31,7 +29,6 @@ unsafe extern "rog-cold" fn rog_bulk_write_barrier(_dest: usize, _src: usize, _s
 /// Enable ROG write barrier.
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn enable() {
@@ -41,7 +38,6 @@ pub unsafe fn enable() {
 /// Disable ROG write barrier.
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub unsafe fn disable() {
@@ -51,7 +47,6 @@ pub unsafe fn disable() {
 /// Check if ROG write barrier was enabled.
 #[no_gcwb]
 #[no_split]
-#[no_checkpoint]
 #[inline(always)]
 #[stable(feature = "rog", since = "1.0.0")]
 pub fn is_enabled() -> bool {

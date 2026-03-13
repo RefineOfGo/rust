@@ -395,8 +395,4 @@ pub mod gcwb;
 #[stable(feature = "rog", since = "1.0.0")]
 pub mod stack;
 
-/// ROG Runtime Check Point stub symbols
-#[stable(feature = "rog", since = "1.0.0")]
-pub mod checkpoint;
-
 include!("primitive_docs.rs");

@@ -252,7 +252,6 @@ attribute_parsers!(
         Single<WithoutArgs<NeedsAllocatorParser>>,
         Single<WithoutArgs<NeedsPanicRuntimeParser>>,
         Single<WithoutArgs<NoBuiltinsParser>>,
-        Single<WithoutArgs<NoCheckpointParser>>,
         Single<WithoutArgs<NoCoreParser>>,
         Single<WithoutArgs<NoGcwbParser>>,
         Single<WithoutArgs<NoImplicitPreludeParser>>,

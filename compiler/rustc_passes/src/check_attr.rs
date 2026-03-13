@@ -273,7 +273,6 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::NeedsAllocator
                     | AttributeKind::NeedsPanicRuntime
                     | AttributeKind::NoBuiltins
-                    | AttributeKind::NoCheckpoint
                     | AttributeKind::NoCore { .. }
                     | AttributeKind::NoGcwb
                     | AttributeKind::NoImplicitPrelude(..)
