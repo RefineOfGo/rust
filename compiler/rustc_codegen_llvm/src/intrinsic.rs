@@ -596,6 +596,21 @@ impl<'ll, 'tcx> IntrinsicCallBuilderMethods<'tcx> for Builder<'_, 'll, 'tcx> {
                 self.pointercast(val, self.type_ptr())
             }
 
+            sym::get_frame_pointer | sym::get_stack_pointer => {
+                let reg = match name {
+                    sym::get_frame_pointer => tcx.sess.target.arch.frame_pointer(),
+                    sym::get_stack_pointer => tcx.sess.target.arch.stack_pointer(),
+                    _ => unreachable!(),
+                };
+                self.call_intrinsic(
+                    "llvm.read_register",
+                    &[self.type_i64()],
+                    &[self.get_metadata_value(
+                        self.md_node_in_context(&[self.create_metadata(reg.as_bytes())]),
+                    )],
+                )
+            }
+
             _ if name.as_str().starts_with("simd_") => {
                 // Unpack non-power-of-2 #[repr(packed, simd)] arguments.
                 // This gives them the expected layout of a regular #[repr(simd)] vector.

@@ -329,6 +329,20 @@ pub const fn prefetch_write_instruction<T, const LOCALITY: i32>(data: *const T) 
     let _ = data;
 }
 
+/// Get the frame pointer of the current stack pointer (RBP on x86_64, and FP on AArch64).
+///
+/// This intrinsic is ROG specific so it does not have a stable counterpart.
+#[rustc_nounwind]
+#[rustc_intrinsic]
+pub fn get_frame_pointer() -> usize;
+
+/// Get the stack pointer of the current stack pointer (RSP on x86_64, and SP on AArch64).
+///
+/// This intrinsic is ROG specific so it does not have a stable counterpart.
+#[rustc_nounwind]
+#[rustc_intrinsic]
+pub fn get_stack_pointer() -> usize;
+
 /// Executes a breakpoint trap, for inspection by a debugger.
 ///
 /// This intrinsic does not have a stable counterpart.
