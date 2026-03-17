@@ -1024,6 +1024,7 @@ symbols! {
         generic_pattern_types,
         generics,
         get_context,
+        get_stack_pointer,
         global_alloc_ty,
         global_allocator,
         global_asm,

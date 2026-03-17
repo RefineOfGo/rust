@@ -1952,6 +1952,14 @@ impl Arch {
         }
     }
 
+    pub fn stack_pointer(&self) -> &'static str {
+        match self {
+            Self::AArch64 | Self::LoongArch64 | Self::RiscV64 => "sp",
+            Self::X86_64 => "rsp",
+            _ => unimplemented!("stack_pointer({self:?})"),
+        }
+    }
+
     pub fn supports_c_variadic_definitions(&self) -> bool {
         use Arch::*;
 
