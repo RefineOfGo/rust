@@ -25,8 +25,6 @@ mod metadata_kind;
 
 pub(crate) use self::enzyme_ffi::*;
 
-pub(crate) const ROG_GC_NAME: &str = "rog";
-
 impl LLVMRustResult {
     pub(crate) fn into_result(self) -> Result<(), ()> {
         match self {
@@ -186,6 +184,7 @@ pub(crate) fn SetFunctionCallConv(fn_: &Value, cc: CallConv) {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn GetGC(fn_: &Value) -> Option<String> {
     unsafe {
         let name = LLVMGetGC(fn_);

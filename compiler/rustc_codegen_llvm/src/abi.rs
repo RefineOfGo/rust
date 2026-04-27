@@ -9,7 +9,6 @@ use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::{PlaceRef, PlaceValue};
 use rustc_codegen_ssa::traits::*;
-use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::layout::LayoutOf;
 use rustc_middle::{bug, ty};
@@ -240,12 +239,8 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     cmp::min(cast.unaligned_size(bx).bytes(), self.layout.size.bytes());
                 // Allocate some scratch space...
                 let llscratch = bx.alloca(scratch_size, scratch_align);
-                let has_pointers = bx.has_pointers(dst.layout);
                 bx.lifetime_start(llscratch, scratch_size);
-                // ...store the value...
-                // the scratch buffer lives on stack, so we can treat it as noptr
                 rustc_codegen_ssa::mir::store_cast_noptr(bx, cast, val, llscratch, scratch_align);
-                // ... and then memcpy it to the intended destination.
                 bx.memcpy(
                     dst.val.llval,
                     self.layout.align.abi,
@@ -254,7 +249,6 @@ impl<'ll, 'tcx> ArgAbiExt<'ll, 'tcx> for ArgAbi<'tcx, Ty<'tcx>> {
                     bx.const_usize(copy_bytes),
                     MemFlags::empty(),
                     None,
-                    has_pointers,
                 );
                 bx.lifetime_end(llscratch, scratch_size);
             }

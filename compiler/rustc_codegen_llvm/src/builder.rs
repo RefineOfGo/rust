@@ -35,8 +35,8 @@ use crate::attributes;
 use crate::common::Funclet;
 use crate::context::{CodegenCx, FullCx, GenericCx, SCx};
 use crate::llvm::{
-    self, AtomicOrdering, AtomicRmwBinOp, BasicBlock, FromGeneric, GEPNoWrapFlags, GetGC, Metadata,
-    ROG_GC_NAME, TRUE, ToLlvmBool, Type, Value,
+    self, AtomicOrdering, AtomicRmwBinOp, BasicBlock, FromGeneric, GEPNoWrapFlags, Metadata, TRUE,
+    ToLlvmBool, Type, Value,
 };
 use crate::type_of::LayoutLlvmExt;
 
@@ -814,17 +814,6 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         self.set_metadata_node(load, llvm::MD_nonnull, &[]);
     }
 
-    fn can_omit_barriers(&mut self, val: &'ll Value) -> bool {
-        if let Some(gc) = GetGC(self.llfn()) {
-            assert!(gc == ROG_GC_NAME, "unrecognized GC name: {gc}");
-            // TODO (chenzhuoyu): omit all write barriers for now, until we found better ways to implement gcwb.
-            let _ = unsafe { llvm::LLVMRustIsLocalFrame(val) };
-            true
-        } else {
-            true
-        }
-    }
-
     fn store_ptr(&mut self, val: &'ll Value, ptr: &'ll Value) {
         self.store_ptr_with_flags(val, ptr, MemFlags::empty());
     }
@@ -835,24 +824,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal pointer store");
         let ty = self.cx.val_ty(val);
         self.check_scalar(ty);
-        if self.can_omit_barriers(ptr) {
-            debug!("StorePtr: Slot {:?} is in local frame, no write barriers needed.", val);
-            self.store_noptr_with_flags(val, ptr, self.data_layout().pointer_align().abi, flags);
-        } else {
-            llvm::AddCallSiteAttributes(
-                self.call_intrinsic(
-                    "llvm.gcwrite",
-                    &[ty, self.cx.type_ptr(), self.cx.type_ptr()],
-                    &[val, self.cx.const_null(ty), ptr],
-                ),
-                llvm::AttributePlace::Function,
-                &[llvm::CreateAttrStringValue(
-                    self.cx.llcx,
-                    "volatile",
-                    if flags.contains(MemFlags::VOLATILE) { "true" } else { "false" },
-                )],
-            );
-        }
+        self.store_noptr_with_flags(val, ptr, self.data_layout().pointer_align().abi, flags);
     }
 
     fn store_noptr(&mut self, val: &'ll Value, ptr: &'ll Value, align: Align) {
@@ -915,24 +887,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         debug!("AtomicStorePtr {:?} -> {:?}", val, ptr);
         let ty = self.cx.val_ty(val);
         self.check_scalar(ty);
-        if self.can_omit_barriers(ptr) {
-            debug!("AtomicStorePtr: Slot {:?} is in local frame, no write barriers needed.", val);
-            self.atomic_store_noptr(val, ptr, order, self.data_layout().pointer_size());
-        } else {
-            llvm::AddCallSiteAttributes(
-                self.call_intrinsic(
-                    "llvm.gcwrite",
-                    &[ty, self.cx.type_ptr(), self.cx.type_ptr()],
-                    &[val, self.cx.const_null(ty), ptr],
-                ),
-                llvm::AttributePlace::Function,
-                &[llvm::CreateAttrStringValue(
-                    self.cx.llcx,
-                    "order",
-                    AtomicOrdering::from_generic(order).name(),
-                )],
-            );
-        }
+        self.atomic_store_noptr(val, ptr, order, self.data_layout().pointer_size());
     }
 
     fn atomic_store_noptr(
@@ -1168,11 +1123,9 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         size: &'ll Value,
         flags: MemFlags,
         tt: Option<FncTree>,
-        has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memcpy not supported");
         let size = self.intcast(size, self.type_isize(), false);
-        let no_gcwb = self.can_omit_barriers(dst);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         let memcpy = unsafe {
             llvm::LLVMRustBuildMemCpy(
@@ -1183,7 +1136,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
-                has_pointers && !no_gcwb,
+                false,
             )
         };
 
@@ -1205,11 +1158,9 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         src_align: Align,
         size: &'ll Value,
         flags: MemFlags,
-        has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memmove not supported");
         let size = self.intcast(size, self.type_isize(), false);
-        let no_gcwb = self.can_omit_barriers(dst);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
             llvm::LLVMRustBuildMemMove(
@@ -1220,7 +1171,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 src_align.bytes() as c_uint,
                 size,
                 is_volatile,
-                has_pointers && !no_gcwb,
+                false,
             );
         }
     }
@@ -1232,10 +1183,8 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         size: &'ll Value,
         align: Align,
         flags: MemFlags,
-        has_pointers: bool,
     ) {
         assert!(!flags.contains(MemFlags::NONTEMPORAL), "non-temporal memset not supported");
-        let no_gcwb = self.can_omit_barriers(ptr);
         let is_volatile = flags.contains(MemFlags::VOLATILE);
         unsafe {
             llvm::LLVMRustBuildMemSet(
@@ -1245,7 +1194,7 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
                 fill_byte,
                 size,
                 is_volatile,
-                has_pointers && !no_gcwb,
+                false,
             );
         }
     }
@@ -1391,17 +1340,6 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
     ) -> (&'ll Value, &'ll Value) {
         let ty = self.cx.val_ty(src);
         self.check_scalar(ty);
-        if self.cx.type_kind(ty) == TypeKind::Pointer && !self.can_omit_barriers(dst) {
-            llvm::AddCallSiteAttributes(
-                self.call_intrinsic(
-                    "llvm.gcwrite",
-                    &[ty, self.cx.type_ptr(), self.cx.type_ptr()],
-                    &[src, self.cx.const_null(ty), dst],
-                ),
-                llvm::AttributePlace::Function,
-                &[llvm::CreateAttrStringValue(self.cx.llcx, "volatile", "false")],
-            );
-        }
         unsafe {
             let value = llvm::LLVMBuildAtomicCmpXchg(
                 self.llbuilder,
@@ -1431,24 +1369,10 @@ impl<'a, 'll, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'll, 'tcx> {
         self.check_scalar(ty);
 
         let is_ptr = ty == self.type_ptr();
-        let mut needs_gcwb = is_ptr && !self.can_omit_barriers(dst);
 
         // The only RMW operation that LLVM supports on pointers is `xchg`.
         if is_ptr && op != rustc_codegen_ssa::common::AtomicRmwBinOp::AtomicXchg {
             src = self.ptrtoint(src, self.type_isize());
-            needs_gcwb = false;
-        }
-
-        if needs_gcwb {
-            llvm::AddCallSiteAttributes(
-                self.call_intrinsic(
-                    "llvm.gcwrite",
-                    &[ty, self.cx.type_ptr(), self.cx.type_ptr()],
-                    &[src, self.cx.const_null(ty), dst],
-                ),
-                llvm::AttributePlace::Function,
-                &[llvm::CreateAttrStringValue(self.cx.llcx, "volatile", "false")],
-            );
         }
 
         // FIXME: If `ret_ptr` is true and `src` is not a pointer, we *should* tell LLVM that the

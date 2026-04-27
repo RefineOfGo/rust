@@ -56,7 +56,6 @@ use crate::intrinsics::abort;
 ///
 /// As a side-effect of the unusual calling convention, this function MUST
 /// implement in assembly, or at least a wrapper to the real function should.
-#[no_gcwb]
 #[no_split]
 #[linkage = "weak"]
 #[unsafe(no_mangle)]
@@ -67,7 +66,6 @@ extern "rog-cold" fn rog_morestack_abi() {
 /// Get the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[stable(feature = "rog", since = "1.0.0")]
-#[no_gcwb]
 #[no_split]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
@@ -81,7 +79,6 @@ pub fn get_stack_limit() -> usize {
 /// Get the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 #[stable(feature = "rog", since = "1.0.0")]
-#[no_gcwb]
 #[no_split]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
@@ -101,7 +98,6 @@ pub fn get_stack_limit() -> usize {
 /// Get the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 #[stable(feature = "rog", since = "1.0.0")]
-#[no_gcwb]
 #[no_split]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
@@ -115,7 +111,6 @@ pub fn get_stack_limit() -> usize {
 /// Get the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[stable(feature = "rog", since = "1.0.0")]
-#[no_gcwb]
 #[no_split]
 #[inline(always)]
 pub fn get_stack_limit() -> usize {
@@ -139,7 +134,6 @@ pub unsafe fn set_stack_limit(limit: usize) {
 /// Set the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 #[stable(feature = "rog", since = "1.0.0")]
-#[no_gcwb]
 #[no_split]
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
@@ -157,7 +151,6 @@ pub unsafe fn set_stack_limit(limit: usize) {
 /// Set the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 #[stable(feature = "rog", since = "1.0.0")]
-#[no_gcwb]
 #[no_split]
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
@@ -169,7 +162,6 @@ pub unsafe fn set_stack_limit(limit: usize) {
 /// Set the stack limit (lower boundary) of the current rog-routine.
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[stable(feature = "rog", since = "1.0.0")]
-#[no_gcwb]
 #[no_split]
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {

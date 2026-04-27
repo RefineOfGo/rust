@@ -212,8 +212,6 @@ bitflags::bitflags! {
         const EXTERNALLY_IMPLEMENTABLE_ITEM = 1 << 18;
         /// `#[no_split]`: indicates that LLVM should not insert stack-check prologue for this function.
         const NO_SPLIT                  = 1 << 19;
-        /// `#[no_gcwb]`: indicates that any form of GC write barrier must not exist in this function.
-        const NO_GCWB                   = 1 << 20;
     }
 }
 rustc_data_structures::external_bitflags_debug! { CodegenFnAttrFlags }

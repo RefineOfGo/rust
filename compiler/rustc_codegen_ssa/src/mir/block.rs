@@ -1766,7 +1766,6 @@ impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
                     bx.const_usize(copy_bytes),
                     MemFlags::empty(),
                     None,
-                    false,
                 );
                 // ...and then load it with the ABI type.
                 llval = load_cast(bx, cast, llscratch, scratch_align);

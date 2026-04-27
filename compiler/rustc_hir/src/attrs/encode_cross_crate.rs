@@ -70,7 +70,6 @@ impl AttributeKind {
             NeedsPanicRuntime => No,
             NoBuiltins => Yes,
             NoCore(..) => No,
-            NoGcwb => No,
             NoImplicitPrelude(..) => No,
             NoLink => No,
             NoMain => No,

@@ -298,7 +298,6 @@ pub trait BuilderMethods<'a, 'tcx>:
 
     fn range_metadata(&mut self, load: Self::Value, range: WrappingRange);
     fn nonnull_metadata(&mut self, load: Self::Value);
-    fn can_omit_barriers(&mut self, val: Self::Value) -> bool;
 
     fn store_ptr(&mut self, val: Self::Value, ptr: Self::Value);
     fn store_ptr_with_flags(&mut self, val: Self::Value, ptr: Self::Value, flags: MemFlags);
@@ -343,27 +342,9 @@ pub trait BuilderMethods<'a, 'tcx>:
         ptr: Self::Value,
         align: Align,
         flags: MemFlags,
-        layout: TyAndLayout<'tcx>,
+        _layout: TyAndLayout<'tcx>,
     ) {
-        if self.has_pointers(layout) && !self.can_omit_barriers(ptr) {
-            assert!(
-                align >= self.data_layout().pointer_align().abi,
-                "invalid pointer alignment: {:?}",
-                align
-            );
-            if layout.size == self.data_layout().pointer_size() {
-                self.store_ptr_with_flags(val, ptr, flags);
-            } else {
-                let temp = self.alloca(layout.size, align);
-                let size = self.const_usize(layout.size.bytes());
-                self.lifetime_start(temp, layout.size);
-                self.store_noptr(val, temp, align);
-                self.memcpy(ptr, align, temp, align, size, flags, None, true);
-                self.lifetime_end(temp, layout.size);
-            }
-        } else {
-            self.store_noptr_with_flags(val, ptr, align, flags);
-        }
+        self.store_noptr_with_flags(val, ptr, align, flags);
     }
 
     fn store_to_place_with_flags(
@@ -527,7 +508,6 @@ pub trait BuilderMethods<'a, 'tcx>:
         size: Self::Value,
         flags: MemFlags,
         tt: Option<rustc_ast::expand::typetree::FncTree>,
-        has_pointers: bool,
     );
     fn memmove(
         &mut self,
@@ -537,7 +517,6 @@ pub trait BuilderMethods<'a, 'tcx>:
         src_align: Align,
         size: Self::Value,
         flags: MemFlags,
-        has_pointers: bool,
     );
     fn memset(
         &mut self,
@@ -546,7 +525,6 @@ pub trait BuilderMethods<'a, 'tcx>:
         size: Self::Value,
         align: Align,
         flags: MemFlags,
-        has_pointers: bool,
     );
 
     /// *Typed* copy for non-overlapping places.
@@ -586,7 +564,6 @@ pub trait BuilderMethods<'a, 'tcx>:
             temp.val.store_with_flags(self, dst.with_type(layout), flags);
         } else if !layout.is_zst() {
             let bytes = self.const_usize(layout.size.bytes());
-            let has_pointers = self.has_pointers(layout);
             self.memcpy(
                 dst.llval,
                 dst.align,
@@ -595,7 +572,6 @@ pub trait BuilderMethods<'a, 'tcx>:
                 bytes,
                 flags,
                 None,
-                has_pointers,
             );
         }
     }

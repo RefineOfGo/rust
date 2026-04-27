@@ -1,6 +1,5 @@
 use rustc_abi::{Align, WrappingRange};
 use rustc_middle::mir::SourceInfo;
-use rustc_middle::ptrinfo::HasPointerMap;
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_middle::{bug, span_bug};
 use rustc_session::config::OptLevel;
@@ -29,12 +28,11 @@ fn copy_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = bx.has_pointers(layout);
 
     if allow_overlap {
-        bx.memmove(dst, align, src, align, size, flags, has_pointers);
+        bx.memmove(dst, align, src, align, size, flags);
     } else {
-        bx.memcpy(dst, align, src, align, size, flags, None, has_pointers);
+        bx.memcpy(dst, align, src, align, size, flags, None);
     }
 }
 
@@ -51,8 +49,7 @@ fn memset_intrinsic<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>>(
     let align = layout.align.abi;
     let size = bx.mul(bx.const_usize(size.bytes()), count);
     let flags = if volatile { MemFlags::VOLATILE } else { MemFlags::empty() };
-    let has_pointers = bx.has_pointers(layout);
-    bx.memset(dst, val, size, align, flags, has_pointers);
+    bx.memset(dst, val, size, align, flags);
 }
 
 impl<'a, 'tcx, Bx: BuilderMethods<'a, 'tcx>> FunctionCx<'a, 'tcx, Bx> {
