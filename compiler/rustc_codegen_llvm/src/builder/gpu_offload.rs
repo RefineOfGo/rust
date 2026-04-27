@@ -626,7 +626,6 @@ pub(crate) fn gen_call_handling<'ll, 'tcx>(
             cx.get_const_i64(8 * args.len() as u64),
             MemFlags::empty(),
             None,
-            false,
         );
 
         alloc

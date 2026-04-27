@@ -746,7 +746,6 @@ fn copy_to_temporary_if_more_aligned<'ll, 'tcx>(
             bx.const_u32(layout.layout.size().bytes() as u32),
             MemFlags::empty(),
             None,
-            false, // copy to stack, treat as no-ptr.
         );
         tmp
     } else {

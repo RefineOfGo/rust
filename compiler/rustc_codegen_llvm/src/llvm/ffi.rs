@@ -399,20 +399,6 @@ pub(crate) enum AtomicOrdering {
     SequentiallyConsistent = 7,
 }
 
-impl AtomicOrdering {
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            AtomicOrdering::NotAtomic => "not_atomic",
-            AtomicOrdering::Unordered => "unordered",
-            AtomicOrdering::Monotonic => "monotonic",
-            AtomicOrdering::Acquire => "acquire",
-            AtomicOrdering::Release => "release",
-            AtomicOrdering::AcquireRelease => "acq_rel",
-            AtomicOrdering::SequentiallyConsistent => "seq_cst",
-        }
-    }
-}
-
 /// LLVMRustFileType
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -1987,7 +1973,6 @@ unsafe extern "C" {
     );
     pub(crate) fn LLVMRustIsNonGVFunctionPointerTy(Val: &Value) -> bool;
     pub(crate) fn LLVMRustStripPointerCasts<'a>(Val: &'a Value) -> &'a Value;
-    pub(crate) fn LLVMRustIsLocalFrame(Val: &Value) -> bool;
 
     // Operations on scalar constants
     pub(crate) fn LLVMRustConstIntGetZExtValue(ConstantVal: &ConstantInt, Value: &mut u64) -> bool;

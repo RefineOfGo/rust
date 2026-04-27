@@ -98,7 +98,6 @@ fn process_builtin_attrs(
                         .span_delayed_bug(*attr_span, "no_mangle should be on a named function");
                 }
             }
-            AttributeKind::NoGcwb => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_GCWB,
             AttributeKind::NoSplit => codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_SPLIT,
             AttributeKind::Optimize(optimize, _) => codegen_fn_attrs.optimize = *optimize,
             AttributeKind::TargetFeature { features, attr_span, was_forced } => {

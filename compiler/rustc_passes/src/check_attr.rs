@@ -265,7 +265,6 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::NeedsPanicRuntime
                     | AttributeKind::NoBuiltins
                     | AttributeKind::NoCore { .. }
-                    | AttributeKind::NoGcwb
                     | AttributeKind::NoImplicitPrelude(..)
                     | AttributeKind::NoLink
                     | AttributeKind::NoMain
