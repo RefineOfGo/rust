@@ -53,6 +53,87 @@ struct InterestingAttributeDiagnosticSpans {
     no_mangle: Option<Span>,
 }
 
+const ROG_STD_NO_SPLIT_PATH_PREFIXES: &[&str] = &[
+    // Add standard-library module path prefixes here when all functions under the path
+    // must run without ROG stack-check prologues. Many `std::...` modules are re-exports
+    // of `core::...` definitions, so list those real definition paths too.
+    "core::any",
+    "core::array",
+    "core::ascii",
+    "core::asserting",
+    "core::async_iter",
+    "core::borrow",
+    "core::bstr",
+    "core::cell",
+    "core::char",
+    "core::clone",
+    "core::cmp",
+    "core::convert",
+    "core::default",
+    "core::error",
+    "core::f128",
+    "core::f16",
+    "core::f32",
+    "core::f64",
+    "core::ffi",
+    "core::field",
+    "core::from",
+    "core::future",
+    "core::hash",
+    "core::hint",
+    "core::index",
+    "core::intrinsics",
+    "core::iter",
+    "core::marker",
+    "core::mem",
+    "core::net",
+    "core::num",
+    "core::ops",
+    "core::option",
+    "core::os",
+    "core::panic",
+    "core::pat",
+    "core::pin",
+    "core::primitive",
+    "core::profiling",
+    "core::ptr",
+    "core::range",
+    "core::result",
+    "core::simd",
+    "core::stack",
+    "core::sync::atomic",
+    "core::task",
+    "core::time",
+    "core::ub_checks",
+    "core::unsafe_binder",
+    "std::any",
+    "std::array",
+    "std::ascii",
+    "std::cell",
+    "std::char",
+    "std::clone",
+    "std::cmp",
+    "std::convert",
+    "std::default",
+    "std::future",
+    "std::hash",
+    "std::hint",
+    "std::iter",
+    "std::marker",
+    "std::mem",
+    "std::num",
+    "std::ops",
+    "std::option",
+    "std::pin",
+    "std::ptr",
+    "std::range",
+    "std::result",
+    "std::rt",
+    "std::sync::atomic",
+    "std::task",
+    "std::time",
+];
+
 /// Process the builtin attrs ([`hir::Attribute`]) on the item.
 /// Many of them directly translate to codegen attrs.
 fn process_builtin_attrs(
@@ -358,6 +439,11 @@ fn apply_overrides(tcx: TyCtxt<'_>, did: LocalDefId, codegen_fn_attrs: &mut Code
         codegen_fn_attrs.flags |= CodegenFnAttrFlags::TRACK_CALLER;
     }
 
+    if is_rog_std_no_split_path(tcx, did) || is_rog_std_inline_no_split(tcx, did, codegen_fn_attrs)
+    {
+        codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_SPLIT;
+    }
+
     // Foreign items by default use no mangling for their symbol name.
     if tcx.is_foreign_item(did) {
         codegen_fn_attrs.flags |= CodegenFnAttrFlags::FOREIGN_ITEM;
@@ -386,6 +472,42 @@ fn apply_overrides(tcx: TyCtxt<'_>, did: LocalDefId, codegen_fn_attrs: &mut Code
             codegen_fn_attrs.flags |= CodegenFnAttrFlags::NO_MANGLE;
         }
     }
+}
+
+fn is_rog_std_no_split_path(tcx: TyCtxt<'_>, did: LocalDefId) -> bool {
+    if !is_rog_std_no_split_candidate(tcx, did) {
+        return false;
+    }
+
+    let def_path = tcx.def_path_str(did.to_def_id());
+    ROG_STD_NO_SPLIT_PATH_PREFIXES.iter().any(|prefix| {
+        def_path == *prefix
+            || def_path.strip_prefix(prefix).is_some_and(|rest| rest.starts_with("::"))
+    })
+}
+
+fn is_rog_std_inline_no_split(
+    tcx: TyCtxt<'_>,
+    did: LocalDefId,
+    codegen_fn_attrs: &CodegenFnAttrs,
+) -> bool {
+    is_rog_std_no_split_candidate(tcx, did)
+        && matches!(
+            codegen_fn_attrs.inline,
+            InlineAttr::Hint | InlineAttr::Always | InlineAttr::Force { .. }
+        )
+}
+
+fn is_rog_std_no_split_candidate(tcx: TyCtxt<'_>, did: LocalDefId) -> bool {
+    matches!(tcx.crate_name(LOCAL_CRATE), sym::core | sym::std)
+        && matches!(
+            tcx.def_kind(did),
+            DefKind::Fn
+                | DefKind::AssocFn
+                | DefKind::Ctor(..)
+                | DefKind::Closure
+                | DefKind::SyntheticCoroutineBody
+        )
 }
 
 #[derive(Diagnostic)]
