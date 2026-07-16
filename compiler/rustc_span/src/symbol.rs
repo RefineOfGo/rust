@@ -1166,6 +1166,7 @@ symbols! {
         linkonce_odr,
         lint_reasons,
         literal,
+        llvm_attr,
         load,
         loaded_from_disk,
         local,

@@ -170,6 +170,9 @@ fn process_builtin_attrs(
                 interesting_spans.link_ordinal = Some(*span);
             }
             AttributeKind::LinkSection { name, .. } => codegen_fn_attrs.link_section = Some(*name),
+            AttributeKind::LlvmAttr(attrs) => {
+                codegen_fn_attrs.llvm_attrs.extend(attrs.iter().copied());
+            }
             AttributeKind::NoMangle(attr_span) => {
                 interesting_spans.no_mangle = Some(*attr_span);
                 if tcx.opt_item_name(did.to_def_id()).is_some() {

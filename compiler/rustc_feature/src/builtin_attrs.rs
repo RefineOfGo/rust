@@ -655,6 +655,11 @@ pub static BUILTIN_ATTRIBUTES: &[BuiltinAttribute] = &[
         WarnFollowing, EncodeCrossCrate::No
     ),
     ungated!(
+        llvm_attr, Normal,
+        template!(List: &["\"attribute\""]),
+        DuplicatesOk, EncodeCrossCrate::No
+    ),
+    ungated!(
         no_split, Normal,
         template!(Word),
         WarnFollowing, EncodeCrossCrate::No

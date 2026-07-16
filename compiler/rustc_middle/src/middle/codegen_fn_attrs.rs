@@ -92,6 +92,8 @@ pub struct CodegenFnAttrs {
     /// The `#[link_section = "..."]` attribute, or what executable section this
     /// should be placed in.
     pub link_section: Option<Symbol>,
+    /// LLVM string attributes requested with `#[llvm_attr("...")]`.
+    pub llvm_attrs: Vec<Symbol>,
     /// The `#[sanitize(xyz = "off")]` attribute. Indicates the settings for each
     /// sanitizer for this function.
     pub sanitizers: SanitizerFnAttrs,
@@ -232,6 +234,7 @@ impl CodegenFnAttrs {
             linkage: None,
             import_linkage: None,
             link_section: None,
+            llvm_attrs: vec![],
             sanitizers: SanitizerFnAttrs::default(),
             instruction_set: None,
             alignment: None,

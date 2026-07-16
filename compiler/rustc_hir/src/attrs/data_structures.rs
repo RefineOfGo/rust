@@ -1161,6 +1161,9 @@ pub enum AttributeKind {
     /// Represents `#[no_link]`
     NoLink,
 
+    /// Represents `#[llvm_attr("...")]`
+    LlvmAttr(ThinVec<Symbol>),
+
     /// Represents `#[no_main]`
     NoMain,
 

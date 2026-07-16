@@ -255,6 +255,7 @@ impl<'tcx> CheckAttrVisitor<'tcx> {
                     | AttributeKind::LinkOrdinal { .. }
                     | AttributeKind::LinkSection { .. }
                     | AttributeKind::Linkage(..)
+                    | AttributeKind::LlvmAttr(..)
                     | AttributeKind::MacroEscape( .. )
                     | AttributeKind::MacroUse { .. }
                     | AttributeKind::Marker(..)

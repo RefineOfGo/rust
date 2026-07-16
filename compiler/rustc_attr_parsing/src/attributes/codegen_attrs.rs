@@ -377,6 +377,53 @@ impl<S: Stage> NoArgsAttributeParser<S> for NoSplitParser {
     const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::NoSplit;
 }
 
+pub(crate) struct LlvmAttrParser;
+
+impl<S: Stage> CombineAttributeParser<S> for LlvmAttrParser {
+    type Item = Symbol;
+    const PATH: &[Symbol] = &[sym::llvm_attr];
+    const CONVERT: ConvertFn<Self::Item> = |attrs, _| AttributeKind::LlvmAttr(attrs);
+    const ALLOWED_TARGETS: AllowedTargets = AllowedTargets::AllowList(&[
+        Allow(Target::Fn),
+        Allow(Target::Method(MethodKind::Trait { body: true })),
+        Allow(Target::Method(MethodKind::Inherent)),
+        Allow(Target::Method(MethodKind::TraitImpl)),
+        Allow(Target::Closure),
+    ]);
+    const TEMPLATE: AttributeTemplate = template!(List: &["\"attribute\""]);
+
+    fn extend(
+        cx: &mut AcceptContext<'_, '_, S>,
+        args: &ArgParser,
+    ) -> impl IntoIterator<Item = Self::Item> {
+        let Some(list) = args.list() else {
+            cx.expected_list(cx.attr_span, args);
+            return None;
+        };
+
+        let Some(single) = list.single() else {
+            cx.expected_single_argument(list.span);
+            return None;
+        };
+
+        let Some(lit) = single.lit() else {
+            cx.expected_string_literal(single.span(), None);
+            return None;
+        };
+
+        let Some(value) = lit.kind.str() else {
+            cx.expected_string_literal(lit.span, Some(lit));
+            return None;
+        };
+        if value.as_str().is_empty() {
+            cx.expected_non_empty_string_literal(lit.span);
+            return None;
+        }
+
+        Some(value)
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct UsedParser {
     first_compiler: Option<Span>,

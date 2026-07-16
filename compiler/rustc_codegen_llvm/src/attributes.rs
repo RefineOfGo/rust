@@ -520,6 +520,9 @@ pub(crate) fn llfn_attrs_from_instance<'ll, 'tcx>(
     if !codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NO_SPLIT) {
         to_add.push(llvm::CreateAttrString(cx.llcx, "rog-stack-check"));
     }
+    for attr in &codegen_fn_attrs.llvm_attrs {
+        to_add.push(llvm::CreateAttrString(cx.llcx, attr.as_str()));
+    }
     to_add.extend(patchable_function_entry_attrs(
         cx,
         sess,
