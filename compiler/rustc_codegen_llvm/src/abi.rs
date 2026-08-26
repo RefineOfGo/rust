@@ -558,6 +558,23 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             }
         }
 
+        // [ROG] Under `extern "rog-ctx"` the first argument is the closure
+        // context: mark it swiftself so ROGCC assigns it to the context
+        // register (R13 on x86-64), matching the Go-side closure ABI. An
+        // indirect return (sret) keeps LLVM argument slot 0, so the context
+        // is slot 1 in that case.
+        if self.conv == CanonAbi::RogCtx
+            && let Some(first) = self.args.first()
+            && !matches!(first.mode, PassMode::Ignore)
+        {
+            let idx = matches!(self.ret.mode, PassMode::Indirect { .. }) as u32;
+            attributes::apply_to_llfn(
+                llfn,
+                llvm::AttributePlace::Argument(idx),
+                &[llvm::AttributeKind::SwiftSelf.create_attr(cx.llcx)],
+            );
+        }
+
         // If the declaration has an associated instance, compute extra attributes based on that.
         if let Some(instance) = instance {
             llfn_attrs_from_instance(
@@ -644,6 +661,20 @@ impl<'ll, 'tcx> FnAbiLlvmExt<'ll, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
             }
         }
 
+        // [ROG] See apply_attrs_llfn: the `extern "rog-ctx"` context argument
+        // is marked swiftself on the call site as well.
+        if self.conv == CanonAbi::RogCtx
+            && let Some(first) = self.args.first()
+            && !matches!(first.mode, PassMode::Ignore)
+        {
+            let idx = matches!(self.ret.mode, PassMode::Indirect { .. }) as u32;
+            attributes::apply_to_callsite(
+                callsite,
+                llvm::AttributePlace::Argument(idx),
+                &[llvm::AttributeKind::SwiftSelf.create_attr(bx.cx.llcx)],
+            );
+        }
+
         let cconv = self.llvm_cconv(&bx.cx);
         if cconv != llvm::CCallConv {
             llvm::SetInstructionCallConv(callsite, cconv);
@@ -691,6 +722,7 @@ pub(crate) fn to_llvm_calling_convention(sess: &Session, abi: CanonAbi) -> llvm:
         CanonAbi::C => llvm::CCallConv,
         CanonAbi::Rust | CanonAbi::Rog => llvm::ROGCallConv,
         CanonAbi::RogCold => llvm::ROGColdCallConv,
+        CanonAbi::RogCtx => llvm::ROGCallConv,
         CanonAbi::RustCold => llvm::PreserveMost,
         CanonAbi::RustPreserveNone => match &sess.target.arch {
             Arch::X86_64 | Arch::AArch64 => llvm::PreserveNone,

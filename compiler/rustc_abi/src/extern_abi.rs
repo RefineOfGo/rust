@@ -58,6 +58,12 @@ pub enum ExternAbi {
     /// This ABI is guaranteed to be mapped into LLVM's "coldcc".
     RogCold,
 
+    /// ROG-specific ABI for functions whose FIRST argument is a closure
+    /// context: it is marked `swiftself` and travels in the dedicated context
+    /// register (R13 on x86-64) instead of an ordinary argument slot, matching
+    /// how the ROG Go compiler calls closures and reified function values.
+    RogCtx,
+
     /// Unstable impl detail that directly uses Rust types to describe the ABI to LLVM.
     /// Even normally-compatible Rust types can become ABI-incompatible with this ABI!
     Unadjusted,
@@ -196,6 +202,7 @@ abi_impls! {
             X86Interrupt =><= "x86-interrupt",
             Rog =><= "rog",
             RogCold =><= "rog-cold",
+            RogCtx =><= "rog-ctx",
     }
 }
 
@@ -256,7 +263,7 @@ pub enum CVariadicStatus {
 impl ExternAbi {
     pub fn is_lto_aware(self) -> bool {
         use ExternAbi::*;
-        matches!(self, C { .. } | Rog)
+        matches!(self, C { .. } | Rog | RogCtx)
     }
 
     /// An ABI "like Rust"
@@ -267,7 +274,7 @@ impl ExternAbi {
     /// - are subject to change between compiler versions
     pub fn is_rustic_abi(self) -> bool {
         use ExternAbi::*;
-        matches!(self, Rust | RustCall | RustCold | RustPreserveNone | Rog | RogCold)
+        matches!(self, Rust | RustCall | RustCold | RustPreserveNone | Rog | RogCold | RogCtx)
     }
 
     /// Returns whether the ABI supports C variadics. This only controls whether we allow *imports*
@@ -332,6 +339,7 @@ impl ExternAbi {
             | Self::RustInvalid
             | Self::Rog
             | Self::RogCold
+            | Self::RogCtx
             | Self::Unadjusted
             | Self::EfiApi
             | Self::Aapcs { .. }

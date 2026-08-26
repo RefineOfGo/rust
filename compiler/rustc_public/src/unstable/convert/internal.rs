@@ -619,6 +619,7 @@ impl RustcInternal for Abi {
             Abi::Custom => rustc_abi::ExternAbi::Custom,
             Abi::Rog => rustc_abi::ExternAbi::Rog,
             Abi::RogCold => rustc_abi::ExternAbi::RogCold,
+            Abi::RogCtx => rustc_abi::ExternAbi::RogCtx,
         }
     }
 }

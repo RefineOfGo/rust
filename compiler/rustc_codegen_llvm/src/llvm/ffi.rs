@@ -295,6 +295,7 @@ pub(crate) enum AttributeKind {
     CapturesNone = 46,
     SanitizeRealtimeNonblocking = 47,
     SanitizeRealtimeBlocking = 48,
+    SwiftSelf = 49,
 }
 
 /// LLVMIntPredicate

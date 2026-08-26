@@ -1135,6 +1135,7 @@ pub enum Abi {
     Custom,
     Rog,
     RogCold,
+    RogCtx,
 }
 
 /// A binder represents a possibly generic type and its bound vars.

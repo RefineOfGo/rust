@@ -92,6 +92,7 @@ impl AbiMap {
 
             (ExternAbi::Rog, _) => CanonAbi::Rog,
             (ExternAbi::RogCold, _) => CanonAbi::RogCold,
+            (ExternAbi::RogCtx, _) => CanonAbi::RogCtx,
 
             (ExternAbi::Custom, _) => CanonAbi::Custom,
 

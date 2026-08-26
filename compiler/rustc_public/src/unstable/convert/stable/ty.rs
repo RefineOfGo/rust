@@ -1000,6 +1000,7 @@ impl<'tcx> Stable<'tcx> for rustc_abi::ExternAbi {
             ExternAbi::Rust => Abi::Rust,
             ExternAbi::Rog => Abi::Rog,
             ExternAbi::RogCold => Abi::RogCold,
+            ExternAbi::RogCtx => Abi::RogCtx,
             ExternAbi::C { unwind } => Abi::C { unwind },
             ExternAbi::Cdecl { unwind } => Abi::Cdecl { unwind },
             ExternAbi::Stdcall { unwind } => Abi::Stdcall { unwind },

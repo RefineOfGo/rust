@@ -361,6 +361,7 @@ enum class LLVMRustAttributeKind {
   CapturesNone = 46,
   SanitizeRealtimeNonblocking = 47,
   SanitizeRealtimeBlocking = 48,
+  SwiftSelf = 49,
 };
 
 static Attribute::AttrKind fromRust(LLVMRustAttributeKind Kind) {
@@ -369,6 +370,8 @@ static Attribute::AttrKind fromRust(LLVMRustAttributeKind Kind) {
     return Attribute::AlwaysInline;
   case LLVMRustAttributeKind::ByVal:
     return Attribute::ByVal;
+  case LLVMRustAttributeKind::SwiftSelf:
+    return Attribute::SwiftSelf;
   case LLVMRustAttributeKind::Cold:
     return Attribute::Cold;
   case LLVMRustAttributeKind::InlineHint:
