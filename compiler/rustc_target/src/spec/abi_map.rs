@@ -107,6 +107,8 @@ impl AbiMap {
             (ExternAbi::RustTail, _) => CanonAbi::RustTail,
 
             (ExternAbi::Swift, _) => CanonAbi::Swift,
+            (ExternAbi::Rog, _) => CanonAbi::Rog,
+            (ExternAbi::RogCold, _) => CanonAbi::RogCold,
 
             (ExternAbi::System { .. }, ArchKind::X86)
                 if os == OsKind::Windows && !has_c_varargs =>

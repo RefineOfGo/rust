@@ -629,6 +629,9 @@ pub(crate) fn llfn_attrs_from_instance<'ll, 'tcx>(
     if let Some(packed_stack) = packed_stack_attr(cx, sess, &codegen_fn_attrs.target_features) {
         to_add.push(packed_stack);
     }
+    if !codegen_fn_attrs.flags.contains(CodegenFnAttrFlags::NO_SPLIT) {
+        to_add.push(llvm::CreateAttrString(cx.llcx, "rog-stack-check"));
+    }
     to_add.extend(patchable_function_entry_attrs(
         cx,
         sess,

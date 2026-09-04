@@ -7,6 +7,7 @@ use crate::{Align, HasDataLayout, Integer, Primitive, Size};
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum RegKind {
     Integer,
+    Pointer,
     Float,
     Vector {
         /// The `hint_vector_elem` is strictly for optimization purposes. E.g. it can be used by
@@ -38,6 +39,7 @@ impl Reg {
     reg_ctor!(i64, Integer, 64);
     reg_ctor!(i128, Integer, 128);
 
+    reg_ctor!(f16, Float, 16);
     reg_ctor!(f32, Float, 32);
     reg_ctor!(f64, Float, 64);
     reg_ctor!(f128, Float, 128);
@@ -46,6 +48,12 @@ impl Reg {
     pub fn opaque_vector(size: Size) -> Reg {
         // Default to an i8 vector of the given size.
         Reg { kind: RegKind::Vector { hint_vector_elem: Primitive::Int(Integer::I8, true) }, size }
+    }
+}
+
+impl Reg {
+    pub fn ptr<C: HasDataLayout>(cx: &C) -> Reg {
+        Reg { kind: RegKind::Pointer, size: cx.data_layout().pointer_size() }
     }
 }
 
@@ -62,6 +70,10 @@ impl Reg {
                 65..=128 => dl.i128_align,
                 _ => panic!("unsupported integer: {self:?}"),
             },
+            RegKind::Pointer => {
+                assert_eq!(self.size, dl.pointer_size(), "invalid pointer size");
+                dl.pointer_align().abi
+            }
             RegKind::Float => match self.size.bits() {
                 16 => dl.f16_align,
                 32 => dl.f32_align,

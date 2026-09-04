@@ -18,11 +18,11 @@ pub(super) trait ArgAbiExt<'tcx> {
 
 fn reg_to_abi_param(reg: Reg) -> AbiParam {
     let clif_ty = match (reg.kind, reg.size.bytes()) {
-        (RegKind::Integer, 1) => types::I8,
-        (RegKind::Integer, 2) => types::I16,
-        (RegKind::Integer, 3..=4) => types::I32,
-        (RegKind::Integer, 5..=8) => types::I64,
-        (RegKind::Integer, 9..=16) => types::I128,
+        (RegKind::Integer | RegKind::Pointer, 1) => types::I8,
+        (RegKind::Integer | RegKind::Pointer, 2) => types::I16,
+        (RegKind::Integer | RegKind::Pointer, 3..=4) => types::I32,
+        (RegKind::Integer | RegKind::Pointer, 5..=8) => types::I64,
+        (RegKind::Integer | RegKind::Pointer, 9..=16) => types::I128,
         (RegKind::Float, 2) => types::F16,
         (RegKind::Float, 4) => types::F32,
         (RegKind::Float, 8) => types::F64,

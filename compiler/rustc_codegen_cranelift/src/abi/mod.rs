@@ -60,7 +60,7 @@ pub(crate) fn conv_to_call_conv(
     match c {
         CanonAbi::Rust | CanonAbi::RustCold | CanonAbi::C => default_call_conv,
 
-        CanonAbi::RustPreserveNone | CanonAbi::RustTail => {
+        CanonAbi::RustPreserveNone | CanonAbi::RustTail | CanonAbi::Rog | CanonAbi::RogCold => {
             sess.dcx().fatal(format!("call conv {c:?} is LLVM-specific"))
         }
 

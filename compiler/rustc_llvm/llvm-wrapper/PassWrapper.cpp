@@ -416,6 +416,9 @@ extern "C" LLVMTargetMachineRef LLVMRustCreateTargetMachine(
   if (UseWasmEH)
     Options.ExceptionModel = ExceptionHandling::Wasm;
 
+  // ROG's AArch64 Linux stack check uses the compact local-exec TLS sequence.
+  if (Trip.isAArch64() && Trip.isOSLinux())
+    Options.TLSSize = 12;
   Options.EmitStackSizeSection = EmitStackSizeSection;
 
   TargetMachine *TM = TheTarget->createTargetMachine(Trip, CPU, Feature,

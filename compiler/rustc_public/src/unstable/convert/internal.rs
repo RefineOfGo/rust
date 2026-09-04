@@ -623,6 +623,8 @@ impl RustcInternal for Abi {
             Abi::RustTail => rustc_abi::ExternAbi::RustTail,
             Abi::Custom => rustc_abi::ExternAbi::Custom,
             Abi::Swift => rustc_abi::ExternAbi::Swift,
+            Abi::Rog => rustc_abi::ExternAbi::Rog,
+            Abi::RogCold => rustc_abi::ExternAbi::RogCold,
         }
     }
 }

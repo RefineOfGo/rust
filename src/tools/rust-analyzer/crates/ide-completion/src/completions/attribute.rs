@@ -355,6 +355,7 @@ const ATTRIBUTES: &[AttrCompletion] = &[
     attr("no_link", None, None).prefer_inner(),
     attr("no_main", None, None).prefer_inner(),
     attr("no_mangle", None, None),
+    attr("no_split", None, None),
     attr("no_std", None, None).prefer_inner(),
     attr("non_exhaustive", None, None),
     attr("panic_handler", None, None),

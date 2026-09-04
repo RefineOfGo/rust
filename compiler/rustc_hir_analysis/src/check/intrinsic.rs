@@ -135,8 +135,10 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::frem_algebraic
         | sym::fsub_algebraic
         | sym::gpu_launch_sized_workgroup_mem
+        | sym::get_stack_pointer
         | sym::integer_max
         | sym::integer_min
+        | sym::is_pointer_map_exact
         | sym::is_val_statically_known
         | sym::log2f16
         | sym::log2f32
@@ -173,6 +175,7 @@ fn intrinsic_operation_unsafety(tcx: TyCtxt<'_>, intrinsic_id: LocalDefId) -> hi
         | sym::offload_get_num_devices
         | sym::offset_of
         | sym::overflow_checks
+        | sym::pointer_map_of
         | sym::powf16
         | sym::powf32
         | sym::powf64
@@ -329,8 +332,10 @@ pub(crate) fn check_intrinsic_type(
         | sym::prefetch_write_instruction => {
             (1, 1, vec![Ty::new_imm_ptr(tcx, param(0))], tcx.types.unit)
         }
+        sym::get_stack_pointer => (0, 0, Vec::new(), tcx.types.usize),
         sym::needs_drop => (1, 0, vec![], tcx.types.bool),
-
+        sym::is_pointer_map_exact => (1, 0, vec![], tcx.types.bool),
+        sym::pointer_map_of => (1, 0, vec![], Ty::new_static_u64_slice(tcx)),
         sym::type_name => (1, 0, vec![], Ty::new_static_str(tcx)),
         sym::type_id => (1, 0, vec![], type_id_ty()),
         sym::type_id_eq => (0, 0, vec![type_id_ty(), type_id_ty()], tcx.types.bool),

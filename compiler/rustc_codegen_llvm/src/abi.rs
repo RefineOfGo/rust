@@ -137,6 +137,10 @@ impl LlvmType for Reg {
     fn llvm_type<'ll>(&self, cx: &CodegenCx<'ll, '_>) -> &'ll Type {
         match self.kind {
             RegKind::Integer => cx.type_ix(self.size.bits()),
+            RegKind::Pointer => {
+                assert_eq!(self.size, cx.data_layout().pointer_size(), "invalid pointer size");
+                cx.type_ptr()
+            }
             RegKind::Float => match self.size.bits() {
                 16 => cx.type_f16(),
                 32 => cx.type_f32(),
@@ -721,7 +725,9 @@ impl AbiBuilderMethods for Builder<'_, '_, '_> {
 /// ABI, for the current target.
 pub(crate) fn to_llvm_calling_convention(sess: &Session, abi: CanonAbi) -> llvm::CallConv {
     match abi {
-        CanonAbi::C | CanonAbi::Rust => llvm::CCallConv,
+        CanonAbi::C => llvm::CCallConv,
+        CanonAbi::Rust | CanonAbi::Rog => llvm::ROGCallConv,
+        CanonAbi::RogCold => llvm::ROGColdCallConv,
         CanonAbi::RustCold => llvm::PreserveMost,
         CanonAbi::RustPreserveNone => match &sess.target.arch {
             Arch::X86_64 | Arch::AArch64 => llvm::PreserveNone,

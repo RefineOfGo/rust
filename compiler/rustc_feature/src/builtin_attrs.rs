@@ -123,6 +123,7 @@ pub static BUILTIN_ATTRIBUTES: &[Symbol] = &[
     sym::export_name,
     sym::link_section,
     sym::no_mangle,
+    sym::no_split,
     sym::used,
     sym::link_ordinal,
     sym::naked,

@@ -138,6 +138,7 @@
 #![feature(lang_items)]
 #![feature(link_cfg)]
 #![feature(link_llvm_intrinsics)]
+#![feature(linkage)]
 #![feature(macro_metavar_expr)]
 #![feature(macro_metavar_expr_concat)]
 #![feature(marker_trait_attr)]
@@ -151,6 +152,7 @@
 #![feature(pin_macro_internals)]
 #![feature(prelude_import)]
 #![feature(repr_simd)]
+#![feature(rust_cold_cc)]
 #![feature(rustc_attrs)]
 #![feature(rustdoc_internals)]
 #![feature(simd_ffi)]
@@ -406,4 +408,9 @@ include!("keyword_docs.rs");
 // Include a number of private modules that exist solely to provide
 // the rustdoc documentation for primitive types. Using `include!`
 // because rustdoc only looks for these modules at the crate level.
+
+/// ROG GC Stack Check stub symbols
+#[stable(feature = "rog", since = "1.0.0")]
+pub mod stack;
+
 include!("primitive_docs.rs");

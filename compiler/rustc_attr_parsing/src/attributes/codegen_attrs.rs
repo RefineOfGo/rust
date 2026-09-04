@@ -389,6 +389,21 @@ impl NoArgsAttributeParser for NoMangleParser {
     const CREATE: fn(Span) -> AttributeKind = AttributeKind::NoMangle;
 }
 
+pub(crate) struct NoSplitParser;
+impl NoArgsAttributeParser for NoSplitParser {
+    const PATH: &[Symbol] = &[sym::no_split];
+    const ON_DUPLICATE: OnDuplicate = OnDuplicate::Warn;
+    const ALLOWED_TARGETS: AllowedTargets<'_> = AllowedTargets::AllowList(&[
+        Allow(Target::Fn),
+        Allow(Target::Method(MethodKind::Trait { body: true })),
+        Allow(Target::Method(MethodKind::Inherent)),
+        Allow(Target::Method(MethodKind::TraitImpl)),
+        Allow(Target::Closure),
+    ]);
+    const STABILITY: AttributeStability = AttributeStability::Stable;
+    const CREATE: fn(Span) -> AttributeKind = |_| AttributeKind::NoSplit;
+}
+
 #[derive(Default)]
 pub(crate) struct UsedParser {
     first_compiler: Option<Span>,

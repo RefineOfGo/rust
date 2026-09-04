@@ -108,6 +108,7 @@ fn handle_rt_panic<T>(e: Box<dyn Any + Send>) -> T {
 // Even though it is an `u8`, it only ever has 4 values. These are documented in
 // `compiler/rustc_session/src/config/sigpipe.rs`.
 #[cfg_attr(test, allow(dead_code))]
+#[no_split]
 unsafe fn init(argc: isize, argv: *const *const u8, sigpipe: u8) {
     // Remember the main thread ID to give it the correct name.
     // SAFETY: this is the only time and place where we call this function.
@@ -149,6 +150,7 @@ pub(crate) fn cleanup() {
 // To reduce the generated code of the new `lang_start`, this function is doing
 // the real work.
 #[cfg(not(test))]
+#[no_split]
 fn lang_start_internal(
     main: &(dyn Fn() -> i32 + Sync + crate::panic::RefUnwindSafe),
     argc: isize,
@@ -195,6 +197,8 @@ fn lang_start_internal(
 }
 
 #[cfg(not(any(test, doctest)))]
+#[no_split]
+#[inline(never)]
 #[lang = "start"]
 fn lang_start<T: crate::process::Termination + 'static>(
     main: fn() -> T,
@@ -202,6 +206,9 @@ fn lang_start<T: crate::process::Termination + 'static>(
     argv: *const *const u8,
     sigpipe: u8,
 ) -> isize {
+    unsafe {
+        core::stack::set_stack_limit(0);
+    }
     lang_start_internal(
         &move || crate::sys::backtrace::__rust_begin_short_backtrace(main).report().to_i32(),
         argc,

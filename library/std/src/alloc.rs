@@ -464,7 +464,7 @@ pub mod __default_lib_allocator {
     // ABI
 
     #[rustc_std_internal_symbol]
-    pub unsafe extern "C" fn __rdl_alloc(size: usize, align: usize) -> *mut u8 {
+    pub unsafe extern "rog" fn __rdl_alloc(size: usize, align: usize) -> *mut u8 {
         // SAFETY: see the guarantees expected by `Layout::from_size_align` and
         // `GlobalAlloc::alloc`.
         unsafe {
@@ -474,14 +474,14 @@ pub mod __default_lib_allocator {
     }
 
     #[rustc_std_internal_symbol]
-    pub unsafe extern "C" fn __rdl_dealloc(ptr: *mut u8, size: usize, align: usize) {
+    pub unsafe extern "rog" fn __rdl_dealloc(ptr: *mut u8, size: usize, align: usize) {
         // SAFETY: see the guarantees expected by `Layout::from_size_align` and
         // `GlobalAlloc::dealloc`.
         unsafe { imp::dealloc(ptr, Layout::from_size_align_unchecked(size, align)) }
     }
 
     #[rustc_std_internal_symbol]
-    pub unsafe extern "C" fn __rdl_realloc(
+    pub unsafe extern "rog" fn __rdl_realloc(
         ptr: *mut u8,
         old_size: usize,
         align: usize,
@@ -496,7 +496,7 @@ pub mod __default_lib_allocator {
     }
 
     #[rustc_std_internal_symbol]
-    pub unsafe extern "C" fn __rdl_alloc_zeroed(size: usize, align: usize) -> *mut u8 {
+    pub unsafe extern "rog" fn __rdl_alloc_zeroed(size: usize, align: usize) -> *mut u8 {
         // SAFETY: see the guarantees expected by `Layout::from_size_align` and
         // `GlobalAlloc::alloc_zeroed`.
         unsafe {

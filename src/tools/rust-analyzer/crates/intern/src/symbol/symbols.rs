@@ -438,6 +438,7 @@ define_symbols! {
     new,
     next,
     no_core,
+    no_split,
     no_mangle,
     no_std,
     non_exhaustive,

@@ -1818,6 +1818,14 @@ impl Arch {
         }
     }
 
+    pub fn stack_pointer(&self) -> &'static str {
+        match self {
+            Self::AArch64 | Self::LoongArch64 | Self::RiscV64 => "sp",
+            Self::X86_64 => "rsp",
+            _ => unimplemented!("stack_pointer({self:?})"),
+        }
+    }
+
     /// Whether `#[rustc_scalable_vector]` is supported for a target architecture
     pub fn supports_scalable_vectors(&self) -> bool {
         use Arch::*;

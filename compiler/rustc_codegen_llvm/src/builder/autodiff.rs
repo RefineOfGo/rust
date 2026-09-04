@@ -342,11 +342,12 @@ pub(crate) fn generate_enzyme_call<'ll, 'tcx>(
 
     // FIXME(ZuseZ4): the CC/Addr/Vis values are best effort guesses, we should look at tests and
     // think a bit more about what should go here.
-    let cc = unsafe { llvm::LLVMGetFunctionCallConv(fn_to_diff) };
+    let cc = llvm::CallConv::try_from(unsafe { llvm::LLVMGetFunctionCallConv(fn_to_diff) })
+        .expect("invalid callconv");
     let ad_fn = declare_simple_fn(
         cx,
         &ad_name,
-        llvm::CallConv::try_from(cc).expect("invalid callconv"),
+        cc,
         llvm::UnnamedAddr::No,
         llvm::Visibility::Default,
         enzyme_ty,
@@ -373,6 +374,7 @@ pub(crate) fn generate_enzyme_call<'ll, 'tcx>(
     }
 
     let call = bx.call(enzyme_ty, None, None, ad_fn, &args, None, None);
+    llvm::SetInstructionCallConv(call, cc);
 
     let fn_ret_ty = bx.cx.val_ty(call);
     if fn_ret_ty == bx.cx.type_void() || fn_ret_ty == bx.cx.type_struct(&[], false) {

@@ -26,6 +26,7 @@ use rustc_session::config::{
 use rustc_session::{PointerAuthSchema, Session};
 use rustc_span::{DUMMY_SP, Span, Spanned, Symbol, sym};
 use rustc_structures::CrateType;
+use rustc_target::callconv::FnAbi;
 use rustc_target::spec::{
     Arch, CfgAbi, Env, FramePointer, HasTargetSpec, Os, RelocModel, SmallDataThresholdSupport,
     Target, TlsModel,
@@ -135,7 +136,7 @@ pub(crate) struct FullCx<'ll, 'tcx> {
     pub dbg_cx: Option<debuginfo::CodegenUnitDebugContext<'ll, 'tcx>>,
 
     eh_personality: Cell<Option<&'ll Value>>,
-    pub rust_try_fn: Cell<Option<(&'ll Type, &'ll Value)>>,
+    pub rust_try_fn: Cell<Option<(&'ll Type, &'ll Value, &'tcx FnAbi<'tcx, Ty<'tcx>>)>>,
 
     intrinsics:
         RefCell<FxHashMap<(Cow<'static, str>, SmallVec<[&'ll Type; 2]>), (&'ll Type, &'ll Value)>>,

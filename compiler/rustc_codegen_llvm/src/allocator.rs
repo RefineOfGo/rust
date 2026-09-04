@@ -119,7 +119,7 @@ fn create_wrapper_function(
     let llfn = declare_simple_fn(
         &cx,
         from_name,
-        llvm::CallConv::CCallConv,
+        llvm::CallConv::ROGCallConv,
         llvm::UnnamedAddr::Global,
         llvm::Visibility::from_generic(tcx.sess.default_visibility()),
         ty,
@@ -154,7 +154,7 @@ fn create_wrapper_function(
         let callee = declare_simple_fn(
             &cx,
             to_name,
-            llvm::CallConv::CCallConv,
+            llvm::CallConv::ROGCallConv,
             llvm::UnnamedAddr::Global,
             llvm::Visibility::Hidden,
             ty,
@@ -171,6 +171,7 @@ fn create_wrapper_function(
             .map(|(i, _)| llvm::get_param(llfn, i as c_uint))
             .collect::<Vec<_>>();
         let ret = bx.call(ty, callee, &args, None);
+        llvm::SetInstructionCallConv(ret, llvm::CallConv::ROGCallConv);
         llvm::LLVMSetTailCall(ret, TRUE);
         if output.is_some() {
             bx.ret(ret);

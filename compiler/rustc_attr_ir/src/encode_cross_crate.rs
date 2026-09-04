@@ -75,6 +75,7 @@ impl AttributeKind {
             NoLink => No,
             NoMain => No,
             NoMangle(..) => Yes, // Needed for rustdoc
+            NoSplit => No,
             NoStd => No,
             NonExhaustive(..) => Yes, // Needed for rustdoc
             OnConst { .. } => Yes,

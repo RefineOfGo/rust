@@ -92,6 +92,11 @@ pub(crate) fn maybe_sign_fn_ptr<'ll, 'tcx>(
 *
 */
 
+/// Preferred minimum non-null sentinel address accepted by the ROG GC.
+///
+/// Keep this in sync with `RawVecInner::ROG_MIN_PTR_ADDR`.
+const ROG_MIN_PTR_ADDR: u64 = 1 << 18;
+
 /// A structure representing an active landing pad for the duration of a basic
 /// block.
 ///
@@ -209,7 +214,12 @@ impl<'ll, 'tcx> CodegenCx<'ll, 'tcx> {
                     // For ZSTs directly codegen an aligned pointer.
                     // This avoids generating a zero-sized constant value and actually needing a
                     // real address at runtime.
-                    return Err(alloc.inner().align.bytes());
+                    let min_ptr_addr = if self.tcx.data_layout.pointer_size().bits() > 18 {
+                        ROG_MIN_PTR_ADDR
+                    } else {
+                        1
+                    };
+                    return Err(alloc.inner().align.bytes().max(min_ptr_addr));
                 }
 
                 alloc

@@ -2,8 +2,8 @@ use std::{fmt, iter};
 
 use arrayvec::ArrayVec;
 use rustc_abi::{
-    AddressSpace, Align, BackendRepr, CanonAbi, ExternAbi, FieldsShape, HasDataLayout, Primitive,
-    Reg, RegKind, Scalar, Size, TyAbiInterface, TyAndLayout, Variants,
+    AddressSpace, Align, BackendRepr, CanonAbi, ExternAbi, FieldsShape, HasDataLayout,
+    HasRegisterMap, Primitive, Reg, RegKind, Scalar, Size, TyAbiInterface, TyAndLayout, Variants,
 };
 use rustc_macros::StableHash;
 
@@ -263,18 +263,15 @@ impl Uniform {
 
 /// Describes the type used for `PassMode::Cast`.
 ///
-/// Passing arguments in this mode works as follows: the registers in the `prefix` (the ones that
-/// are `Some`) get laid out one after the other (using `repr(C)` layout rules). Then the
+/// Passing arguments in this mode works as follows: the registers in the `prefix` get laid out
+/// one after the other (using `repr(C)` layout rules). Then the
 /// `rest.unit` register type gets repeated often enough to cover `rest.size`. This describes the
 /// actual type used for the call; the Rust type of the argument is then transmuted to this ABI type
 /// (and all data in the padding between the registers is dropped).
 #[derive(Clone, PartialEq, Eq, Hash, Debug, StableHash)]
 pub struct CastTarget {
-    // Note that this is fixed to 8 elements for now as ABIs currently don't
-    // need anything further beyond that, and when this code was originally
-    // refactored to use `ArrayVec` it was already using 8, so that stuck
-    // around.
-    pub prefix: ArrayVec<Reg, 8>,
+    /// ROG may use up to 16 register components; the final component is represented by `rest`.
+    pub prefix: ArrayVec<Reg, 15>,
     /// The offset of `rest` from the start of the value. Currently only implemented for a `Reg`
     /// pair created by the `offset_pair` method.
     pub rest_offset: Option<Size>,
@@ -295,7 +292,7 @@ impl From<Uniform> for CastTarget {
 }
 
 impl CastTarget {
-    pub fn prefixed(prefix: ArrayVec<Reg, 8>, rest: Uniform) -> Self {
+    pub fn prefixed(prefix: ArrayVec<Reg, 15>, rest: Uniform) -> Self {
         Self { prefix, rest_offset: None, rest, attrs: ArgAttributes::new() }
     }
 
@@ -323,18 +320,23 @@ impl CastTarget {
 
     /// When you only access the range containing valid data, you can use this unaligned size;
     /// otherwise, use the safer `size` method.
-    pub fn unaligned_size<C: HasDataLayout>(&self, _cx: &C) -> Size {
+    pub fn unaligned_size<C: HasDataLayout>(&self, cx: &C) -> Size {
         // Prefix arguments are passed in specific designated registers
         let prefix_size = if let Some(offset_from_start) = self.rest_offset {
             offset_from_start
         } else {
-            self.prefix.iter().map(|reg| reg.size).fold(Size::ZERO, |acc, size| acc + size)
+            self.prefix.iter().fold(Size::ZERO, |acc, reg| acc.align_to(reg.align(cx)) + reg.size)
         };
-        // Remaining arguments are passed in chunks of the unit size
-        let rest_size =
-            self.rest.unit.size * self.rest.total.bytes().div_ceil(self.rest.unit.size.bytes());
 
-        prefix_size + rest_size
+        // Remaining arguments are passed in chunks of the unit size
+        let unit_size = self.rest.unit.size;
+        let rest_size = unit_size * self.rest.total.bytes().div_ceil(unit_size.bytes());
+
+        if rest_size != Size::ZERO {
+            prefix_size.align_to(self.rest.align(cx)) + rest_size
+        } else {
+            prefix_size
+        }
     }
 
     pub fn size<C: HasDataLayout>(&self, cx: &C) -> Size {
@@ -733,7 +735,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
     pub fn adjust_for_rust_abi<C>(&mut self, cx: &C)
     where
         Ty: TyAbiInterface<'a, C> + Copy,
-        C: HasDataLayout + HasTargetSpec,
+        C: HasDataLayout + HasTargetSpec + HasRegisterMap<'a, Ty>,
     {
         let spec = cx.target_spec();
         match &spec.arch {
@@ -745,6 +747,8 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             _ => {}
         };
 
+        let use_rog_register_map =
+            matches!(self.conv, CanonAbi::Rust | CanonAbi::Rog | CanonAbi::RogCold);
         for (arg_idx, arg) in self
             .args
             .iter_mut()
@@ -777,6 +781,7 @@ impl<'a, Ty> FnAbi<'a, Ty> {
             }
 
             if arg_idx.is_none()
+                && !use_rog_register_map
                 && arg.layout.size > Primitive::Pointer(AddressSpace::ZERO).size(cx) * 2
                 && !matches!(
                     arg.layout.backend_repr,
@@ -828,7 +833,6 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                 arg.make_indirect();
                 continue;
             }
-
             match arg.layout.backend_repr {
                 BackendRepr::Memory { .. } => {
                     // Compute `Aggregate` ABI.
@@ -837,17 +841,57 @@ impl<'a, Ty> FnAbi<'a, Ty> {
                         matches!(arg.mode, PassMode::Indirect { on_stack: false, .. });
                     assert!(is_indirect_not_on_stack);
 
-                    let size = arg.layout.size;
-                    if arg.layout.is_sized()
-                        && size <= Primitive::Pointer(AddressSpace::ZERO).size(cx)
-                    {
-                        // We want to pass small aggregates as immediates, but using
-                        // an LLVM aggregate type for this leads to bad optimizations,
-                        // so we pick an appropriately sized integer type instead.
-                        arg.cast_to_maybe_noundef(Reg { kind: RegKind::Integer, size }, cx);
-                    } else if self.conv == CanonAbi::RustTail {
-                        assert!(arg.layout.is_sized(), "extern \"tail\" arguments must be sized");
-                        arg.pass_by_stack_offset(None);
+                    if use_rog_register_map {
+                        let pointer_size = Primitive::Pointer(AddressSpace::ZERO).size(cx);
+                        let register_counts = |regs: &[Reg]| {
+                            regs.iter().copied().try_fold(
+                                (0usize, 0usize),
+                                |(iregs, fregs), reg| match reg.kind {
+                                    RegKind::Integer | RegKind::Pointer => Some((
+                                        iregs
+                                            + reg.size.bytes().div_ceil(pointer_size.bytes())
+                                                as usize,
+                                        fregs,
+                                    )),
+                                    RegKind::Float => Some((iregs, fregs + 1)),
+                                    RegKind::Vector { .. } => None,
+                                },
+                            )
+                        };
+
+                        if arg.layout.is_sized()
+                            && let Some(regs) = cx.register_map(arg.layout)
+                            && let Some((iregs, fregs)) = register_counts(&regs)
+                            && iregs <= 8
+                            && fregs <= 8
+                            && regs.len() <= 16
+                        {
+                            let attrs = if layout_is_noundef(arg.layout, cx) {
+                                ArgAttribute::NoUndef.into()
+                            } else {
+                                ArgAttributes::new()
+                            };
+                            let (tail, head) = regs.split_last().expect("cast into no registers");
+                            let prefix = head.iter().copied().collect();
+                            arg.cast_to_with_attrs(
+                                CastTarget::prefixed(prefix, Uniform::from(*tail)),
+                                attrs,
+                            );
+                        }
+                    } else {
+                        let size = arg.layout.size;
+                        if arg.layout.is_sized()
+                            && size <= Primitive::Pointer(AddressSpace::ZERO).size(cx)
+                        {
+                            // Keep the upstream lowering for non-ROG rustic ABIs.
+                            arg.cast_to_maybe_noundef(Reg { kind: RegKind::Integer, size }, cx);
+                        } else if self.conv == CanonAbi::RustTail {
+                            assert!(
+                                arg.layout.is_sized(),
+                                "extern \"tail\" arguments must be sized"
+                            );
+                            arg.pass_by_stack_offset(None);
+                        }
                     }
                 }
 

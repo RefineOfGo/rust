@@ -92,7 +92,8 @@ where
 {
     let dl = cx.data_layout();
     let size = arg.layout.size;
-    let mut prefix = ArrayVec::new();
+    // MIPS has eight argument registers even though `CastTarget` has extra capacity for ROG.
+    let mut prefix: ArrayVec<Reg, 8> = ArrayVec::new();
 
     // Detect need for padding
     let align = Ord::clamp(arg.layout.align.abi, dl.i64_align, dl.i128_align);
@@ -146,6 +147,7 @@ where
 
         // Extract first 8 chunks as the prefix
         let rest_size = size - Size::from_bytes(8) * prefix.len() as u64;
+        let prefix = prefix.into_iter().collect::<ArrayVec<Reg, 15>>();
         arg.cast_to_and_pad_i32(
             CastTarget::prefixed(prefix, Uniform::new(Reg::i64(), rest_size)),
             pad_i32,

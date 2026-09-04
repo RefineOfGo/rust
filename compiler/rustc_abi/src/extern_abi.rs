@@ -57,6 +57,14 @@ pub enum ExternAbi {
     /// Unstable ABI used to call LLVM intrinsics.
     LlvmIntrinsic,
 
+    /// ROG-specific ABI for bridging ROG Go user-code & Rust runtime.
+    /// This ABI is guaranteed to be mapped into LLVM's "rogcc".
+    Rog,
+
+    /// ROG-specific ABI for helpers on a very cold path, such as `rog_morestack_abi`.
+    /// This ABI is guaranteed to be mapped into LLVM's ROG cold calling convention.
+    RogCold,
+
     /// An ABI that rustc does not know how to call or define. Functions with this ABI can
     /// only be created using `#[naked]` functions or `extern "custom"` blocks, and can only
     /// be called from inline assembly.
@@ -200,6 +208,8 @@ abi_impls! {
             PtxKernel =><= "ptx-kernel",
             RiscvInterruptM =><= "riscv-interrupt-m",
             RiscvInterruptS =><= "riscv-interrupt-s",
+            Rog =><= "rog",
+            RogCold =><= "rog-cold",
             RustCall =><= "rust-call",
             RustCold =><= "rust-cold",
             RustInvalid =><= "rust-invalid",
@@ -277,6 +287,11 @@ pub enum CVariadicStatus {
 }
 
 impl ExternAbi {
+    pub fn is_lto_aware(self) -> bool {
+        use ExternAbi::*;
+        matches!(self, C { .. } | Rog)
+    }
+
     /// An ABI "like Rust"
     ///
     /// These ABIs are fully controlled by the Rust compiler, which means they
@@ -285,7 +300,7 @@ impl ExternAbi {
     /// - are subject to change between compiler versions
     pub fn is_rustic_abi(self) -> bool {
         use ExternAbi::*;
-        matches!(self, Rust | RustCall | RustCold | RustPreserveNone | RustTail)
+        matches!(self, Rust | RustCall | RustCold | RustPreserveNone | RustTail | Rog | RogCold)
     }
 
     /// Returns whether the ABI supports C variadics. This only controls whether we allow *imports*
@@ -355,6 +370,8 @@ impl ExternAbi {
             | Self::RustCold
             | Self::RustInvalid
             | Self::LlvmIntrinsic
+            | Self::Rog
+            | Self::RogCold
             | Self::EfiApi
             | Self::Aapcs { .. }
             | Self::Cdecl { .. }

@@ -353,6 +353,13 @@ pub const fn prefetch_write_instruction<T, const LOCALITY: i32>(data: *const T) 
     let _ = data;
 }
 
+/// Get the stack pointer of the current stack pointer (RSP on x86_64, and SP on AArch64).
+///
+/// This intrinsic is ROG specific so it does not have a stable counterpart.
+#[rustc_nounwind]
+#[rustc_intrinsic]
+pub fn get_stack_pointer() -> usize;
+
 /// Executes a breakpoint trap, for inspection by a debugger.
 ///
 /// This intrinsic does not have a stable counterpart.
@@ -3050,6 +3057,30 @@ pub fn offset_of<T: PointeeSized>(variant: u32, field: u32) -> usize;
 #[rustc_const_unstable(feature = "field_projections", issue = "145383")]
 #[rustc_comptime]
 pub fn field_offset<F: crate::field::Field>() -> usize;
+
+/// Get a static slice containing encoded pointer map of a type.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+#[rustc_nounwind]
+#[stable(feature = "rog", since = "1.0.0")]
+#[rustc_const_stable(feature = "rog", since = "1.0.0")]
+#[rustc_intrinsic]
+pub const fn pointer_map_of<T>() -> &'static [u64];
+
+/// Check if the pointer map of type T is exact or not.
+///
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
+#[rustc_nounwind]
+#[stable(feature = "rog", since = "1.0.0")]
+#[rustc_const_stable(feature = "rog", since = "1.0.0")]
+#[rustc_intrinsic]
+pub const fn is_pointer_map_exact<T>() -> bool;
 
 /// Returns the number of variants of the type `T` cast to a `usize`;
 /// if `T` has no variants, returns `0`. Uninhabited variants will be counted.

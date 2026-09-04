@@ -282,6 +282,7 @@ attribute_parsers!(
         Single<WithoutArgs<NoLinkParser>>,
         Single<WithoutArgs<NoMainParser>>,
         Single<WithoutArgs<NoMangleParser>>,
+        Single<WithoutArgs<NoSplitParser>>,
         Single<WithoutArgs<NoStdParser>>,
         Single<WithoutArgs<NonExhaustiveParser>>,
         Single<WithoutArgs<PanicHandlerParser>>,

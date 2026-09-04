@@ -168,6 +168,8 @@ pub(crate) enum CallConv {
     SwiftCallConv = 16,
     Tail = 18,
     PreserveNone = 21,
+    ROGCallConv = 50,
+    ROGColdCallConv = 51,
     X86StdcallCallConv = 64,
     X86FastcallCallConv = 65,
     ArmAapcsCallConv = 67,

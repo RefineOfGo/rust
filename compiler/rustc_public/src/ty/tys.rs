@@ -874,6 +874,8 @@ pub enum Abi {
     RustPreserveNone,
     RustTail,
     RustInvalid,
+    Rog,
+    RogCold,
     Custom,
     Swift,
 }

@@ -85,6 +85,7 @@ impl GccType for Reg {
     fn gcc_type<'gcc>(&self, cx: &CodegenCx<'gcc, '_>) -> Type<'gcc> {
         match self.kind {
             RegKind::Integer => cx.type_ix(self.size.bits()),
+            RegKind::Pointer => cx.type_ptr(),
             RegKind::Float => match self.size.bits() {
                 32 => cx.type_f32(),
                 64 => cx.type_f64(),
@@ -240,6 +241,9 @@ impl<'gcc, 'tcx> FnAbiGccExt<'gcc, 'tcx> for FnAbi<'tcx, Ty<'tcx>> {
 pub fn conv_to_fn_attribute<'gcc>(sess: &Session, conv: CanonAbi) -> Option<FnAttribute<'gcc>> {
     let attribute = match conv {
         CanonAbi::C | CanonAbi::Rust => return None,
+        CanonAbi::Rog | CanonAbi::RogCold => {
+            sess.dcx().fatal("gcc/gccjit backend does not support ROG calling conventions")
+        }
         CanonAbi::RustPreserveNone => {
             // This calling convention is LLVM-specific and unspecified.
             sess.dcx()
