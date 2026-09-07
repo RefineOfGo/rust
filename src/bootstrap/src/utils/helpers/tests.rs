@@ -107,7 +107,10 @@ fn test_submodule_path_of() {
     let builder = crate::core::builder::Builder::new(&build);
     assert_eq!(submodule_path_of(&builder, "invalid/path"), None);
     assert_eq!(submodule_path_of(&builder, "src/tools/cargo"), Some("src/tools/cargo".to_string()));
-    assert_eq!(submodule_path_of(&builder, "src/llvm-project"), None);
+    assert_eq!(
+        submodule_path_of(&builder, "src/llvm-project"),
+        Some("src/llvm-project".to_string())
+    );
     // Make sure subdirs are handled properly
     assert_eq!(
         submodule_path_of(&builder, "src/tools/cargo/random-subdir"),

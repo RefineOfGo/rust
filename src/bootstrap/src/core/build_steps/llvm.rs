@@ -1582,7 +1582,7 @@ impl Step for CrtBeginEnd {
     type Output = PathBuf;
 
     fn should_run(run: ShouldRun<'_>) -> ShouldRun<'_> {
-        run.path("src/llvm-project/compiler-rt/lib/builtins")
+        run.path("src/llvm-project/compiler-rt/lib/crt")
     }
 
     fn make_run(run: RunConfig<'_>) {
