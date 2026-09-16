@@ -14,6 +14,7 @@ use rustc_middle::middle::codegen_fn_attrs::{
 };
 use rustc_middle::mono::Visibility;
 use rustc_middle::query::Providers;
+use rustc_middle::ty::print::with_no_trimmed_paths;
 use rustc_middle::ty::{self as ty, TyCtxt};
 use rustc_session::diagnostics::feature_err;
 use rustc_span::{Span, sym};
@@ -507,7 +508,13 @@ fn is_rog_std_no_split_path(tcx: TyCtxt<'_>, did: LocalDefId) -> bool {
         return false;
     }
 
-    let def_path = tcx.def_path_str(did.to_def_id());
+    // `def_path_str` is the diagnostics printer, so it runs the
+    // `trimmed_def_paths` query. That query shortens paths that are unique by
+    // name, which the prefix comparison below cannot match, and it arms the
+    // `must_produce_diag` check, which aborts a compilation that emits no
+    // diagnostic at all. `cargo -Z build-std` passes `--cap-lints allow` and so
+    // emits none: building `core` for a ROG runtime aborted here.
+    let def_path = with_no_trimmed_paths!(tcx.def_path_str(did.to_def_id()));
     ROG_STD_NO_SPLIT_PATH_PREFIXES.iter().any(|prefix| {
         def_path == *prefix
             || def_path.strip_prefix(prefix).is_some_and(|rest| rest.starts_with("::"))
