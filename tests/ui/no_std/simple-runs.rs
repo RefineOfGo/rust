@@ -37,7 +37,7 @@ fn panic_handler(_info: &PanicInfo<'_>) -> ! {
 }
 
 #[lang = "eh_personality"]
-extern "C" fn rust_eh_personality(
+extern "C" fn rog_rust_eh_personality(
     _version: i32,
     _actions: i32,
     _exception_class: u64,

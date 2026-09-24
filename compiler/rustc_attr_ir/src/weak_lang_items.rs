@@ -25,5 +25,7 @@ macro_rules! weak_lang_items {
 
 weak_lang_items! {
     PanicImpl,          rust_begin_unwind;
-    EhPersonality,      rust_eh_personality;
+    // ROG: a distinct name keeps the runtime's personality from colliding
+    // with the one in any other Rust staticlib linked into the program.
+    EhPersonality,      rog_rust_eh_personality;
 }

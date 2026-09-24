@@ -14,4 +14,4 @@ pub extern "C" fn __rust_maybe_catch_panic() {}
 pub extern "C" fn __rust_start_panic() {}
 
 #[no_mangle]
-pub extern "C" fn rust_eh_personality() {}
+pub extern "C" fn rog_rust_eh_personality() {}

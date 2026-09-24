@@ -21,7 +21,7 @@ pub fn test(_: DropMe) {
 }
 
 #[rustc_std_internal_symbol]
-pub unsafe extern "C" fn rust_eh_personality(
+pub unsafe extern "C" fn rog_rust_eh_personality(
     _version: i32,
     _actions: i32,
     _exception_class: u64,

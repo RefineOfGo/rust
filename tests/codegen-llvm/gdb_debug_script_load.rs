@@ -15,7 +15,7 @@ fn panic_handler(_: &core::panic::PanicInfo) -> ! {
 }
 
 #[no_mangle]
-extern "C" fn rust_eh_personality() {
+extern "C" fn rog_rust_eh_personality() {
     loop {}
 }
 
