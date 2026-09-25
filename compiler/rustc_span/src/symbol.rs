@@ -1744,6 +1744,7 @@ symbols! {
         riscv64,
         riscv_target_feature,
         rlib,
+        rog_rust_eh_personality,
         ropi,
         ropi_rwpi: "ropi-rwpi",
         rotate_left,
