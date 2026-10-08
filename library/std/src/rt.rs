@@ -206,9 +206,6 @@ fn lang_start<T: crate::process::Termination + 'static>(
     argv: *const *const u8,
     sigpipe: u8,
 ) -> isize {
-    unsafe {
-        core::stack::set_stack_limit(0);
-    }
     lang_start_internal(
         &move || crate::sys::backtrace::__rust_begin_short_backtrace(main).report().to_i32(),
         argc,

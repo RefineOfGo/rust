@@ -408,9 +408,8 @@ include!("keyword_docs.rs");
 // Include a number of private modules that exist solely to provide
 // the rustdoc documentation for primitive types. Using `include!`
 // because rustdoc only looks for these modules at the crate level.
+include!("primitive_docs.rs");
 
 /// ROG GC Stack Check stub symbols
 #[stable(feature = "rog", since = "1.0.0")]
 pub mod stack;
-
-include!("primitive_docs.rs");
