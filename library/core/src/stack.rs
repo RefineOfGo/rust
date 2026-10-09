@@ -71,7 +71,7 @@ extern "rog-cold" fn rog_morestack_abi() {
 pub fn get_stack_limit() -> usize {
     unsafe {
         let mut limit: usize;
-        asm!("mov {limit}, fs:0x80", limit = out(reg) limit);
+        asm!("mov {limit}, fs:-0x10", limit = out(reg) limit);
         limit
     }
 }
@@ -127,7 +127,7 @@ pub fn get_stack_limit() -> usize {
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
     unsafe {
-        asm!("mov fs:0x80, {limit}", limit = in(reg) limit);
+        asm!("mov fs:-0x10, {limit}", limit = in(reg) limit);
     }
 }
 
