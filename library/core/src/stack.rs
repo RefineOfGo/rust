@@ -1,13 +1,6 @@
 use crate::arch::asm;
 use crate::intrinsics::abort;
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-crate::arch::global_asm!(
-    ".weak __rog_lld_tls_reserve",
-    ".hidden __rog_lld_tls_reserve",
-    ".set __rog_lld_tls_reserve, 0",
-);
-
 /// ROG Stack Growing stub, the real implementation is in ROG runtime.
 /// Known to the relevant LLVM passes.
 ///
