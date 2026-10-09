@@ -1,6 +1,13 @@
 use crate::arch::asm;
 use crate::intrinsics::abort;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+crate::arch::global_asm!(
+    ".weak __rog_lld_tls_reserve",
+    ".hidden __rog_lld_tls_reserve",
+    ".set __rog_lld_tls_reserve, 0",
+);
+
 /// ROG Stack Growing stub, the real implementation is in ROG runtime.
 /// Known to the relevant LLVM passes.
 ///
@@ -71,7 +78,7 @@ extern "rog-cold" fn rog_morestack_abi() {
 pub fn get_stack_limit() -> usize {
     unsafe {
         let mut limit: usize;
-        asm!("mov {limit}, fs:0x80", limit = out(reg) limit);
+        asm!("mov {limit}, fs:-0x10", limit = out(reg) limit);
         limit
     }
 }
@@ -127,7 +134,7 @@ pub fn get_stack_limit() -> usize {
 #[inline(always)]
 pub unsafe fn set_stack_limit(limit: usize) {
     unsafe {
-        asm!("mov fs:0x80, {limit}", limit = in(reg) limit);
+        asm!("mov fs:-0x10, {limit}", limit = in(reg) limit);
     }
 }
 
